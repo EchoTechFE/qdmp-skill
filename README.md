@@ -2,6 +2,60 @@
 
 帮助开发者快速创建、开发和部署千岛小程序。
 
+## Claude Code 插件安装
+
+本仓库已经按 Claude Code 插件 marketplace 结构组织：
+
+```text
+.claude-plugin/
+  plugin.json       # qdmp 插件声明
+  marketplace.json  # qdmp-marketplace 插件市场声明
+skills/
+  qdmp-skill/
+    SKILL.md
+```
+
+### 1. 添加插件市场
+
+添加千岛小程序插件市场：
+
+```bash
+claude plugin marketplace add EchoTechFE/qdmp-skill
+```
+
+添加完成后，在 Claude Code 中运行 `/plugin`，进入 Discover 标签页即可看到 `qdmp` 插件。
+
+### 2. 安装插件
+
+```bash
+claude plugin install qdmp@qdmp-marketplace
+claude plugin list
+```
+
+如果已经在 Claude Code 会话中，安装后执行：
+
+```text
+/reload-plugins
+```
+
+### 3. 使用插件 Skill
+
+插件安装后，skill 会以插件命名空间暴露：
+
+```text
+/qdmp:qdmp-skill
+```
+
+也可以直接描述千岛小程序、qdmp、部署、发布、开发调试等需求，Claude Code 会根据 skill 描述自动选择使用。
+
+### 维护者本地调试
+
+如果你正在维护本仓库，并希望从本地工作区调试 marketplace，可以在仓库根目录执行：
+
+```bash
+claude plugin marketplace add ./
+```
+
 ## 前置准备
 
 ### 1. 注册千岛开放平台账号

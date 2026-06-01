@@ -1,7 +1,6 @@
 ---
 name: qdmp-skill
 description: "千岛小程序开发助手（外部版），支持前后端的开发和部署。"
-version: 1.0.0
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
                 mcp__qdmp-gitlab__qdmp_gitlab_list_versions, mcp__qdmp-gitlab__qdmp_gitlab_get_version,
                 mcp__qdmp-gitlab__qdmp_gitlab_diff, mcp__qdmp-gitlab__qdmp_gitlab_publish,
@@ -178,6 +177,22 @@ questions:
 ### 前端（`frontend/`）
 
 修改前端代码前，必须先读取 `frontend/README.md`（如果存在），确保代码风格、目录结构、命名约定与项目现有规范一致。
+
+使用 `Taro.navigateTo` 传递 query 参数时，URL 参数值不得直接拼接中文、空格、`&`、`?`、`=` 等特殊字符。若参数可能包含中文或特殊字符，必须使用 `encodeURIComponent` 编码：
+
+```javascript
+Taro.navigateTo({
+  url: `/pages/category/index?key=${cat.key}&name=${encodeURIComponent(cat.name)}`,
+})
+```
+
+禁止写法：
+
+```javascript
+Taro.navigateTo({
+  url: `/pages/category/index?key=${cat.key}&name=${cat.name}`,
+})
+```
 
 ### 后端（`backend/`）
 
