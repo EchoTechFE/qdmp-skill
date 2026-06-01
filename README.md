@@ -115,7 +115,7 @@ claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/m
 ## 完整开发流程
 
 ```
-1. 配置环境 → 安装 Node.js、pnpm、qdmp-cli@0.1.14
+1. 配置环境 → 安装 Node.js、pnpm、qdmp-cli
 2. 创建项目 → qdmp-cli create myApp
 3. 安装依赖 → pnpm install
 4. 开发调试 → pnpm run dev

@@ -34,15 +34,15 @@ user-invocable: true
 在执行任何操作前，必须先确认开发环境就绪：
 
 ```bash
-# 检查 qdmp-cli 是否为指定版本
+# 检查 qdmp-cli 是否可用
 qdmp-cli --version 2>/dev/null
 ```
 
-- **命令成功且版本为 `0.1.14`** → 继续第一步
-- **命令失败**（command not found 或报错）或版本不是 `0.1.14` → 执行指定版本安装：
+- **命令成功**（输出版本号） → 继续第一步
+- **命令失败**（command not found 或报错） → 执行自动安装：
 
 ```bash
-npm install -g qdmp-cli@0.1.14
+npm install -g qdmp-cli
 ```
 
 安装完成后再次验证：
@@ -50,7 +50,7 @@ npm install -g qdmp-cli@0.1.14
 qdmp-cli --version 2>/dev/null
 ```
 
-- **输出版本为 `0.1.14`** → 继续第一步
+- **验证通过** → 继续第一步
 - **仍然失败** → 停止流程，向用户报告错误信息，提示可能原因（npm 未安装、网络问题、权限不足等），并建议用户手动排查后重试。**严禁在 qdmp-cli 不可用的状态下执行创建项目或发布操作。**
 
 同时检查 pnpm 是否可用（创建和开发项目需要）：
@@ -218,6 +218,6 @@ Taro.navigateTo({
 | 问题 | 解决方案 |
 | ---- | -------- |
 | 依赖安装 401/404 | 配置 npm Token |
-| qdmp-cli 未找到或版本不是 0.1.14 | `npm install -g qdmp-cli@0.1.14` |
+| qdmp-cli 未找到 | `npm install -g qdmp-cli` |
 | pnpm 未找到 | `npm install -g pnpm` |
 | 图片 403 | index.html 加 `<meta name="referrer" content="no-referrer">` |
