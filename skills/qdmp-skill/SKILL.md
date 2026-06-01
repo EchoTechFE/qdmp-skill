@@ -1,7 +1,6 @@
 ---
 name: qdmp-skill
 description: "千岛小程序开发助手（外部版），支持前后端的开发和部署。"
-version: 1.0.0
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
                 mcp__qdmp-gitlab__qdmp_gitlab_list_versions, mcp__qdmp-gitlab__qdmp_gitlab_get_version,
                 mcp__qdmp-gitlab__qdmp_gitlab_diff, mcp__qdmp-gitlab__qdmp_gitlab_publish,
@@ -35,15 +34,15 @@ user-invocable: true
 在执行任何操作前，必须先确认开发环境就绪：
 
 ```bash
-# 检查 qdmp-cli 是否可用
+# 检查 qdmp-cli 是否为指定版本
 qdmp-cli --version 2>/dev/null
 ```
 
-- **命令成功**（输出版本号） → 继续第一步
-- **命令失败**（command not found 或报错） → 执行自动安装：
+- **命令成功且版本为 `0.1.14`** → 继续第一步
+- **命令失败**（command not found 或报错）或版本不是 `0.1.14` → 执行指定版本安装：
 
 ```bash
-npm install -g qdmp-cli
+npm install -g qdmp-cli@0.1.14
 ```
 
 安装完成后再次验证：
@@ -51,7 +50,7 @@ npm install -g qdmp-cli
 qdmp-cli --version 2>/dev/null
 ```
 
-- **验证通过** → 继续第一步
+- **输出版本为 `0.1.14`** → 继续第一步
 - **仍然失败** → 停止流程，向用户报告错误信息，提示可能原因（npm 未安装、网络问题、权限不足等），并建议用户手动排查后重试。**严禁在 qdmp-cli 不可用的状态下执行创建项目或发布操作。**
 
 同时检查 pnpm 是否可用（创建和开发项目需要）：
@@ -179,6 +178,22 @@ questions:
 
 修改前端代码前，必须先读取 `frontend/README.md`（如果存在），确保代码风格、目录结构、命名约定与项目现有规范一致。
 
+使用 `Taro.navigateTo` 传递 query 参数时，URL 参数值不得直接拼接中文、空格、`&`、`?`、`=` 等特殊字符。若参数可能包含中文或特殊字符，必须使用 `encodeURIComponent` 编码：
+
+```javascript
+Taro.navigateTo({
+  url: `/pages/category/index?key=${cat.key}&name=${encodeURIComponent(cat.name)}`,
+})
+```
+
+禁止写法：
+
+```javascript
+Taro.navigateTo({
+  url: `/pages/category/index?key=${cat.key}&name=${cat.name}`,
+})
+```
+
 ### 后端（`backend/`）
 
 修改后端代码前，若项目根目录存在 `qdmp-schema.json`，必须先读取它，确保代码直接引用已定义的数据模型，不重复定义字段。新增数据存储需求时，先更新 `qdmp-schema.json`，再生成对应 model 代码。
@@ -203,6 +218,6 @@ questions:
 | 问题 | 解决方案 |
 | ---- | -------- |
 | 依赖安装 401/404 | 配置 npm Token |
-| qdmp-cli 未找到 | `npm install -g qdmp-cli` |
+| qdmp-cli 未找到或版本不是 0.1.14 | `npm install -g qdmp-cli@0.1.14` |
 | pnpm 未找到 | `npm install -g pnpm` |
 | 图片 403 | index.html 加 `<meta name="referrer" content="no-referrer">` |

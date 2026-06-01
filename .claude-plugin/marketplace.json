@@ -1,0 +1,26 @@
+{
+  "name": "qdmp-marketplace",
+  "metadata": {
+    "description": "千岛小程序 Claude Code 插件市场。"
+  },
+  "owner": {
+    "name": "Qiandao"
+  },
+  "plugins": [
+    {
+      "name": "qdmp",
+      "source": "./",
+      "description": "千岛小程序开发助手，支持前后端开发、调试、部署和运维。",
+      "author": {
+        "name": "Qiandao"
+      },
+      "category": "development-workflows",
+      "tags": [
+        "qdmp",
+        "qiandao",
+        "mini-program",
+        "deployment"
+      ]
+    }
+  ]
+}

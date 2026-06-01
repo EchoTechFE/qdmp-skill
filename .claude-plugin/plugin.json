@@ -1,0 +1,15 @@
+{
+  "name": "qdmp",
+  "displayName": "Qiandao Mini Program",
+  "description": "千岛小程序开发助手，支持前后端开发、调试、部署和运维。",
+  "version": "1.0.0",
+  "author": {
+    "name": "Qiandao"
+  },
+  "keywords": [
+    "qdmp",
+    "qiandao",
+    "mini-program",
+    "deployment"
+  ]
+}
