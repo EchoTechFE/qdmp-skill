@@ -209,7 +209,8 @@ Taro.navigateTo({
 | `qdmp-cli init -a <id>` | 关联小程序 |
 | `pnpm install` | 安装依赖 |
 | `pnpm run dev` | 开发模式 |
-| `pnpm run build` | 打包构建 |
+| `pnpm run build` | 打包构建（本地调试） |
+| `qdmp build` | 打包构建（发布上传前必须使用） |
 | `qdmp-cli login` | 登录账号 |
 | `qdmp-cli upload` | 上传部署 |
 
