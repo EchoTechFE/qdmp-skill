@@ -542,7 +542,7 @@ pnpm run dev
 ### 真机调试
 
 ```bash
-pnpm run build
+qdmp build
 qdmp-cli upload
 ```
 
@@ -570,8 +570,8 @@ qdmp-cli upload
 ### 发布步骤
 
 ```bash
-# 1. 打包
-pnpm run build
+# 1. 打包（必须使用 qdmp build，否则 upload 会失败）
+qdmp build
 
 # 2. 登录（首次需要）
 qdmp-cli login

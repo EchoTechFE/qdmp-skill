@@ -65,7 +65,7 @@ claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/m
 2. 创建项目 → qdmp-cli create myApp
 3. 安装依赖 → pnpm install
 4. 开发调试 → pnpm run dev
-5. 打包构建 → pnpm run build
+5. 打包构建 → qdmp build（发布时必须使用 qdmp build）
 6. 登录账号 → qdmp-cli login
 7. 上传部署 → qdmp-cli upload
 ```

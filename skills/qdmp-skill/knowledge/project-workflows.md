@@ -691,7 +691,7 @@ pgrep nginx > /dev/null 2>&1 && nginx -s reload || nginx
   http://localhost:8888
 ```
 
-真机调试：`pnpm run build` 后使用千岛 App 扫码预览。
+真机调试：`qdmp build` 后使用千岛 App 扫码预览。
 
 ---
 
@@ -800,7 +800,7 @@ questions:
 #### 部署步骤
 
 ```bash
-pnpm run build     # 打包
+qdmp build         # 打包（必须使用 qdmp build，否则 upload 会失败）
 qdmp-cli login     # 登录（首次）
 qdmp-cli upload    # 上传
 ```
