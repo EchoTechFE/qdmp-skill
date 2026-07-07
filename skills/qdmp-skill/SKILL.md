@@ -27,6 +27,25 @@ user-invocable: true
 
 ---
 
+## 规范依赖
+
+本 skill 负责千岛小程序的项目、开发、调试、部署主流程；产品边界和前端设计规范由独立 skill 维护。开发类任务必须按需调用：
+
+| 依赖 skill | 使用时机 |
+| ---------- | -------- |
+| `/qdmp:qdmp-product-rules` | 新建/改造小程序、页面、路由、登录、权限、SPU/资料、内容回流、社区相关能力、留存机制、脚手架或代码 Review 前 |
+| `/qdmp:qdmp-design-rules` | 设计页面、生成/更新 `DESIGN.md`、编写/审查 Taro Vue/CSS、维护 `app.css` token/组件类、HTML 设计稿移植到 Taro 前 |
+
+执行顺序：
+
+1. 所有开发类需求，先使用 `/qdmp:qdmp-product-rules` 检查产品底线。
+2. 涉及前端页面、组件、样式或视觉落地时，再使用 `/qdmp:qdmp-design-rules`。
+3. 运维类任务（日志、版本、回滚、部署状态、仅后端发版）不需要调用这两个规范 skill，除非用户同时要求改代码或 Review。
+
+若 `/qdmp:qdmp-product-rules` 标记为黄灯场景，暂停最终实现，先输出需要产品确认的问题；产品确认后再继续技术方案和代码生成。
+
+---
+
 ## 启动步骤（每次 skill 触发时必须先执行）
 
 ### 第零步：环境依赖检查
@@ -174,9 +193,17 @@ questions:
 
 ## 代码编写规则
 
+开发类代码生成或 Review 必须先按「规范依赖」调用对应 skill。产品底线、设计系统和 Taro 视觉落地规则不在本节重复维护，避免规范漂移。
+
 ### 前端（`frontend/`）
 
 修改前端代码前，必须先读取 `frontend/README.md`（如果存在），确保代码风格、目录结构、命名约定与项目现有规范一致。
+
+涉及页面、组件、样式、`DESIGN.md`、`app.css` token/公共组件类时，必须同时使用 `/qdmp:qdmp-design-rules`：
+
+- 有 `DESIGN.md` 时先读取并延续设计系统。
+- 无 `DESIGN.md` 且是全新页面/成块 UI 时，先走设计规范中的页面设计和设计系统生成流程。
+- 无 `DESIGN.md` 但已有页面时，照现有页面和 `app.css` 保持一致，不凭空引入新 token。
 
 使用 `Taro.navigateTo` 传递 query 参数时，URL 参数值不得直接拼接中文、空格、`&`、`?`、`=` 等特殊字符。若参数可能包含中文或特殊字符，必须使用 `encodeURIComponent` 编码：
 

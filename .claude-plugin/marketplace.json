@@ -10,7 +10,7 @@
     {
       "name": "qdmp",
       "source": "./",
-      "description": "千岛小程序开发助手，支持前后端开发、调试、部署和运维。",
+      "description": "千岛小程序开发助手，支持前后端开发、调试、部署、运维，并内置产品底线与 Taro 设计规范。",
       "author": {
         "name": "Qiandao"
       },
@@ -19,7 +19,10 @@
         "qdmp",
         "qiandao",
         "mini-program",
-        "deployment"
+        "deployment",
+        "product-rules",
+        "design-system",
+        "taro"
       ]
     }
   ]
