@@ -13,6 +13,12 @@
 skills/
   qdmp-skill/
     SKILL.md
+  qdmp-product-rules/
+    SKILL.md
+    references/product-baseline.md
+  qdmp-design-rules/
+    SKILL.md
+    references/
 ```
 
 ### 1. 添加插件市场
@@ -44,9 +50,21 @@ claude plugin list
 
 ```text
 /qdmp:qdmp-skill
+/qdmp:qdmp-product-rules
+/qdmp:qdmp-design-rules
 ```
 
 也可以直接描述千岛小程序、qdmp、部署、发布、开发调试等需求，Claude Code 会根据 skill 描述自动选择使用。
+
+## Skill 组成
+
+| Skill | 用途 |
+| ----- | ---- |
+| `/qdmp:qdmp-skill` | 千岛小程序主开发助手，负责项目创建、开发、调试、部署、运维流程 |
+| `/qdmp:qdmp-product-rules` | 产品底线规范，约束代码生成和 Review 中可明确执行的产品边界 |
+| `/qdmp:qdmp-design-rules` | Taro 前端设计规范，维护页面设计、`DESIGN.md`、`app.css` token、HTML 到 Taro 移植和 UI Review |
+
+`/qdmp:qdmp-skill` 的开发类任务依赖另外两个规范 skill：先过 `/qdmp:qdmp-product-rules`，涉及前端 UI/Taro 时再过 `/qdmp:qdmp-design-rules`。产品规范和设计规范分开维护，避免把产品审核判断混入视觉/代码落地规则。
 
 ### 维护者本地调试
 
