@@ -20,6 +20,7 @@ user-invocable: true
 | 文档 | 内容 |
 | ---- | ---- |
 | [development-guide.md](./knowledge/development-guide.md) | 开发指南：项目结构、服务端 API、调试发布 |
+| [bridge-api-guide.md](./knowledge/bridge-api-guide.md) | Bridge API：原生能力调用、参数与返回值类型 |
 | [api-guide.md](./knowledge/api-guide.md) | 服务端 API：场景化接口文档 |
 | [backend-operations.md](./knowledge/backend-operations.md) | 后端操作详情：通用子流程 + 操作 1-7 的完整步骤 |
 | [project-workflows.md](./knowledge/project-workflows.md) | 项目工作流程：创建项目、开发调试、打包部署 |
@@ -205,10 +206,10 @@ questions:
 - 无 `DESIGN.md` 且是全新页面/成块 UI 时，先走设计规范中的页面设计和设计系统生成流程。
 - 无 `DESIGN.md` 但已有页面时，照现有页面和 `app.css` 保持一致，不凭空引入新 token。
 
-使用 `Taro.navigateTo` 传递 query 参数时，URL 参数值不得直接拼接中文、空格、`&`、`?`、`=` 等特殊字符。若参数可能包含中文或特殊字符，必须使用 `encodeURIComponent` 编码：
+使用 `qd.navigateTo` 传递 query 参数时，URL 参数值不得直接拼接中文、空格、`&`、`?`、`=` 等特殊字符。若参数可能包含中文或特殊字符，必须使用 `encodeURIComponent` 编码：
 
 ```javascript
-Taro.navigateTo({
+qd.navigateTo({
   url: `/pages/category/index?key=${cat.key}&name=${encodeURIComponent(cat.name)}`,
 })
 ```
@@ -216,7 +217,7 @@ Taro.navigateTo({
 禁止写法：
 
 ```javascript
-Taro.navigateTo({
+qd.navigateTo({
   url: `/pages/category/index?key=${cat.key}&name=${cat.name}`,
 })
 ```
