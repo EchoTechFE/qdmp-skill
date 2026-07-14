@@ -39,10 +39,10 @@ const BASE = 'https://openapi.qiandao.com'
 - 分页: `offset` (默认 0) / `limit` (默认 20)
 - ID 类型: 所有 ID 为 string
 - 图片防盗链: index.html 必须加 `<meta name="referrer" content="no-referrer">`
-- 页面跳转: 使用 `Taro.navigateTo` 传递 query 参数时，参数值不得直接拼接中文、空格、`&`、`?`、`=` 等特殊字符；若参数可能包含中文或特殊字符，必须使用 `encodeURIComponent` 编码。
+- 页面跳转: 使用 `qd.navigateTo` 传递 query 参数时，参数值不得直接拼接中文、空格、`&`、`?`、`=` 等特殊字符；若参数可能包含中文或特殊字符，必须使用 `encodeURIComponent` 编码。
 
 ```javascript
-Taro.navigateTo({
+qd.navigateTo({
   url: `/pages/category/index?key=${cat.key}&name=${encodeURIComponent(cat.name)}`,
 })
 ```
@@ -50,7 +50,7 @@ Taro.navigateTo({
 禁止写法：
 
 ```javascript
-Taro.navigateTo({
+qd.navigateTo({
   url: `/pages/category/index?key=${cat.key}&name=${cat.name}`,
 })
 ```
