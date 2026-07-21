@@ -163,6 +163,43 @@ curl 'https://openapi.qiandao.com/tag/v1/search?keyword=labubu&typeId=2&offset=0
   -H 'Authorization: Bearer <token>'
 ```
 
+### 4.5 POST `/tag/v1/follow`
+
+关注 Tag（当前登录用户）。
+
+**operationId**：`LibraryService_FollowTag`
+
+**请求体**：`libraryFollowTagRequest`（必填，具体字段以 Library Swagger 定义为准）。
+
+**响应**：`libraryFollowTagResponse`；异常响应为 `rpcStatus`。
+
+```bash
+curl 'https://openapi.qiandao.com/tag/v1/follow' \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <token>' \
+  --data-raw '<libraryFollowTagRequest JSON>'
+```
+
+### 4.6 GET `/tag/v1/following`
+
+获取当前登录用户已关注的 Tag 列表。
+
+**operationId**：`LibraryService_GetFollowingTags`
+
+| Query              | 必填 | 说明                                  |
+| ------------------ | ---- | ------------------------------------- |
+| `offset`           | 否   | 分页偏移量（string / uint64）         |
+| `limit`            | 否   | 每页数量，默认 20（string / uint64）  |
+| `offset` + `limit` | —    | 两者之和不超过 1000                   |
+
+**响应**：`libraryGetFollowingTagsResponse`；异常响应为 `rpcStatus`。
+
+```bash
+curl 'https://openapi.qiandao.com/tag/v1/following?offset=0&limit=20' \
+  -H 'Authorization: Bearer <token>'
+```
+
 ---
 
 ## 5. User：当前用户
@@ -330,6 +367,8 @@ curl 'https://openapi.qiandao.com/post/v1/search' \
 | SPU 搜索     | GET  | `/spu/v1/search`     |
 | Tag 详情     | GET  | `/tag/v1/detail`     |
 | Tag 搜索     | GET  | `/tag/v1/search`     |
+| 关注 Tag     | POST | `/tag/v1/follow`     |
+| 已关注 Tag   | GET  | `/tag/v1/following`  |
 | 当前用户     | GET  | `/user/v1/me`        |
 | 添加标记     | POST | `/mark/v1/add`       |
 | 我的标记列表 | GET  | `/mark/v1/me/list`   |
