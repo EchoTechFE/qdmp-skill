@@ -340,7 +340,200 @@ curl 'https://openapi.qiandao.com/post/v1/search' \
 
 ---
 
-## 8. 与小程序开发的衔接
+## 8. 图片文字识别 OCR
+
+### 8.1 POST `/ocr/v1/recognize`
+
+识别图片中的文字。
+
+**请求体**：
+
+| 字段          | 类型     | 必填 | 说明                                        |
+| ------------- | -------- | ---- | ------------------------------------------- |
+| `imageBase64` | `string` | 是   | 图片的纯 Base64 编码，不包含 Data URL 前缀 |
+
+```json
+{
+  "imageBase64": "<纯 Base64 字符串>"
+}
+```
+
+调用接口前必须移除以下形式的前缀：
+
+```text
+data:image/png;base64,
+data:image/jpeg;base64,
+```
+
+不要只针对 PNG 做固定字符串替换。建议按第一个逗号截取，以兼容不同图片格式：
+
+```javascript
+function stripDataUrlPrefix(base64) {
+  const value = String(base64 || "").trim()
+  const commaIndex = value.indexOf(",")
+
+  if (value.startsWith("data:") && commaIndex !== -1) {
+    return value.slice(commaIndex + 1)
+  }
+
+  return value
+}
+```
+
+**响应**：使用 OpenAPI 通用响应壳。成功时 `code` 为 `0` 或 `"0"`，识别结果位于 `data`。`data` 的具体字段以接口实际响应为准。
+
+```javascript
+export async function recognizeOcr({ imageBase64 }) {
+  const json = await backendApi.post("/ocr/v1/recognize", {
+    imageBase64: stripDataUrlPrefix(imageBase64),
+  })
+
+  if (String(json.code) === "0") {
+    return json.data
+  }
+
+  throw new Error(json.message || "OCR 识别失败")
+}
+```
+
+### 8.2 小程序选图与 Base64 转换
+
+选择图片时优先使用 `qd.chooseMedia`，不支持时回退到 `qd.chooseImage`：
+
+```javascript
+async function chooseImagePath() {
+  if (typeof qd.chooseMedia === "function") {
+    const res = await qd.chooseMedia({
+      count: 1,
+      mediaType: ["image"],
+      sourceType: ["album", "camera"],
+      sizeType: ["compressed"],
+    })
+
+    return res.tempFiles?.[0]?.tempFilePath || ""
+  }
+
+  const res = await qd.chooseImage({
+    count: 1,
+    sourceType: ["album", "camera"],
+    sizeType: ["compressed"],
+  })
+
+  return res.tempFilePaths?.[0] || ""
+}
+```
+
+读取 Base64 时，优先使用文件系统接口：
+
+```javascript
+async function readFileBase64(filePath) {
+  const fileSystemManager = qd.getFileSystemManager?.()
+
+  if (!fileSystemManager?.readFile) {
+    throw new Error("当前运行时不支持文件系统读取")
+  }
+
+  const result = await new Promise((resolve, reject) => {
+    fileSystemManager.readFile({
+      filePath,
+      encoding: "base64",
+      success: resolve,
+      fail: reject,
+    })
+  })
+
+  if (!result?.data) {
+    throw new Error("readFile 未返回 Base64")
+  }
+
+  return result.data
+}
+```
+
+部分千岛真机环境中，`readFile({ encoding: "base64" })` 可能失败。此时应回退到 `qd.readImage`：
+
+```javascript
+async function readImageBase64(filePath) {
+  try {
+    return await readFileBase64(filePath)
+  } catch (_) {
+    const result = await new Promise((resolve, reject) => {
+      qd.readImage({
+        filePath,
+        success: resolve,
+        fail: reject,
+      })
+    })
+
+    const base64 =
+      typeof result === "string"
+        ? result
+        : result?.data || ""
+
+    if (!base64) {
+      throw new Error("qd.readImage 未返回 Base64")
+    }
+
+    return stripDataUrlPrefix(base64)
+  }
+}
+```
+
+完整调用：
+
+```javascript
+async function chooseImageBase64() {
+  const filePath = await chooseImagePath()
+
+  if (!filePath) {
+    throw new Error("未选择图片")
+  }
+
+  return readImageBase64(filePath)
+}
+```
+
+`qd.readImage` 的返回值可能是字符串，也可能是包含 `data` 字段的对象，调用时应兼容两种形式。发送 OCR 请求前仍需通过 `stripDataUrlPrefix` 移除 Data URL 前缀。
+
+### 8.3 后端代理
+
+推荐由项目后端代理 OCR 请求：
+
+```text
+小程序
+  → 项目后端 /ocr/v1/recognize
+  → https://openapi.qiandao.com/ocr/v1/recognize
+```
+
+这样可以由后端统一获取或注入 `access-token`，避免在前端保存 `appSecret`。
+
+使用通用 OpenAPI 代理时，需要将 OCR 路径加入允许列表：
+
+```javascript
+const PROXY_PREFIXES = [
+  "/mark/",
+  "/spu/",
+  "/tag/",
+  "/user/",
+  "/island/",
+  "/wishspu/",
+  "/ocr/",
+]
+```
+
+代理应保留原始请求方法、路径和 JSON 请求体，并将 OpenAPI 响应原样返回。
+
+### 8.4 常见问题
+
+- **图片数据无效**：检查 `imageBase64` 是否仍包含 `data:image/...;base64,` 前缀。
+- **真机读取图片失败**：保留 `qd.readImage` 回退逻辑。
+- **请求体过大**：选图时使用 `sizeType: ["compressed"]`，必要时先压缩图片。
+- **HTTP 200 但识别失败**：检查业务字段 `code` 和 `message`。
+- **401 / 403**：检查 `access-token` 是否存在或过期，以及后端是否成功获取服务端 Token。
+
+---
+
+## 9. 与小程序开发的衔接
 
 1. **凭证来源**：开放平台 `appId` / `appSecret` 与项目 **`qdmp.json`** 中字段对应关系以平台说明为准；不要在代码里硬编码密钥，可用环境变量或后端托管换票。
 2. **用户态 Token**：前端通过 `/auth/v1/token` 接口获取 `accessToken`，用于请求业务 API。
@@ -349,7 +542,7 @@ curl 'https://openapi.qiandao.com/post/v1/search' \
 
 ---
 
-## 9. 错误与排查
+## 10. 错误与排查
 
 - HTTP 200 但业务 `code` 非成功：读 `message` 与各服务错误码说明。
 - `default` 响应可能为 `rpcStatus`（`code`、`message`、`details`）。
@@ -357,7 +550,7 @@ curl 'https://openapi.qiandao.com/post/v1/search' \
 
 ---
 
-## 10. 接口速查
+## 11. 接口速查
 
 | 场景         | 方法 | 路径                 |
 | ------------ | ---- | -------------------- |
@@ -376,5 +569,6 @@ curl 'https://openapi.qiandao.com/post/v1/search' \
 | 我的标记详情 | GET  | `/mark/v1/me/detail` |
 | 我的帖子列表 | GET  | `/post/v1/me`        |
 | 搜索帖子     | POST | `/post/v1/search`    |
+| 图片文字识别 | POST | `/ocr/v1/recognize`  |
 
 完整字段与枚举见各服务 Swagger（§1 表格）。
