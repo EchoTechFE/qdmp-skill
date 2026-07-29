@@ -15,9 +15,53 @@
 
 读取字段：从 `qdmp-config.json` 读 `appId`、`appSecret`、`runtime`，可选读取 `mongodb.uri`、`mongodb.database`。
 
-> 若仅定位到旧结构（只有含全量配置的 `qdmp.json`、没有 `qdmp-config.json`），进入下方「无 qdmp-config.json」分支处理（后续将补充自动迁移流程）。
+### 前置：旧结构自动迁移（读取字段前必须先执行）
 
-**无 qdmp-config.json** 时：
+在读取字段前，先判断是否为需要迁移的旧结构，命中则**静默自动迁移**后再继续读取。
+
+**旧配置文件定位**：按顺序取第一个存在的作为 `legacyConfig`：`frontend/qdmp.json` → 根目录 `qdmp.json`。
+
+**触发条件（三者全满足）**：
+1. 根目录 `qdmp-config.json` **不存在**；
+2. `legacyConfig` 存在；
+3. `legacyConfig` 含 `appSecret`（即旧的全量配置，而非已裁剪的 appId-only）。
+
+**任一不满足则跳过迁移**（保证幂等）：
+- 已有 `qdmp-config.json` → 已是新结构，直接读取；
+- `legacyConfig` 只有 `appId`、无 `appSecret` → 已迁移过，直接读取；
+- 完全没有任何配置 → 进入下方「无 qdmp-config.json」分支。
+
+**迁移动作**（静默执行，全部完成后一次性告知用户）：
+
+1. 将 `legacyConfig` 的**全量内容**写入根目录 `qdmp-config.json`（`appId`/`appSecret`/`runtime`/`mongodb` 原样保留）。
+2. 将 `legacyConfig`（若在根目录，则改写为 `frontend/qdmp.json`；若本就在 `frontend/`，原地改写）**裁剪为仅 appId**：
+   ```json
+   { "appId": "<原 appId>" }
+   ```
+   若旧文件在根目录，裁剪后的 appId 文件应位于 `frontend/qdmp.json`；根目录不再保留 `qdmp.json`。
+3. 追加 `.gitignore`（见「通用子流程: 保护敏感配置」）：
+   ```bash
+   grep -qxF 'qdmp-config.json' {projectRoot}/.gitignore 2>/dev/null || echo 'qdmp-config.json' >> {projectRoot}/.gitignore
+   ```
+4. **密钥泄露风险检查**：检测旧配置是否已被 git 跟踪（`appSecret` 可能已进历史）：
+   ```bash
+   git -C {projectRoot} ls-files --error-unmatch frontend/qdmp.json qdmp.json 2>/dev/null
+   ```
+   - 有输出（旧文件曾被提交）→ 在完成提示中**额外警告**用户：`⚠️ 检测到旧配置文件曾被 git 跟踪，appSecret 可能已存在于提交历史中。.gitignore 对已跟踪文件无效，建议手动执行 git rm --cached 并考虑轮换 appSecret。`
+   - 无输出或非 git 仓库 → 跳过。
+
+**完成提示**（迁移后展示，B 类信息按需拼接）：
+```
+已将旧配置迁移到新结构：
+- qdmp-config.json（根目录）：appId、appSecret、runtime{、mongodb}
+- frontend/qdmp.json：仅保留 appId
+- 已将 qdmp-config.json 加入 .gitignore
+{可选：⚠️ 密钥泄露警告}
+```
+
+迁移完成后，按新结构从 `qdmp-config.json` 读取字段，继续后续流程。
+
+**无 qdmp-config.json** 时（且不满足迁移条件，即无任何旧全量配置）：
 
 ```yaml
 questions:
@@ -890,6 +934,8 @@ lsof -ti :8080 && kill -9 $(lsof -ti :8080) || true
 ---
 
 ## 操作 7: schema（数据建模）
+
+**前置 0：读取项目配置**——先执行「通用子流程: 读取项目配置」（含旧结构自动迁移），确保已存在根目录 `qdmp-config.json`。这一步不可跳过：旧结构项目在此完成迁移后，下方的 `mongodb` 字段检查才作用于正确的文件。
 
 **前置检查**：检查 `qdmp-config.json` 是否存在 `mongodb` 字段。不存在则 AskUserQuestion 询问数据库密码：
 

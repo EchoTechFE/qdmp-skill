@@ -81,10 +81,12 @@ pnpm --version 2>/dev/null
 
 ### 第一步：项目选择
 
-扫描 `/workspace` 下的小程序项目：
+扫描 `/workspace` 下的小程序项目（同时识别新结构 `qdmp-config.json` 与旧结构 `qdmp.json`，确保开发到一半的旧项目也能被发现并触发迁移）：
 ```bash
-find /workspace -maxdepth 3 -name "qdmp-config.json" 2>/dev/null
+find /workspace -maxdepth 3 \( -name "qdmp-config.json" -o -name "qdmp.json" \) 2>/dev/null
 ```
+
+对结果按项目去重（同一项目可能同时匹配到 `qdmp-config.json` 和 `frontend/qdmp.json`，视为一个项目；`projectRoot` 按「读取项目配置」子流程的规则确定）。
 
 **找到至少 1 个项目** → AskUserQuestion 让用户选择：
 ```yaml

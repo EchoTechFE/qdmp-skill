@@ -811,6 +811,8 @@ questions:
 
 确认 `frontend/qdmp.json` 中存在 `appId`（appId 也可从根目录 `qdmp-config.json` 读取）。
 
+> 若检测到旧结构（根目录无 `qdmp-config.json` 但 `frontend/qdmp.json` 含 `appSecret`），执行「通用子流程: 读取项目配置」中的「旧结构自动迁移」后再继续；仅前端部署本身不依赖 `appSecret`，但顺带迁移可保持结构一致并让 `.gitignore` 生效。
+
 #### 部署步骤
 
 ```bash
