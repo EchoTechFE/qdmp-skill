@@ -83,7 +83,7 @@ pnpm --version 2>/dev/null
 
 扫描 `/workspace` 下的小程序项目：
 ```bash
-find /workspace -maxdepth 3 -name "qdmp.json" 2>/dev/null
+find /workspace -maxdepth 3 -name "qdmp-config.json" 2>/dev/null
 ```
 
 **找到至少 1 个项目** → AskUserQuestion 让用户选择：
@@ -110,7 +110,7 @@ questions:
 关键变量：
 - `projectRoot`：小程序根目录
 - `sourceDir`：`{projectRoot}/backend/`
-- `mongoUri` / `mongoDatabase`：来自 `qdmp.json` 的 `mongodb` 字段（可选，仅后端使用）
+- `mongoUri` / `mongoDatabase`：来自 `qdmp-config.json` 的 `mongodb` 字段（可选，仅后端使用）
 
 ### 第三步：PRD 检查（仅开发意图时执行）
 

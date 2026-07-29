@@ -4,7 +4,7 @@
 
 与 **[SKILL.md](../SKILL.md)** 的关系：
 
-- **Step 0** 会从项目根目录的 **`qdmp.json`** 读取 `appId`、`appSecret`，用于小程序发版、MCP 等流程；调用 **Auth `/auth/v1/token`** 时通常也使用平台下发的同一套应用凭证（是否完全一致以开放平台说明为准）。
+- **Step 0** 会从项目根目录的 **`qdmp-config.json`** 读取 `appId`、`appSecret`，用于小程序发版、MCP 等流程；调用 **Auth `/auth/v1/token`** 时通常也使用平台下发的同一套应用凭证（是否完全一致以开放平台说明为准）。
 - Skill 中的 **publish / upload / 回滚** 等操作**不会**自动替你调开放平台业务 API；联调接口属于开发任务，由你在前端或 `backend/` 内发起请求。
 - 用户未明确要求发版、部署时，助手**不得**因「写了 API 调用代码」而自动触发 Skill 里的部署流程（见 SKILL 中「后端服务操作路由」与操作触发约束）。
 
@@ -37,8 +37,8 @@ Swagger 中 Auth 的 `securityDefinitions` 为 `access_token` Header；**换票�
 
 | 字段        | 说明                                                       |
 | ----------- | ---------------------------------------------------------- |
-| `appId`     | 应用 ID（可与 `qdmp.json` 中 `appId` 对应，以平台为准）    |
-| `appSecret` | 应用密钥（与 `qdmp.json` 中 `appSecret` 对应，以平台为准） |
+| `appId`     | 应用 ID（可与 `qdmp-config.json` 中 `appId` 对应，以平台为准）    |
+| `appSecret` | 应用密钥（与 `qdmp-config.json` 中 `appSecret` 对应，以平台为准） |
 | `code`      | 授权码；开发/测试场景下平台可能有约定取值，以文档为准      |
 | `grantType` | `CLIENT_CREDENTIALS` 或 `AUTHORIZATION_CODE`               |
 
@@ -535,7 +535,7 @@ const PROXY_PREFIXES = [
 
 ## 9. 与小程序开发的衔接
 
-1. **凭证来源**：开放平台 `appId` / `appSecret` 与项目 **`qdmp.json`** 中字段对应关系以平台说明为准；不要在代码里硬编码密钥，可用环境变量或后端托管换票。
+1. **凭证来源**：开放平台 `appId` / `appSecret` 与项目 **`qdmp-config.json`** 中字段对应关系以平台说明为准；不要在代码里硬编码密钥，可用环境变量或后端托管换票。
 2. **用户态 Token**：前端通过 `/auth/v1/token` 接口获取 `accessToken`，用于请求业务 API。
 3. **本地联调**：development-guide 中的 `BASE` 若指向自建后端，可由后端代理 `openapi.qiandao.com`，避免在前端暴露密钥。
 4. **图片**：列表页建议保留 `referrer` 策略说明（见 development-guide），避免防盗链导致裂图。

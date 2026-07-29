@@ -13,8 +13,9 @@ myApp/
 │   │   ├── assets/          # 静态资源
 │   │   └── app.vue          # 应用入口
 |   ├── package.json
-|   └── qdmp.json            # 小程序配置
-└── backend/                 # 后端服务目录（详见 project-workflows.md）
+|   └── qdmp.json            # 小程序配置（仅 appId）
+├── backend/                 # 后端服务目录（详见 project-workflows.md）
+└── qdmp-config.json         # 主配置：appId、appSecret、runtime、mongodb（敏感，需加入 .gitignore）
 ```
 
 > 后端目录结构和代码模板详见 [project-workflows.md](./project-workflows.md) 的「流程一：创建项目 - Step 4: 初始化后端代码模板」
