@@ -2,28 +2,80 @@
 
 ## 通用子流程: 读取项目配置
 
-查找 `qdmp.json`，确定 `projectRoot`：
-- 优先：`frontend/qdmp.json` → `projectRoot` 为当前目录（`frontend/` 的父目录）
-- 其次：当前目录的 `qdmp.json` → `projectRoot` 为当前目录
-- 最后：逐级向上查找父目录中的 `qdmp.json`
+配置分两个文件：
 
-读取字段：`appId`、`appSecret`、`runtime`，可选读取 `mongodb.uri`、`mongodb.database`（uri 不含 database，database 单独配置）。
+- **`qdmp-config.json`**（项目根目录，即 `frontend/`、`backend/` 的上一级）：主配置源，包含 `appId`、`appSecret`、`runtime`，可选 `mongodb.uri`、`mongodb.database`（uri 不含 database，database 单独配置）。**含敏感信息（appSecret、数据库密码），不应提交到仓库。**
+- **`frontend/qdmp.json`**：只保留 `appId`，供前端构建/关联使用。
 
-**无 qdmp.json** 时：
+确定 `projectRoot`：
+- 优先：根目录 `qdmp-config.json` → `projectRoot` 为其所在目录
+- 其次：`frontend/qdmp-config.json` → `projectRoot` 为 `frontend/` 的父目录
+- 再次（旧结构定位锚点）：`frontend/qdmp.json` 或根目录 `qdmp.json` → `projectRoot` 为该文件所在目录（或 `frontend/` 的父目录）
+- 最后：逐级向上查找父目录中的 `qdmp-config.json`
+
+读取字段：从 `qdmp-config.json` 读 `appId`、`appSecret`、`runtime`，可选读取 `mongodb.uri`、`mongodb.database`。
+
+### 前置：旧结构自动迁移（读取字段前必须先执行）
+
+在读取字段前，先判断是否为需要迁移的旧结构，命中则**静默自动迁移**后再继续读取。
+
+**旧配置文件定位**：按顺序取第一个存在的作为 `legacyConfig`：`frontend/qdmp.json` → 根目录 `qdmp.json`。
+
+**触发条件（三者全满足）**：
+1. 根目录 `qdmp-config.json` **不存在**；
+2. `legacyConfig` 存在；
+3. `legacyConfig` 含 `appSecret`（即旧的全量配置，而非已裁剪的 appId-only）。
+
+**任一不满足则跳过迁移**（保证幂等）：
+- 已有 `qdmp-config.json` → 已是新结构，直接读取；
+- `legacyConfig` 只有 `appId`、无 `appSecret` → 已迁移过，直接读取；
+- 完全没有任何配置 → 进入下方「无 qdmp-config.json」分支。
+
+**迁移动作**（静默执行，全部完成后一次性告知用户）：
+
+1. 将 `legacyConfig` 的**全量内容**写入根目录 `qdmp-config.json`（`appId`/`appSecret`/`runtime`/`mongodb` 原样保留）。
+2. 将 `legacyConfig`（若在根目录，则改写为 `frontend/qdmp.json`；若本就在 `frontend/`，原地改写）**裁剪为仅 appId**：
+   ```json
+   { "appId": "<原 appId>" }
+   ```
+   若旧文件在根目录，裁剪后的 appId 文件应位于 `frontend/qdmp.json`；根目录不再保留 `qdmp.json`。
+3. 追加 `.gitignore`（见「通用子流程: 保护敏感配置」）：
+   ```bash
+   grep -qxF 'qdmp-config.json' {projectRoot}/.gitignore 2>/dev/null || echo 'qdmp-config.json' >> {projectRoot}/.gitignore
+   ```
+4. **密钥泄露风险检查**：检测旧配置是否已被 git 跟踪（`appSecret` 可能已进历史）：
+   ```bash
+   git -C {projectRoot} ls-files --error-unmatch frontend/qdmp.json qdmp.json 2>/dev/null
+   ```
+   - 有输出（旧文件曾被提交）→ 在完成提示中**额外警告**用户：`⚠️ 检测到旧配置文件曾被 git 跟踪，appSecret 可能已存在于提交历史中。.gitignore 对已跟踪文件无效，建议手动执行 git rm --cached 并考虑轮换 appSecret。`
+   - 无输出或非 git 仓库 → 跳过。
+
+**完成提示**（迁移后展示，B 类信息按需拼接）：
+```
+已将旧配置迁移到新结构：
+- qdmp-config.json（根目录）：appId、appSecret、runtime{、mongodb}
+- frontend/qdmp.json：仅保留 appId
+- 已将 qdmp-config.json 加入 .gitignore
+{可选：⚠️ 密钥泄露警告}
+```
+
+迁移完成后，按新结构从 `qdmp-config.json` 读取字段，继续后续流程。
+
+**无 qdmp-config.json** 时（且不满足迁移条件，即无任何旧全量配置）：
 
 ```yaml
 questions:
-  - question: "未找到 qdmp.json 配置文件，如何获取？"
+  - question: "未找到 qdmp-config.json 配置文件，如何获取？"
     header: "配置"
     multiSelect: false
     options:
-      - label: "创建 qdmp.json"
-        description: "在当前目录创建配置文件模板，需要填入 appId 和 appSecret"
+      - label: "创建 qdmp-config.json"
+        description: "在项目根目录创建配置文件模板，需要填入 appId 和 appSecret"
       - label: "指定项目目录"
-        description: "在其他目录查找已有的 qdmp.json"
+        description: "在其他目录查找已有的 qdmp-config.json"
 ```
 
-创建模板：
+创建模板（写入根目录 `qdmp-config.json`）：
 ```json
 {
   "appId": "从平台获取的小程序 ID",
@@ -32,13 +84,33 @@ questions:
 }
 ```
 
+同时在 `frontend/qdmp.json` 只写入 `appId`：
+```json
+{
+  "appId": "从平台获取的小程序 ID"
+}
+```
+
+并确保项目 `.gitignore` 包含 `qdmp-config.json`（详见「通用子流程: 保护敏感配置」）。
+
 **appId 或 appSecret 缺失**：停止，提示用户从平台获取并填入。
 
 **关键变量**：
 - `projectRoot`：小程序根目录
 - `sourceDir`：`{projectRoot}/backend/`
-- `mongoUri`：`qdmp.json` 中 `mongodb.uri`（仅当存在 `mongodb` 字段时使用，操作 7 会自动写入默认值）
-- `mongoDatabase`：`qdmp.json` 中 `mongodb.database`（同上）
+- `mongoUri`：`qdmp-config.json` 中 `mongodb.uri`（仅当存在 `mongodb` 字段时使用，操作 7 会自动写入默认值）
+- `mongoDatabase`：`qdmp-config.json` 中 `mongodb.database`（同上）
+
+---
+
+## 通用子流程: 保护敏感配置
+
+`qdmp-config.json` 含 `appSecret` 与数据库密码，**必须避免进入仓库和任何上传包**：
+
+- 确保 `{projectRoot}/.gitignore` 存在且包含一行 `qdmp-config.json`；不存在则创建，已存在但缺该行则追加。
+- **后端打包**：`zip` 的是 `{sourceDir}`（即 `backend/`），`qdmp-config.json` 在其上一级，不会被打入；无需改排除清单。
+- **前端打包**：`qdmp build` / `qdmp-cli upload` 在 `frontend/` 目录内执行，`qdmp-config.json` 在其上一级，不会被打入。发布前须确认 `qdmp-config.json` 未被复制进 `frontend/`——若因误操作出现 `frontend/qdmp-config.json`，先移除再打包。
+- `frontend/qdmp.json` 只含 `appId`，非敏感，可正常提交。
 
 ---
 
@@ -104,9 +176,9 @@ rm /tmp/qdmp-{appId}.zip
 
 根据 `qdmp-schema.json` 和 `runtime`，在 `backend/models/` 下生成或更新 model 文件。
 
-**前提**：`qdmp.json` 中存在 `mongodb` 配置（操作 7 会确保写入默认值，此处必然存在）。
+**前提**：`qdmp-config.json` 中存在 `mongodb` 配置（操作 7 会确保写入默认值，此处必然存在）。
 
-**生成时**：从 `qdmp.json` 读取 `mongodb.uri` 和 `mongodb.database`，直接写入生成的代码中。写入的是线上地址，本地测试时由 test-deploy 自动替换为 `host.docker.internal:27017`，publish 时再自动恢复为线上地址。
+**生成时**：从 `qdmp-config.json` 读取 `mongodb.uri` 和 `mongodb.database`，直接写入生成的代码中。写入的是线上地址，本地测试时由 test-deploy 自动替换为 `host.docker.internal:27017`，publish 时再自动恢复为线上地址。
 
 ### Go
 
@@ -137,7 +209,7 @@ func ProductCollection(db *mongo.Database) *mongo.Collection {
 }
 ```
 
-`backend/db/mongo.go`（若不存在则创建，将 `qdmp.json` 中的配置直接写入）：
+`backend/db/mongo.go`（若不存在则创建，将 `qdmp-config.json` 中的配置直接写入）：
 ```go
 package db
 
@@ -155,9 +227,9 @@ var DB *mongo.Database
 
 const (
     // ⚠️ Go MongoDB driver 要求：URI 包含 ? 时，? 前必须有 /database 路径
-    // 若 qdmp.json 中的 uri 为 mongodb://...@host:27017?opts，需拼接为 mongodb://...@host:27017/{database}?opts
-    mongoURI      = "{将 qdmp.json 的 mongodb.uri 中 ? 前插入 /{database}，如 .../echoXXX?... → .../echoXXX/echoXXX?...}"
-    mongoDatabase = "{从 qdmp.json 读取的 mongodb.database}"
+    // 若 qdmp-config.json 中的 uri 为 mongodb://...@host:27017?opts，需拼接为 mongodb://...@host:27017/{database}?opts
+    mongoURI      = "{将 qdmp-config.json 的 mongodb.uri 中 ? 前插入 /{database}，如 .../echoXXX?... → .../echoXXX/echoXXX?...}"
+    mongoDatabase = "{从 qdmp-config.json 读取的 mongodb.database}"
 )
 
 func InitMongo() error {
@@ -285,12 +357,12 @@ const ProductModel = {
 module.exports = ProductModel;
 ```
 
-`backend/db/mongo.js`（若不存在则创建，将 `qdmp.json` 中的配置直接写入）：
+`backend/db/mongo.js`（若不存在则创建，将 `qdmp-config.json` 中的配置直接写入）：
 ```js
 const { MongoClient } = require('mongodb');
 
-const mongoURI = '{从 qdmp.json 读取的 mongodb.uri}';
-const mongoDatabase = '{从 qdmp.json 读取的 mongodb.database}';
+const mongoURI = '{从 qdmp-config.json 读取的 mongodb.uri}';
+const mongoDatabase = '{从 qdmp-config.json 读取的 mongodb.database}';
 
 let db;
 
@@ -390,13 +462,13 @@ def update(product_id, data):
 def delete(product_id): return get_collection().delete_one({'productId': product_id})
 ```
 
-`backend/db/mongo.py`（若不存在则创建，将 `qdmp.json` 中的配置直接写入）：
+`backend/db/mongo.py`（若不存在则创建，将 `qdmp-config.json` 中的配置直接写入）：
 ```python
 import logging
 from pymongo import MongoClient, ASCENDING, DESCENDING
 
-MONGO_URI = '{从 qdmp.json 读取的 mongodb.uri}'
-MONGO_DATABASE = '{从 qdmp.json 读取的 mongodb.database}'
+MONGO_URI = '{从 qdmp-config.json 读取的 mongodb.uri}'
+MONGO_DATABASE = '{从 qdmp-config.json 读取的 mongodb.database}'
 
 _db = None
 
@@ -461,10 +533,10 @@ pymongo==4.7.3
 
   qdmp-schema.json  → 数据定义（所有后端代码的唯一数据来源）
   backend/models/   → 各 collection 的操作封装
-  backend/db/       → 数据库连接初始化（配置已从 qdmp.json 写入）
+  backend/db/       → 数据库连接初始化（配置已从 qdmp-config.json 写入）
 
-数据库连接信息已从 frontend/qdmp.json 读取并写入后端代码。
-如需修改连接信息，请更新 qdmp.json 后重新生成代码。
+数据库连接信息已从 qdmp-config.json 读取并写入后端代码。
+如需修改连接信息，请更新 qdmp-config.json 后重新生成代码。
 ```
 
 ---
@@ -480,9 +552,9 @@ pymongo==4.7.3
 - **Go**：有外部依赖时检查 `go.sum` 是否存在，不存在则停止提示执行 `go mod tidy`
 - **Node.js**：检查 `package-lock.json` 是否存在，不存在则停止提示执行 `npm install`
 - **Python**：检查 `requirements.txt` 中是否有与 Python 3.12 明显不兼容的版本约束，有则提示修正
-- **MongoDB URI 检查**（仅当 `qdmp.json` 存在 `mongodb` 字段时）：
+- **MongoDB URI 检查**（仅当 `qdmp-config.json` 存在 `mongodb` 字段时）：
   - 在 `backend/db/` 下搜索 `MONGO_URI` / `mongoURI` 常量
-  - 若值包含 `localhost`、`127.0.0.1` 或 `host.docker.internal` → 自动替换为 `qdmp.json` 中的线上 URI
+  - 若值包含 `localhost`、`127.0.0.1` 或 `host.docker.internal` → 自动替换为 `qdmp-config.json` 中的线上 URI
   - 替换后提示：`数据库连接已恢复为线上配置`
   - **Go runtime 专项检查**：Go 的 MongoDB driver 严格要求 URI 格式，若 URI 含 `?` 查询参数，则 `?` 前必须有 `/database` 路径，否则 driver 报 `must have a / before the query ?` 导致 Pod 启动即崩溃。
     - 检测规则：URI 包含 `?` 且 `?` 之前没有第三个 `/`（即缺少 `/database` 段）→ **自动修复**：在 `?` 前插入 `/{mongoDatabase}`
@@ -660,9 +732,9 @@ options:
 **Step 1**: 读取项目配置
 
 **Step 2**: 运行时检测
-- 优先读 `qdmp.json` 中的 `runtime`
+- 优先读 `qdmp-config.json` 中的 `runtime`
 - 未指定则扫描特征文件：`go.mod` → go，`package.json` → nodejs22，`requirements.txt`/`pyproject.toml` → python312
-- 都没匹配 → 提示用户在 `qdmp.json` 中显式指定
+- 都没匹配 → 提示用户在 `qdmp-config.json` 中显式指定
 
 **Step 3**: 入口文件检测与启动命令
 
@@ -685,7 +757,7 @@ options:
 | 存在 `server.py` | `python3 server.py` |
 | 存在 `manage.py` | `python3 manage.py runserver 0.0.0.0:8080` |
 
-**Step 4**: 数据库连接配置（仅当 `qdmp.json` 存在 `mongodb` 字段时执行）
+**Step 4**: 数据库连接配置（仅当 `qdmp-config.json` 存在 `mongodb` 字段时执行）
 
 **Step 4.1**: 检查宿主机数据库是否可达
 
@@ -717,7 +789,7 @@ timeout 5 bash -c 'cat < /dev/null > /dev/tcp/host.docker.internal/27017' 2>/dev
 
 **Step 4.2**: 确保测试用户存在且权限正常
 
-从 `qdmp.json` 的 `mongodb.uri` 解析出 `username`、`password`，从 `mongodb.database` 读取 `database`。
+从 `qdmp-config.json` 的 `mongodb.uri` 解析出 `username`、`password`，从 `mongodb.database` 读取 `database`。
 
 容器内无 `mongosh`，使用 Python 标准库直接通过 wire protocol 创建用户（无需安装任何额外软件）：
 
@@ -833,7 +905,7 @@ const { MongoClient } = require('mongodb');
   mongodb://{username}:{password}@host.docker.internal:27017?authSource={database}
   ```
 
-username、password 从 `qdmp.json` 的 `mongodb.uri` 解析，database 从 `mongodb.database` 读取（代码中 `mongoDatabase` / `MONGO_DATABASE` 变量保持不变，仍读自 `qdmp.json`）。
+username、password 从 `qdmp-config.json` 的 `mongodb.uri` 解析，database 从 `mongodb.database` 读取（代码中 `mongoDatabase` / `MONGO_DATABASE` 变量保持不变，仍读自 `qdmp-config.json`）。
 
 **Step 5**: 清理 8080 端口
 ```bash
@@ -863,7 +935,9 @@ lsof -ti :8080 && kill -9 $(lsof -ti :8080) || true
 
 ## 操作 7: schema（数据建模）
 
-**前置检查**：检查 `qdmp.json` 是否存在 `mongodb` 字段。不存在则 AskUserQuestion 询问数据库密码：
+**前置 0：读取项目配置**——先执行「通用子流程: 读取项目配置」（含旧结构自动迁移），确保已存在根目录 `qdmp-config.json`。这一步不可跳过：旧结构项目在此完成迁移后，下方的 `mongodb` 字段检查才作用于正确的文件。
+
+**前置检查**：检查 `qdmp-config.json` 是否存在 `mongodb` 字段。不存在则 AskUserQuestion 询问数据库密码：
 
 ```yaml
 questions:
@@ -877,7 +951,7 @@ questions:
         description: "前往千岛开放平台获取数据库配置"
 ```
 
-- 选择"我有密码" → 用户输入密码后，向 `qdmp.json` 写入默认配置（`{appId}` 和 `{password}` 替换为实际值）：
+- 选择"我有密码" → 用户输入密码后，向根目录 `qdmp-config.json` 合并写入 `mongodb` 字段（保留已有的 `appId`/`appSecret`/`runtime`，`{appId}` 和 `{password}` 替换为实际值）：
 
 ```json
 {
@@ -888,7 +962,7 @@ questions:
 }
 ```
 
-写入后提示：`已写入数据库配置。如需使用其他配置，请修改 qdmp.json 后重新执行。`
+写入后提示：`已写入数据库配置。如需使用其他配置，请修改 qdmp-config.json 后重新执行。`
 
 - 选择"我还没有，先去获取" → 停止操作，提示：`请前往 https://open.qiandao.com 获取数据库配置后，重新执行数据建模。`
 

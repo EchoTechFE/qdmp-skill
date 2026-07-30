@@ -23,9 +23,11 @@ pnpm install               # 安装依赖
 
 ```bash
 mkdir frontend
-find . -maxdepth 1 ! -name '.' ! -name 'frontend' ! -name '.git' ! -name '.gitignore' ! -name '.gitmodules' ! -name '.DS_Store' -exec mv {} frontend/ \;
+find . -maxdepth 1 ! -name '.' ! -name 'frontend' ! -name '.git' ! -name '.gitignore' ! -name '.gitmodules' ! -name '.DS_Store' ! -name 'qdmp-config.json' -exec mv {} frontend/ \;
 mkdir backend
 ```
+
+> 说明：`qdmp-config.json` 留在根目录，不随本步移入 `frontend/`（此时通常尚未创建，下一步生成；显式排除以防重跑时被误移）。
 
 AskUserQuestion 询问后端语言：
 
@@ -43,7 +45,7 @@ questions:
         description: "runtime: python312，使用 Python 3.12"
 ```
 
-更新 `frontend/qdmp.json`，填入 appId、appSecret 和选择的 runtime：
+在**项目根目录**（`frontend/`、`backend/` 的上一级）创建 `qdmp-config.json`，填入 appId、appSecret 和选择的 runtime：
 ```json
 {
   "appId": "<appId>",
@@ -52,7 +54,19 @@ questions:
 }
 ```
 
-> 注意：不要在项目根目录额外创建 qdmp.json，只修改 `frontend/qdmp.json` 即可。
+在 `frontend/qdmp.json` 只写入 appId（供前端构建/关联使用）：
+```json
+{
+  "appId": "<appId>"
+}
+```
+
+> 说明：`qdmp-config.json` 是主配置源，含 `appSecret` 等敏感信息，**必须加入项目 `.gitignore`**（见下）；`frontend/qdmp.json` 只保留 appId，可正常提交。
+
+**保护敏感配置**：确保项目根目录 `.gitignore` 存在且包含 `qdmp-config.json` 一行。不存在则创建，已存在但缺该行则追加：
+```bash
+grep -qxF 'qdmp-config.json' .gitignore 2>/dev/null || echo 'qdmp-config.json' >> .gitignore
+```
 
 ### Step 4: 初始化后端代码模板
 
@@ -795,7 +809,9 @@ questions:
 
 #### 前置检查 2：小程序关联检查
 
-确认 `qdmp.json` 中存在 `appId`。
+确认 `frontend/qdmp.json` 中存在 `appId`（appId 也可从根目录 `qdmp-config.json` 读取）。
+
+> 若检测到旧结构（根目录无 `qdmp-config.json` 但 `frontend/qdmp.json` 含 `appSecret`），执行「通用子流程: 读取项目配置」中的「旧结构自动迁移」后再继续；仅前端部署本身不依赖 `appSecret`，但顺带迁移可保持结构一致并让 `.gitignore` 生效。
 
 #### 部署步骤
 
