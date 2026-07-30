@@ -1,5 +1,6 @@
 ---
 name: qdmp-skill
+version: 1.2.0
 description: "千岛小程序开发助手（外部版），支持前后端的开发和部署。"
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
                 mcp__qdmp-gitlab__qdmp_gitlab_list_versions, mcp__qdmp-gitlab__qdmp_gitlab_get_version,
