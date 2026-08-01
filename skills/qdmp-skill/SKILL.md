@@ -229,6 +229,8 @@ qd.navigateTo({
 
 修改后端代码前，若项目根目录存在 `qdmp-schema.json`，必须先读取它，确保代码直接引用已定义的数据模型，不重复定义字段。新增数据存储需求时，先更新 `qdmp-schema.json`，再生成对应 model 代码。
 
+后端调用千岛 OpenAPI 时，可以使用官方 [qdmp-server-sdk](https://github.com/EchoTechFE/qdmp-server-sdk) 简化认证授权、Token 生命周期管理和类型安全的业务接口调用，安装及用法见仓库 README。
+
 ---
 
 ## 命令速查
