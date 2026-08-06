@@ -99,18 +99,18 @@ codex
 
 ---
 
-### Qoder (国内版 qoder-cli-cn)
+### Qoder (国内版 qoderclicn)
 
 **1. 添加插件市场**
 
 ```bash
-qoder-cli-cn plugin marketplace add EchoTechFE/qdmp-skill
+qoderclicn plugin marketplace add EchoTechFE/qdmp-skill
 ```
 
 **2. 安装插件**
 
 ```bash
-qoder-cli-cn plugin install qdmp@qdmp-marketplace
+qoderclicn plugin install qdmp@qdmp-marketplace
 ```
 
 **3. 使用**
@@ -145,7 +145,7 @@ claude plugin marketplace add ./
 codex plugin marketplace add ./
 
 # Qoder (国内版)
-qoder-cli-cn plugin marketplace add ./
+qoderclicn plugin marketplace add ./
 ```
 
 ---
@@ -163,7 +163,7 @@ claude mcp add --transport http qdmp-gitlab https://openapi.qiandao.com/gitlab/m
 claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/mcp
 ```
 
-> **注意：** MCP 服务需要在对应平台分别配置。Codex 使用 `codex mcp add`，Qoder 国内版使用 `qoder-cli-cn mcp add` 或在 `mcp.json` 中声明。具体请参考各平台 MCP 文档。
+> **注意：** MCP 服务需要在对应平台分别配置。Codex 使用 `codex mcp add`，Qoder 国内版使用 `qoderclicn mcp add` 或在 `mcp.json` 中声明。具体请参考各平台 MCP 文档。
 
 ---
 
