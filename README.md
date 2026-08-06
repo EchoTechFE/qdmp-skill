@@ -72,11 +72,20 @@ claude plugin list
 codex plugin marketplace add EchoTechFE/qdmp-skill
 ```
 
-**2. 安装插件**
+**2. 启用插件**
+
+Codex 目前没有 `plugin install` CLI 命令，需要通过 TUI 或 `plugin add` 启用：
 
 ```bash
-codex plugin install qdmp@qdmp-marketplace
+# 方式一（推荐，部分版本支持）
+codex plugin add qdmp@qdmp-marketplace
+
+# 方式二：通过 TUI 界面启用
+codex
+# 在会话中执行 /plugins，切换到 qdmp-marketplace，找到 qdmp 点击 Install/Enable
 ```
+
+重启 Codex 后插件生效。
 
 **3. 使用**
 
@@ -90,18 +99,18 @@ codex plugin install qdmp@qdmp-marketplace
 
 ---
 
-### Qoder
+### Qoder (国内版 qoder-cli-cn)
 
 **1. 添加插件市场**
 
 ```bash
-qoder plugin marketplace add EchoTechFE/qdmp-skill
+qoder-cli-cn plugin marketplace add EchoTechFE/qdmp-skill
 ```
 
 **2. 安装插件**
 
 ```bash
-qoder plugin install qdmp@qdmp-marketplace
+qoder-cli-cn plugin install qdmp@qdmp-marketplace
 ```
 
 **3. 使用**
@@ -135,8 +144,8 @@ claude plugin marketplace add ./
 # Codex
 codex plugin marketplace add ./
 
-# Qoder
-qoder plugin marketplace add ./
+# Qoder (国内版)
+qoder-cli-cn plugin marketplace add ./
 ```
 
 ---
@@ -154,7 +163,7 @@ claude mcp add --transport http qdmp-gitlab https://openapi.qiandao.com/gitlab/m
 claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/mcp
 ```
 
-> **注意：** MCP 服务需要在对应平台分别配置。Codex 使用 `codex mcp add`，Qoder 通过 `qoder mcp add` 或在 `mcp.json` 中声明。具体请参考各平台 MCP 文档。
+> **注意：** MCP 服务需要在对应平台分别配置。Codex 使用 `codex mcp add`，Qoder 国内版使用 `qoder-cli-cn mcp add` 或在 `mcp.json` 中声明。具体请参考各平台 MCP 文档。
 
 ---
 
