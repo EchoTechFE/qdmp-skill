@@ -2,14 +2,18 @@
 
 帮助开发者快速创建、开发和部署千岛小程序。
 
-## Claude Code 插件安装
-
-本仓库已经按 Claude Code 插件 marketplace 结构组织：
+## 目录结构
 
 ```text
 .claude-plugin/
-  plugin.json       # qdmp 插件声明
-  marketplace.json  # qdmp-marketplace 插件市场声明
+  plugin.json       # Claude Code 插件声明
+  marketplace.json  # Claude Code 插件市场声明
+.codex-plugin/
+  plugin.json       # Codex 插件声明
+  marketplace.json  # Codex 插件市场声明
+.qoder-plugin/
+  plugin.json       # Qoder 插件声明
+  marketplace.json  # Qoder 插件市场声明
 skills/
   qdmp-skill/
     SKILL.md
@@ -21,9 +25,15 @@ skills/
     references/
 ```
 
-### 1. 添加插件市场
+本仓库同时支持 **Claude Code**、**Codex (OpenAI)** 和 **Qoder** 三个平台，共享同一套 `skills/` 目录。
 
-添加千岛小程序插件市场：
+---
+
+## 安装
+
+### Claude Code
+
+**1. 添加插件市场**
 
 ```bash
 claude plugin marketplace add EchoTechFE/qdmp-skill
@@ -31,7 +41,7 @@ claude plugin marketplace add EchoTechFE/qdmp-skill
 
 添加完成后，在 Claude Code 中运行 `/plugin`，进入 Discover 标签页即可看到 `qdmp` 插件。
 
-### 2. 安装插件
+**2. 安装插件**
 
 ```bash
 claude plugin install qdmp@qdmp-marketplace
@@ -44,9 +54,7 @@ claude plugin list
 /reload-plugins
 ```
 
-### 3. 使用插件 Skill
-
-插件安装后，skill 会以插件命名空间暴露：
+**3. 使用**
 
 ```text
 /qdmp:qdmp-skill
@@ -54,7 +62,57 @@ claude plugin list
 /qdmp:qdmp-design-rules
 ```
 
-也可以直接描述千岛小程序、qdmp、部署、发布、开发调试等需求，Claude Code 会根据 skill 描述自动选择使用。
+---
+
+### Codex (OpenAI)
+
+**1. 添加插件市场**
+
+```bash
+codex plugin marketplace add EchoTechFE/qdmp-skill
+```
+
+**2. 安装插件**
+
+```bash
+codex plugin install qdmp@qdmp-marketplace
+```
+
+**3. 使用**
+
+技能会根据任务描述自动触发，也可以手动调用：
+
+```text
+/qdmp:qdmp-skill
+/qdmp:qdmp-product-rules
+/qdmp:qdmp-design-rules
+```
+
+---
+
+### Qoder
+
+**1. 添加插件市场**
+
+```bash
+qoder plugin marketplace add EchoTechFE/qdmp-skill
+```
+
+**2. 安装插件**
+
+```bash
+qoder plugin install qdmp@qdmp-marketplace
+```
+
+**3. 使用**
+
+```text
+/qdmp:qdmp-skill
+/qdmp:qdmp-product-rules
+/qdmp:qdmp-design-rules
+```
+
+---
 
 ## Skill 组成
 
@@ -68,11 +126,20 @@ claude plugin list
 
 ### 维护者本地调试
 
-如果你正在维护本仓库，并希望从本地工作区调试 marketplace，可以在仓库根目录执行：
+如果你正在维护本仓库，并希望从本地工作区调试，可以在仓库根目录执行：
 
 ```bash
+# Claude Code
 claude plugin marketplace add ./
+
+# Codex
+codex plugin marketplace add ./
+
+# Qoder
+qoder plugin marketplace add ./
 ```
+
+---
 
 ## 前置准备
 
@@ -86,6 +153,10 @@ claude plugin marketplace add ./
 claude mcp add --transport http qdmp-gitlab https://openapi.qiandao.com/gitlab/mcp
 claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/mcp
 ```
+
+> **注意：** MCP 服务需要在对应平台分别配置。Codex 使用 `codex mcp add`，Qoder 通过 `qoder mcp add` 或在 `mcp.json` 中声明。具体请参考各平台 MCP 文档。
+
+---
 
 ## 触发方式
 
@@ -103,6 +174,8 @@ claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/m
 - 小程序发布
 - 小程序项目
 - 小程序开发环境
+
+---
 
 ## 使用示例
 
@@ -130,6 +203,8 @@ claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/m
 部署上传小程序
 ```
 
+---
+
 ## 完整开发流程
 
 ```
@@ -141,6 +216,8 @@ claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/m
 6. 登录账号 → qdmp-cli login
 7. 上传部署 → qdmp-cli upload
 ```
+
+---
 
 ## 相关链接
 
