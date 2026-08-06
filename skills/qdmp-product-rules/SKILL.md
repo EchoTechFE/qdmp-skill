@@ -2,7 +2,6 @@
 name: qdmp-product-rules
 description: "千岛小程序产品底线规范。Use before generating or reviewing QDMP mini app projects, pages, routes, auth flows, community/content features, SPU/data features, retention mechanics, or scaffolding that may cross product boundaries."
 allowed-tools: [Read, Grep, Glob]
-user-invocable: true
 ---
 
 # 千岛小程序产品底线规范

@@ -9,7 +9,6 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
                 mcp__qdmp-gitlab__qdmp_gitlab_rollback, mcp__qdmp-gitlab__qdmp_gitlab_init_repo,
                 mcp__qdmp-gitlab__qdmp_gitlab_repo_exists, mcp__qdmp-aliyun__qdmp_k8s_deployed_version,
                 mcp__qdmp-aliyun__qdmp_k8s_logs]
-user-invocable: true
 ---
 
 # 千岛小程序开发助手（外部版）

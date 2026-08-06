@@ -2,7 +2,6 @@
 name: qdmp-design-rules
 description: "千岛小程序 Taro 设计与前端落地规范。Use when designing QDMP mini app pages, creating or updating DESIGN.md, porting HTML designs to Taro Vue, reviewing page UI/CSS, or maintaining app.css design tokens and component classes."
 allowed-tools: [Read, Grep, Glob, Bash]
-user-invocable: true
 ---
 
 # 千岛小程序设计规范
