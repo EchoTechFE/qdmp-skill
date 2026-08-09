@@ -216,21 +216,89 @@ curl 'https://openapi.qiandao.com/user/v1/me' \
 
 ---
 
-## 6. Lifestyle：我的标记（Mark）
+## 6. Lifestyle Swagger 类型约定
 
-**响应壳**：`code` 为 **int32**，与 Library 的 string `code` 不同，解析时注意兼容。
+本节覆盖 Lifestyle Swagger 2.0 中的 10 个接口。Swagger 的 `string(int64)` 表示 **JSON 字符串**，不要转成 JavaScript `number`，否则大 ID 可能丢失精度。请求和响应字段均使用 Swagger 中的 JSON 名称（camelCase），例如 `imageUrls`，不要按描述文字写成 `image_urls`。
 
-### 6.1 POST `/mark/v1/add`
+所有接口都要求 `access-token` 和 `x-echo-qdmp-version` Header。成功响应使用以下通用结构：
 
-添加用户 mark 标记。
+```ts
+type Int64String = string
 
-**请求体** `MarkRequest`：
+interface LifestyleResponse<T> {
+  code: number       // int32；0 表示成功
+  message: string
+  data: T
+  requestId: string
+}
 
-| 字段    | 类型   | 必填 | 说明   |
-| ------- | ------ | ---- | ------ |
-| `spuId` | string | 是   | SPU ID |
+interface RpcStatus {
+  code?: number      // int32
+  message?: string
+  details?: Array<{ "@type"?: string }>
+}
+```
 
-**响应** `MarkResponse`：`code`、`message`、`requestId`；成功时 `data` 含 `id`（mark id）。
+除非具体字段标为可选，响应模型中的字段均为必填。HTTP 非预期错误返回 `RpcStatus`，不能按 `LifestyleResponse<T>` 解析。
+
+---
+
+## 7. Lifestyle：标记（Mark）
+
+### 7.1 类型定义
+
+```ts
+interface Rating {
+  value: number // int32；Mark 接口约束为 1～5
+}
+
+interface Spu {
+  id: Int64String
+  name: string
+  image: string
+}
+
+interface MarkInfo {
+  id: Int64String
+  spu: Spu
+  markAt: Int64String
+  count: Int64String
+  rating?: Rating
+  createdAt: Int64String
+  typeId: Int64String
+}
+
+interface MarkDetail {
+  id: Int64String
+  markAt: Int64String
+  createdAt: Int64String
+}
+
+interface MarkDetailData {
+  id: Int64String
+  spu: Spu
+  markAt: Int64String
+  count: Int64String
+  rating?: Rating
+  createdAt: Int64String
+  typeId: Int64String
+  typeName: string
+  marks: MarkDetail[]
+  hasMore: boolean
+}
+```
+
+### 7.2 POST `/mark/v1/add`
+
+添加单个 SPU 标记。
+
+| Body 字段      | JSON 类型 | 必填 | 说明                     |
+| -------------- | --------- | ---- | ------------------------ |
+| `spuId`        | `string`  | 是   | SPU ID（int64 字符串）   |
+| `rating`       | `object`  | 否   | 评分对象                 |
+| `rating.value` | `number`  | 是*  | int32，传 `rating` 时必填；取值 1～5 |
+
+**出参类型**：`LifestyleResponse<{ id: Int64String }>`，其中 `data.id` 为新建的 mark ID。
 
 ```bash
 curl 'https://openapi.qiandao.com/mark/v1/add' \
@@ -239,46 +307,60 @@ curl 'https://openapi.qiandao.com/mark/v1/add' \
   -H 'access-token: <token>' \
   -H 'x-echo-qdmp-version: <x-echo-qdmp-version>' \
   --data-raw '{
-  "spuId": "978074656223267833"
+  "spuId": "978074656223267833",
+  "rating": { "value": 5 }
 }'
 ```
 
-### 6.2 GET `/mark/v1/me/list`
+### 7.3 POST `/mark/v1/batch/add`
 
-| Query    | 必填 | 说明                                           |
-| -------- | ---- | ---------------------------------------------- |
-| `limit`  | 是   | 最多 100                                       |
-| `offset` | 是   | 偏移（Swagger 描述「最多 100」，以服务端为准） |
+批量添加 SPU 标记。
 
-**data**：`items`（`MarkInfo`）、`totalCount`（string，**最多 999**）。
+| Body 字段 | JSON 类型 | 必填 | 说明                           |
+| --------- | --------- | ---- | ------------------------------ |
+| `spuIds`  | `string[]`| 是   | SPU ID 列表（int64 字符串数组） |
 
-```bash
-curl 'https://openapi.qiandao.com/mark/v1/me/list?limit=20&offset=0' \
-  -H 'access-token: <token>' \
-  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>'
-```
-
-### 6.3 GET `/mark/v1/me/search`
-
-| Query              | 必填 | 说明    |
-| ------------------ | ---- | ------- |
-| `typeId`           | 否   | 类目 ID |
-| `limit` / `offset` | 是   | 同上    |
+**出参类型**：`LifestyleResponse<{ result: Record<string, Int64String> }>`。`result` 的 key 是 SPU ID，value 是对应的 mark ID。
 
 ```bash
-curl 'https://openapi.qiandao.com/mark/v1/me/search?typeId=15&limit=20&offset=0' \
+curl 'https://openapi.qiandao.com/mark/v1/batch/add' \
+  -X POST \
+  -H 'Content-Type: application/json' \
   -H 'access-token: <token>' \
-  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>'
+  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>' \
+  --data-raw '{
+  "spuIds": ["978074656223267833", "978074656223267834"]
+}'
 ```
 
-### 6.4 GET `/mark/v1/me/detail`
+### 7.4 GET `/mark/v1/me/list`
 
-| Query              | 必填 | 说明                       |
-| ------------------ | ---- | -------------------------- |
-| `id`               | 是   | `mark_spu_info` id         |
-| `limit` / `offset` | 是   | 标记**明细**分页，最多 100 |
+| Query    | JSON 类型 | 必填 | 说明                         |
+| -------- | --------- | ---- | ---------------------------- |
+| `limit`  | `string`  | 是   | int64 字符串；最多 100       |
+| `offset` | `string`  | 是   | int64 字符串；Swagger 标注最多 100 |
 
-**data**：含 `spu`、`marks`（`MarkDetail` + `MarkFields` 结构化字段）、`hasMore` 等。
+**出参类型**：`LifestyleResponse<{ items: MarkInfo[]; totalCount: Int64String }>`。`totalCount` 最多返回 999。
+
+### 7.5 GET `/mark/v1/me/search`
+
+| Query    | JSON 类型 | 必填 | 说明                   |
+| -------- | --------- | ---- | ---------------------- |
+| `typeId` | `string`  | 否   | 类目 ID（int64 字符串）|
+| `limit`  | `string`  | 是   | int64 字符串；最多 100 |
+| `offset` | `string`  | 是   | int64 字符串；Swagger 标注最多 100 |
+
+**出参类型**：`LifestyleResponse<{ items: MarkInfo[]; totalCount: Int64String }>`。`totalCount` 最多返回 999。
+
+### 7.6 GET `/mark/v1/me/detail`
+
+| Query    | JSON 类型 | 必填 | 说明                              |
+| -------- | --------- | ---- | --------------------------------- |
+| `id`     | `string`  | 是   | `mark_spu_info` ID（int64 字符串）|
+| `limit`  | `string`  | 是   | 明细分页大小；最多 100            |
+| `offset` | `string`  | 是   | 明细分页偏移；Swagger 标注最多 100 |
+
+**出参类型**：`LifestyleResponse<MarkDetailData>`。
 
 ```bash
 curl 'https://openapi.qiandao.com/mark/v1/me/detail?id=978074656223267833&limit=20&offset=0' \
@@ -288,9 +370,140 @@ curl 'https://openapi.qiandao.com/mark/v1/me/detail?id=978074656223267833&limit=
 
 ---
 
-## 7. Lifestyle：帖子（Post）
+## 8. Lifestyle：想要（Wish SPU）
 
-### 7.1 GET `/post/v1/me`
+### 8.1 类型定义
+
+```ts
+type WishSpuType =
+  | "WISH_SPU_TYPE_UNSPECIFIED"
+  | "WISH_SPU_TYPE_SPU"
+  | "WISH_SPU_TYPE_POI"
+
+interface WishSpuItem {
+  id: Int64String
+  spu: {
+    id: Int64String
+    name: string
+    image: string
+  }
+  typeId: Int64String
+  markAt: Int64String
+  createdAt: Int64String
+}
+```
+
+Swagger 的字段说明称当前仅支持 SPU，因此业务调用应传 `WISH_SPU_TYPE_SPU`；不要使用默认的 `WISH_SPU_TYPE_UNSPECIFIED`。虽然枚举中存在 `WISH_SPU_TYPE_POI`，当前文档未声明它可用。
+
+### 8.2 POST `/wishspu/v1/add`
+
+| Body 字段 | JSON 类型    | 必填 | 说明                                  |
+| --------- | ------------ | ---- | ------------------------------------- |
+| `ids`     | `string[]`   | 是   | 目标 ID 列表；SPU 模式下为 SPU ID 列表 |
+| `type`    | `WishSpuType`| 是   | 当前传 `WISH_SPU_TYPE_SPU`            |
+
+**出参类型**：`LifestyleResponse<{ successCount: Int64String }>`。
+
+### 8.3 POST `/wishspu/v1/cancel`
+
+请求体与 `/wishspu/v1/add` 相同。
+
+**出参类型**：`LifestyleResponse<{ successCount: Int64String }>`，`successCount` 表示成功取消数量。
+
+### 8.4 GET `/wishspu/v1/list`
+
+| Query    | JSON 类型 | 必填 | 说明                                |
+| -------- | --------- | ---- | ----------------------------------- |
+| `typeId` | `string`  | 否   | 类目 ID（int64 字符串）；空时不过滤 |
+| `offset` | `string`  | 是   | 起始位置（int64 字符串）            |
+| `limit`  | `string`  | 是   | 每页数量（int64 字符串）            |
+
+**出参类型**：`LifestyleResponse<{ items: WishSpuItem[]; totalCount: Int64String }>`。
+
+```bash
+curl 'https://openapi.qiandao.com/wishspu/v1/list?typeId=15&offset=0&limit=20' \
+  -H 'access-token: <token>' \
+  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>'
+```
+
+---
+
+## 9. Lifestyle：组件发帖（Component Post）
+
+### 9.1 POST `/component/post/v1/template`
+
+获取指定岛的发帖模板。
+
+| Body 字段 | JSON 类型 | 必填 | 说明                       |
+| --------- | --------- | ---- | -------------------------- |
+| `islandId`| `string`  | 是   | 岛 ID（int64 字符串）      |
+
+**出参类型**：
+
+```ts
+interface GetPostTemplateData {
+  appInfo: {
+    name: string
+    avatarUrl: string
+    link: string
+    publishTips: string[]
+    titlePlaceholders: string[]
+    placeholders: string[]
+  }
+  relatedInfo: {
+    relatedId: Int64String
+    relatedType: string // 当前固定为 "island"
+    title: string
+    image: string
+    standardInfo: {
+      partitions: Array<{
+        id: Int64String
+        name: string
+      }>
+    }
+  }
+}
+
+type GetPostTemplateResponse = LifestyleResponse<GetPostTemplateData>
+```
+
+### 9.2 POST `/component/post/v1/create`
+
+发布社区帖子。`content` 和 `imageUrls` 至少传一个；`creatorId` 由服务端鉴权后写入，调用方不要传。
+
+| Body 字段  | JSON 类型 | 必填 | 说明                                      |
+| ---------- | --------- | ---- | ----------------------------------------- |
+| `islandId` | `string`  | 是   | 岛 ID（int64 字符串）                     |
+| `content`  | `string`  | 条件 | 正文；与 `imageUrls` 至少传一个            |
+| `imageUrls`| `string[]`| 条件 | 图片 URL，最多 9 张，第一张为封面          |
+| `title`    | `string`  | 否   | 标题，最多 20 字                           |
+| `spuId`    | `string`  | 否   | 关联 SPU ID；传入后帖子类型变为商品评价    |
+| `bizData`  | `string`  | 否   | 业务透传数据                               |
+| `privacy`  | `string`  | 否   | `public` 或 `private`；默认 `public`        |
+
+**出参类型**：`LifestyleResponse<{ id: Int64String }>`，其中 `data.id` 为帖子 ID。
+
+```bash
+curl 'https://openapi.qiandao.com/component/post/v1/create' \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H 'access-token: <token>' \
+  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>' \
+  --data-raw '{
+  "islandId": "101",
+  "content": "帖子正文",
+  "imageUrls": ["https://example.com/cover.jpg"],
+  "privacy": "public"
+}'
+```
+
+---
+
+## 10. Lifestyle：其他帖子接口（Post）
+
+以下两个接口为当前 guide 原有内容，不在本次提供的 Lifestyle Swagger 10 个 paths 中；调用前应以其对应服务的最新 Swagger 为准。
+
+### 10.1 GET `/post/v1/me`
 
 获取我的帖子列表。
 
@@ -310,7 +523,7 @@ curl 'https://openapi.qiandao.com/post/v1/me?limit=20&offset=0' \
   -H 'x-echo-qdmp-version: <x-echo-qdmp-version>'
 ```
 
-### 7.2 POST `/post/v1/search`
+### 10.2 POST `/post/v1/search`
 
 搜索帖子。
 
@@ -340,9 +553,9 @@ curl 'https://openapi.qiandao.com/post/v1/search' \
 
 ---
 
-## 8. 图片文字识别 OCR
+## 11. 图片文字识别 OCR
 
-### 8.1 POST `/ocr/v1/recognize`
+### 11.1 POST `/ocr/v1/recognize`
 
 识别图片中的文字。
 
@@ -396,7 +609,7 @@ export async function recognizeOcr({ imageBase64 }) {
 }
 ```
 
-### 8.2 小程序选图与 Base64 转换
+### 11.2 小程序选图与 Base64 转换
 
 选择图片时优先使用 `qd.chooseMedia`，不支持时回退到 `qd.chooseImage`：
 
@@ -495,7 +708,7 @@ async function chooseImageBase64() {
 
 `qd.readImage` 的返回值可能是字符串，也可能是包含 `data` 字段的对象，调用时应兼容两种形式。发送 OCR 请求前仍需通过 `stripDataUrlPrefix` 移除 Data URL 前缀。
 
-### 8.3 后端代理
+### 11.3 后端代理
 
 推荐由项目后端代理 OCR 请求：
 
@@ -523,7 +736,7 @@ const PROXY_PREFIXES = [
 
 代理应保留原始请求方法、路径和 JSON 请求体，并将 OpenAPI 响应原样返回。
 
-### 8.4 常见问题
+### 11.4 常见问题
 
 - **图片数据无效**：检查 `imageBase64` 是否仍包含 `data:image/...;base64,` 前缀。
 - **真机读取图片失败**：保留 `qd.readImage` 回退逻辑。
@@ -533,7 +746,7 @@ const PROXY_PREFIXES = [
 
 ---
 
-## 9. 与小程序开发的衔接
+## 12. 与小程序开发的衔接
 
 1. **凭证来源**：开放平台 `appId` / `appSecret` 与项目 **`qdmp-config.json`** 中字段对应关系以平台说明为准；不要在代码里硬编码密钥，可用环境变量或后端托管换票。
 2. **用户态 Token**：前端通过 `/auth/v1/token` 接口获取 `accessToken`，用于请求业务 API。
@@ -542,7 +755,7 @@ const PROXY_PREFIXES = [
 
 ---
 
-## 10. 错误与排查
+## 13. 错误与排查
 
 - HTTP 200 但业务 `code` 非成功：读 `message` 与各服务错误码说明。
 - `default` 响应可能为 `rpcStatus`（`code`、`message`、`details`）。
@@ -550,7 +763,7 @@ const PROXY_PREFIXES = [
 
 ---
 
-## 11. 接口速查
+## 14. 接口速查
 
 | 场景         | 方法 | 路径                 |
 | ------------ | ---- | -------------------- |
@@ -564,9 +777,15 @@ const PROXY_PREFIXES = [
 | 已关注 Tag   | GET  | `/tag/v1/following`  |
 | 当前用户     | GET  | `/user/v1/me`        |
 | 添加标记     | POST | `/mark/v1/add`       |
+| 批量添加标记 | POST | `/mark/v1/batch/add` |
 | 我的标记列表 | GET  | `/mark/v1/me/list`   |
 | 我的标记搜索 | GET  | `/mark/v1/me/search` |
 | 我的标记详情 | GET  | `/mark/v1/me/detail` |
+| 批量添加想要 | POST | `/wishspu/v1/add`    |
+| 批量取消想要 | POST | `/wishspu/v1/cancel` |
+| 想要列表     | GET  | `/wishspu/v1/list`   |
+| 获取发帖模板 | POST | `/component/post/v1/template` |
+| 组件发布帖子 | POST | `/component/post/v1/create`   |
 | 我的帖子列表 | GET  | `/post/v1/me`        |
 | 搜索帖子     | POST | `/post/v1/search`    |
 | 图片文字识别 | POST | `/ocr/v1/recognize`  |
