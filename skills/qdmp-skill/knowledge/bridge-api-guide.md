@@ -4,6 +4,14 @@
 
 > 所有 API 自 SDK v1.0.0 起可用。平台支持情况以下表标注为准。
 
+以下回调类型供各异步接口复用：
+
+```ts
+type BridgeSuccessCallback<T = Record<string, unknown>> = (res: T) => void
+type BridgeFailCallback = (err: { errMsg?: string; [key: string]: unknown }) => void
+type BridgeCompleteCallback = (res: unknown) => void
+```
+
 ---
 
 ## 一、授权 (auth)
@@ -14,6 +22,57 @@
 const res = await qd.login()
 console.log(res.code) // 临时登录凭证，用于换取 session
 ```
+
+权限的全局声明配置见 [development-guide.md](./development-guide.md) 的「小程序全局权限配置」。全局声明只描述能力用途；运行时仍应在用户主动触发功能后按需请求授权。
+
+---
+
+## IM 消息订阅 (im)
+
+### qd.requestSubscribeMessage — 请求订阅 IM 消息通知
+
+`qd.requestSubscribeMessage` 请求用户订阅 IM 消息通知。当前能力广场标记支持 Android、iOS、Harmony；跨端调用前仍应通过 `qd.canIUse('requestSubscribeMessage')` 或函数存在性检查做能力探测。
+
+| 参数 | 类型 | 必填 | 说明 |
+| ---- | ---- | ---- | ---- |
+| `tmplIds` | `string[]` | 是 | 业务侧配置的消息模板 ID 列表 |
+| `success` | `(res: Record<string, string>) => void` | 否 | 结果对象以模板 ID 为键 |
+| `fail` | `BridgeFailCallback` | 否 | 接口调用失败回调 |
+| `complete` | `BridgeCompleteCallback` | 否 | 调用结束回调 |
+
+模板结果状态：
+
+| 状态 | 含义 | 处理建议 |
+| ---- | ---- | -------- |
+| `accept` | 用户同意订阅 | 记录授权结果，继续后续业务流程 |
+| `reject` | 用户拒绝订阅 | 保持主流程可用，不要循环弹窗 |
+| `ban` | 模板被平台封禁 | 停止使用该模板并检查平台配置 |
+| `filter` | 同标题模板被过滤 | 检查本次提交的模板组合，避免依赖该模板结果 |
+
+```js
+const tmplId = '由业务侧提供的模板 ID'
+
+if (!qd.canIUse('requestSubscribeMessage')) {
+  // 当前端不支持：保留主流程，按业务需要给出非阻塞提示
+} else {
+  qd.requestSubscribeMessage({
+    tmplIds: [tmplId],
+    success(res) {
+      const status = res[tmplId]
+      if (status === 'accept') {
+        console.log('用户已同意订阅')
+      } else {
+        console.log('用户未同意本模板:', status)
+      }
+    },
+    fail(err) {
+      console.error('请求订阅失败:', err)
+    },
+  })
+}
+```
+
+只在用户明确点击订阅、提醒等入口后调用，不要在页面加载或应用启动时自动弹出。不要复制能力广场的测试模板 ID；模板 ID 必须来自当前业务配置。接口成功返回只代表本次订阅选择完成，消息发送仍由后续服务端业务负责。
 
 ---
 
@@ -29,13 +88,7 @@ const available2 = qd.canIUse('getSystemInfo')   // true
 
 ## 三、千岛生态 (ecosystem)
 
-以下接口均接收可选的 `success`、`fail`、`complete` 回调：
-
-```ts
-type BridgeSuccessCallback<T = Record<string, unknown>> = (res: T) => void
-type BridgeFailCallback = (err: { errMsg?: string; [key: string]: unknown }) => void
-type BridgeCompleteCallback = (res: unknown) => void
-```
+以下接口均接收可选的 `success`、`fail`、`complete` 回调。
 
 ### qd.joinIsland — 加入岛屿
 
@@ -458,7 +511,24 @@ console.log(rect.top, rect.height, rect.right)
 // 导航条加载动画
 qd.showNavigationBarLoading()
 qd.hideNavigationBarLoading()
+
+// 隐藏左上角“返回首页”按钮
+qd.hideHomeButton({
+  success(res) {
+    console.log('已隐藏返回首页按钮', res)
+  },
+  fail(err) {
+    console.error('隐藏失败', err)
+  },
+})
 ```
+
+`qd.hideHomeButton` 隐藏的是非首页页面作为页面栈根页时出现的“返回首页”按钮，不是普通页面栈中的返回箭头。使用前检查 `qd.getCurrentPages().length` 和实际进入方式：
+
+- 普通 `navigateTo` 形成的页面栈应保留返回能力，不要用该接口试图隐藏返回箭头。
+- 通过分享、外部入口或 `reLaunch` 使非首页页面成为根页时，才考虑隐藏“返回首页”按钮。
+- 隐藏后必须确保页面仍有清晰可用的离开路径，避免把用户困在当前页面。
+- 跨端代码先用 `qd.canIUse('hideHomeButton')` 判断能力是否可用，并处理 `fail` 降级。
 
 ### 背景 & 下拉刷新
 

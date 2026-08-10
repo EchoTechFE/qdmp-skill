@@ -19,8 +19,8 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 | 文档 | 内容 |
 | ---- | ---- |
-| [development-guide.md](./knowledge/development-guide.md) | 开发指南：项目结构、服务端 API、调试发布 |
-| [bridge-api-guide.md](./knowledge/bridge-api-guide.md) | Bridge API：原生能力调用、参数与返回值类型 |
+| [development-guide.md](./knowledge/development-guide.md) | 开发指南：项目结构、全局权限配置、服务端 API、调试发布 |
+| [bridge-api-guide.md](./knowledge/bridge-api-guide.md) | Bridge API：原生能力调用、IM 消息订阅、导航栏返回首页按钮、参数与返回值类型 |
 | [api-guide.md](./knowledge/api-guide.md) | 服务端 API：场景化接口文档 |
 | [backend-operations.md](./knowledge/backend-operations.md) | 后端操作详情：通用子流程 + 操作 1-7 的完整步骤 |
 | [project-workflows.md](./knowledge/project-workflows.md) | 项目工作流程：创建项目、开发调试、打包部署 |
@@ -201,6 +201,12 @@ questions:
 ### 前端（`frontend/`）
 
 修改前端代码前，必须先读取 `frontend/README.md`（如果存在），确保代码风格、目录结构、命名约定与项目现有规范一致。
+
+涉及以下能力时，必须读取对应指南后再实现：
+
+- 系统级权限声明：读取 [development-guide.md](./knowledge/development-guide.md) 的「小程序全局权限配置」，修改 `frontend/src/app.config.js`，不要把声明误写成运行时 Bridge 调用。
+- IM 订阅消息：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「IM 消息订阅」，使用业务提供的模板 ID，并处理每个模板的订阅结果。
+- 顶部导航栏返回首页按钮：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「导航栏」，确认页面栈场景后调用 `qd.hideHomeButton`；不要把它当成隐藏普通返回箭头的接口。
 
 涉及页面、组件、样式、`DESIGN.md`、`app.css` token/公共组件类时，必须同时使用 `/qdmp:qdmp-design-rules`：
 
