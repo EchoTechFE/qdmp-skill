@@ -22,6 +22,47 @@ myApp/
 
 ---
 
+## 小程序全局权限配置
+
+系统级权限属于小程序全局配置，不是运行时 Bridge API。Taro 项目修改 `frontend/src/app.config.js`；构建后会生成 `app.json`。不要直接修改 `dist/app.json`，它会在下次构建时被覆盖。
+
+两个字段职责不同：
+
+| 字段 | 值 | 用途 |
+| ---- | -- | ---- |
+| `permission` | `scope` 到 `{ desc }` 的对象映射 | 声明权限用途；`desc` 必须说明当前业务为何需要该权限 |
+| `requiredPrivateInfos` | 隐私接口名数组 | 声明小程序实际会调用的隐私接口，例如 `getFuzzyLocation` |
+
+```js
+export default defineAppConfig({
+  pages: ['pages/index/index'],
+  window: {
+    navigationBarTitleText: '千岛小程序',
+  },
+  requiredPrivateInfos: ['getFuzzyLocation'],
+  permission: {
+    'scope.userFuzzyLocation': {
+      desc: '用于展示附近的活动',
+    },
+    'scope.writePhotosAlbum': {
+      desc: '用于将生成的海报保存到系统相册',
+    },
+  },
+})
+```
+
+实现步骤：
+
+1. 从需求和实际 API 调用反推所需权限，只声明真实使用的项。
+2. 在 `permission` 中使用合法的 `scope.*` 键，并写清具体业务用途；不要使用“用于完善体验”等泛化描述。
+3. 对需要在全局配置声明的隐私接口，把接口名加入 `requiredPrivateInfos`；这里填写接口名，不填写 `scope.*`。
+4. 保留现有配置并去重，不要为了新增一项权限覆盖整个 `permission` 对象或数组。
+5. 执行项目构建，检查生成的 `dist/app.json` 是否包含预期字段，并确认源码中没有未声明的隐私接口调用或不再使用的权限声明。
+
+全局声明不等于用户已授权。需要运行时授权时，仍应在用户主动触发相关功能后按需调用 `qd.getSetting`、`qd.authorize` 或 `qd.openSetting`；不要在应用启动时集中索取权限。
+
+---
+
 ## 服务端 API 调用
 
 千岛小程序通过 `fetch` + Gateway 获取业务数据（SPU、帖子、交易等），详细接口文档见 [api-guide.md](./api-guide.md)。
