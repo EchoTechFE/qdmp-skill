@@ -118,6 +118,76 @@ qd.openPost({
 })
 ```
 
+### `qd.cancelWish` — 取消一条想要记录
+
+`qd.cancelWish` 是 SDK Bridge 能力。参数 `id` 是一条“想要”记录自身的 ID，可直接取自 `GET /wishspu/v1/list` 返回的 `data.items[].id`；它不是 `data.items[].spu.id`，也不是其他 SPU ID。
+
+| 参数 | 类型 | 必填 | 说明 |
+| ---- | ---- | ---- | ---- |
+| `id` | `string` | 是 | 想要记录 ID，即 `WishSpuItem.id` |
+| `success` | `BridgeSuccessCallback` | 否 | 取消成功回调 |
+| `fail` | `BridgeFailCallback` | 否 | 取消失败回调 |
+| `complete` | `BridgeCompleteCallback` | 否 | 调用结束回调 |
+
+```js
+function cancelWishItem(wishItem) {
+  if (typeof qd.cancelWish !== 'function') {
+    qd.showToast({ title: '当前版本暂不支持取消想要', icon: 'none' })
+    return
+  }
+
+  qd.cancelWish({
+    id: String(wishItem.id), // 想要记录 ID，不是 wishItem.spu.id
+    success() {
+      qd.showToast({ title: '已取消想要', icon: 'success' })
+      reloadWishList({ offset: 0 })
+    },
+    fail(err) {
+      console.error('取消想要失败:', err)
+    }
+  })
+}
+```
+
+调用时无需再额外调用 `qd.showModal`；参考包中直接调用此 Bridge，由 SDK 原生侧负责交互。成功后重新拉取列表，避免本地状态与服务端不一致。
+
+> 注意：OpenAPI 的 `POST /wishspu/v1/cancel` 使用 SPU ID 列表，而 `qd.cancelWish` 使用想要记录 `id`。两者参数语义不同，不要混用。
+
+### `qd.cancelMark` — 删除一条 Mark 记录
+
+`qd.cancelMark` 是 SDK Bridge 能力。参数 `markId` 是单条 Mark 历史记录 ID，可取自 `GET /mark/v1/me/detail` 返回的 `data.marks[].id`；它不是详情外层的 `data.id`，也不是 `data.spu.id`。
+
+| 参数 | 类型 | 必填 | 说明 |
+| ---- | ---- | ---- | ---- |
+| `markId` | `string` | 是 | 单条 Mark 记录 ID，即 `MarkDetail.id` |
+| `success` | `BridgeSuccessCallback` | 否 | 删除成功回调 |
+| `fail` | `BridgeFailCallback` | 否 | 删除失败回调 |
+| `complete` | `BridgeCompleteCallback` | 否 | 调用结束回调 |
+
+```js
+function cancelMarkItem(mark) {
+  if (typeof qd.cancelMark !== 'function') {
+    qd.showToast({ title: '当前版本暂不支持删除标记', icon: 'none' })
+    return
+  }
+
+  qd.cancelMark({
+    markId: String(mark.id), // data.marks[] 中的记录 ID，不是 SPU ID
+    success() {
+      qd.showToast({ title: '已删除标记', icon: 'success' })
+      reloadMarkDetail()
+    },
+    fail(err) {
+      console.error('删除标记失败:', err)
+    }
+  })
+}
+```
+
+调用时无需再额外调用 `qd.showModal`；参考包中直接调用此 Bridge，由 SDK 原生侧负责交互。参考包成功后会在本地移除对应历史记录并调整选中项；通用实现更建议重新拉取详情，保证计数和分页状态准确。
+
+这两个能力都应通过 `qd.*` 调用，不要实现成面向用户的 HTTP 请求。参考包中的实际参数结构分别是 `qd.cancelWish({ id })` 和 `qd.cancelMark({ markId })`。
+
 ### qd.share — 分享链接卡片或图片
 
 `type` 是区分参数结构的必填字段。分享链接时使用 `link`，分享图片时使用 `image`。
