@@ -764,6 +764,8 @@ qd.onMemoryWarning((res) => {
 
 ## 十一、系统信息 (system)
 
+横屏与自动旋转通过配置文件声明，不是本节的运行时 API。全局 `window.pageOrientation` 和页面级 `pageOrientation` 的写法见 [development-guide.md](./development-guide.md) 的「屏幕方向配置（SDK 1.0）」。
+
 ```js
 // 异步获取系统信息（推荐）
 const sysInfo = await qd.getSystemInfo()
@@ -783,6 +785,11 @@ console.log(deviceInfo.brand, deviceInfo.model, deviceInfo.platform)
 // 获取窗口信息
 const windowInfo = qd.getWindowInfo()
 console.log(windowInfo.windowWidth, windowInfo.windowHeight, windowInfo.safeArea)
+
+// 页面允许自动旋转时，监听旋转后的窗口尺寸
+qd.onWindowResize((res) => {
+  console.log(res.size.windowWidth, res.size.windowHeight)
+})
 
 // 跳转系统设置
 qd.openAppAuthorizeSetting()        // 系统授权管理页

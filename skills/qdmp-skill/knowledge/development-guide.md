@@ -63,6 +63,55 @@ export default defineAppConfig({
 
 ---
 
+## 屏幕方向配置（SDK 1.0）
+
+屏幕方向是编译期配置，不是 `qd.*` 运行时 Bridge API。SDK 1.0.0 起，Android、iOS、Harmony 支持全局固定横屏、页面固定横屏和页面自动旋转；Web 不在当前能力广场的支持范围内。
+
+### 全局固定横屏
+
+在 `frontend/src/app.config.js` 的 `window` 中设置 `pageOrientation: 'landscape'`，构建后对应 `app.json.window.pageOrientation`：
+
+```js
+export default defineAppConfig({
+  pages: ['pages/index/index'],
+  window: {
+    navigationBarTitleText: '千岛小程序',
+    pageOrientation: 'landscape',
+  },
+})
+```
+
+该配置会影响整个小程序。只有所有页面都应固定横屏时才写入全局 `window`；单页横屏不要为了测试方便改成全局配置。
+
+### 页面级横屏或自动旋转
+
+在目标页面的 `index.config.js` 中配置：
+
+```js
+// pages/game/index.config.js：固定横屏
+export default definePageConfig({
+  navigationBarTitleText: '横屏页面',
+  pageOrientation: 'landscape',
+})
+```
+
+```js
+// pages/viewer/index.config.js：跟随设备方向自动旋转
+export default definePageConfig({
+  navigationBarTitleText: '自动旋转页面',
+  pageOrientation: 'auto',
+})
+```
+
+实现与验收要求：
+
+1. 先判断作用域：全应用固定横屏使用全局配置；仅个别页面使用页面级配置。
+2. 保留配置文件中的导航栏等已有字段，不要覆盖整个配置对象。
+3. 需要在旋转后重排内容时，用 `qd.onWindowResize` 监听窗口变化，并用 `qd.getSystemInfo()` 或 `qd.getWindowInfo()` 读取最新宽高；不要只读取一次启动时尺寸。
+4. 在 Android、iOS、Harmony 真机分别验收进入页面、旋转、返回和导航栏布局；Web 端提供正常可用的自适应布局作为降级。
+
+---
+
 ## 服务端 API 调用
 
 千岛小程序通过 `fetch` + Gateway 获取业务数据（SPU、帖子、交易等），详细接口文档见 [api-guide.md](./api-guide.md)。

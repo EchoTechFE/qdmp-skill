@@ -218,7 +218,7 @@ curl 'https://openapi.qiandao.com/user/v1/me' \
 
 ## 6. Lifestyle Swagger 类型约定
 
-本节覆盖 Lifestyle Swagger 2.0 中的 10 个接口。Swagger 的 `string(int64)` 表示 **JSON 字符串**，不要转成 JavaScript `number`，否则大 ID 可能丢失精度。请求和响应字段均使用 Swagger 中的 JSON 名称（camelCase），例如 `imageUrls`，不要按描述文字写成 `image_urls`。
+本节覆盖面向开发者开放的 Lifestyle Swagger 2.0 接口。Swagger 的 `string(int64)` 表示 **JSON 字符串**，不要转成 JavaScript `number`，否则大 ID 可能丢失精度。
 
 所有接口都要求 `access-token` 和 `x-echo-qdmp-version` Header。成功响应使用以下通用结构：
 
@@ -428,82 +428,11 @@ curl 'https://openapi.qiandao.com/wishspu/v1/list?typeId=15&offset=0&limit=20' \
 
 ---
 
-## 9. Lifestyle：组件发帖（Component Post）
+## 9. Lifestyle：帖子接口（Post）
 
-### 9.1 POST `/component/post/v1/template`
+以下接口调用前应以其对应服务的最新 Swagger 为准。
 
-获取指定岛的发帖模板。
-
-| Body 字段 | JSON 类型 | 必填 | 说明                       |
-| --------- | --------- | ---- | -------------------------- |
-| `islandId`| `string`  | 是   | 岛 ID（int64 字符串）      |
-
-**出参类型**：
-
-```ts
-interface GetPostTemplateData {
-  appInfo: {
-    name: string
-    avatarUrl: string
-    link: string
-    publishTips: string[]
-    titlePlaceholders: string[]
-    placeholders: string[]
-  }
-  relatedInfo: {
-    relatedId: Int64String
-    relatedType: string // 当前固定为 "island"
-    title: string
-    image: string
-    standardInfo: {
-      partitions: Array<{
-        id: Int64String
-        name: string
-      }>
-    }
-  }
-}
-
-type GetPostTemplateResponse = LifestyleResponse<GetPostTemplateData>
-```
-
-### 9.2 POST `/component/post/v1/create`
-
-发布社区帖子。`content` 和 `imageUrls` 至少传一个；`creatorId` 由服务端鉴权后写入，调用方不要传。
-
-| Body 字段  | JSON 类型 | 必填 | 说明                                      |
-| ---------- | --------- | ---- | ----------------------------------------- |
-| `islandId` | `string`  | 是   | 岛 ID（int64 字符串）                     |
-| `content`  | `string`  | 条件 | 正文；与 `imageUrls` 至少传一个            |
-| `imageUrls`| `string[]`| 条件 | 图片 URL，最多 9 张，第一张为封面          |
-| `title`    | `string`  | 否   | 标题，最多 20 字                           |
-| `spuId`    | `string`  | 否   | 关联 SPU ID；传入后帖子类型变为商品评价    |
-| `bizData`  | `string`  | 否   | 业务透传数据                               |
-| `privacy`  | `string`  | 否   | `public` 或 `private`；默认 `public`        |
-
-**出参类型**：`LifestyleResponse<{ id: Int64String }>`，其中 `data.id` 为帖子 ID。
-
-```bash
-curl 'https://openapi.qiandao.com/component/post/v1/create' \
-  -X POST \
-  -H 'Content-Type: application/json' \
-  -H 'access-token: <token>' \
-  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>' \
-  --data-raw '{
-  "islandId": "101",
-  "content": "帖子正文",
-  "imageUrls": ["https://example.com/cover.jpg"],
-  "privacy": "public"
-}'
-```
-
----
-
-## 10. Lifestyle：其他帖子接口（Post）
-
-以下两个接口为当前 guide 原有内容，不在本次提供的 Lifestyle Swagger 10 个 paths 中；调用前应以其对应服务的最新 Swagger 为准。
-
-### 10.1 GET `/post/v1/me`
+### 9.1 GET `/post/v1/me`
 
 获取我的帖子列表。
 
@@ -523,7 +452,7 @@ curl 'https://openapi.qiandao.com/post/v1/me?limit=20&offset=0' \
   -H 'x-echo-qdmp-version: <x-echo-qdmp-version>'
 ```
 
-### 10.2 POST `/post/v1/search`
+### 9.2 POST `/post/v1/search`
 
 搜索帖子。
 
@@ -553,9 +482,9 @@ curl 'https://openapi.qiandao.com/post/v1/search' \
 
 ---
 
-## 11. 图片文字识别 OCR
+## 10. 图片文字识别 OCR
 
-### 11.1 POST `/ocr/v1/recognize`
+### 10.1 POST `/ocr/v1/recognize`
 
 识别图片中的文字。
 
@@ -609,7 +538,7 @@ export async function recognizeOcr({ imageBase64 }) {
 }
 ```
 
-### 11.2 小程序选图与 Base64 转换
+### 10.2 小程序选图与 Base64 转换
 
 选择图片时优先使用 `qd.chooseMedia`，不支持时回退到 `qd.chooseImage`：
 
@@ -708,7 +637,7 @@ async function chooseImageBase64() {
 
 `qd.readImage` 的返回值可能是字符串，也可能是包含 `data` 字段的对象，调用时应兼容两种形式。发送 OCR 请求前仍需通过 `stripDataUrlPrefix` 移除 Data URL 前缀。
 
-### 11.3 后端代理
+### 10.3 后端代理
 
 推荐由项目后端代理 OCR 请求：
 
@@ -736,7 +665,7 @@ const PROXY_PREFIXES = [
 
 代理应保留原始请求方法、路径和 JSON 请求体，并将 OpenAPI 响应原样返回。
 
-### 11.4 常见问题
+### 10.4 常见问题
 
 - **图片数据无效**：检查 `imageBase64` 是否仍包含 `data:image/...;base64,` 前缀。
 - **真机读取图片失败**：保留 `qd.readImage` 回退逻辑。
@@ -746,7 +675,7 @@ const PROXY_PREFIXES = [
 
 ---
 
-## 12. 与小程序开发的衔接
+## 11. 与小程序开发的衔接
 
 1. **凭证来源**：开放平台 `appId` / `appSecret` 与项目 **`qdmp-config.json`** 中字段对应关系以平台说明为准；不要在代码里硬编码密钥，可用环境变量或后端托管换票。
 2. **用户态 Token**：前端通过 `/auth/v1/token` 接口获取 `accessToken`，用于请求业务 API。
@@ -755,7 +684,7 @@ const PROXY_PREFIXES = [
 
 ---
 
-## 13. 错误与排查
+## 12. 错误与排查
 
 - HTTP 200 但业务 `code` 非成功：读 `message` 与各服务错误码说明。
 - `default` 响应可能为 `rpcStatus`（`code`、`message`、`details`）。
@@ -763,7 +692,7 @@ const PROXY_PREFIXES = [
 
 ---
 
-## 14. 接口速查
+## 13. 接口速查
 
 | 场景         | 方法 | 路径                 |
 | ------------ | ---- | -------------------- |
@@ -784,8 +713,6 @@ const PROXY_PREFIXES = [
 | 批量添加想要 | POST | `/wishspu/v1/add`    |
 | 批量取消想要 | POST | `/wishspu/v1/cancel` |
 | 想要列表     | GET  | `/wishspu/v1/list`   |
-| 获取发帖模板 | POST | `/component/post/v1/template` |
-| 组件发布帖子 | POST | `/component/post/v1/create`   |
 | 我的帖子列表 | GET  | `/post/v1/me`        |
 | 搜索帖子     | POST | `/post/v1/search`    |
 | 图片文字识别 | POST | `/ocr/v1/recognize`  |
