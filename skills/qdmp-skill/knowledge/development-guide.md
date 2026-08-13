@@ -649,7 +649,7 @@ pnpm run dev
 
 ```bash
 qdmp build
-qdmp-cli upload
+qdmp-cli upload -d "真机调试版本"
 ```
 
 使用千岛 App 扫码预览。
@@ -682,8 +682,10 @@ qdmp build
 # 2. 登录（首次需要）
 qdmp-cli login
 
-# 3. 上传
-qdmp-cli upload
+# 3. 上传（使用本次实际改动的版本描述）
+qdmp-cli upload -d "新增商品筛选并优化加载体验"
 ```
+
+通过本 skill 发版时，版本描述会根据本次 Git 改动自动总结并传入，无需手动编写。
 
 上传后前往 [千岛开放平台](https://open.qiandao.com) 提交审核。

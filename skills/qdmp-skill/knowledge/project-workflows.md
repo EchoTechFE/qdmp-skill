@@ -815,10 +815,58 @@ questions:
 
 #### 部署步骤
 
+**Step 4.1：生成版本描述（每次上传强制执行）**
+
+`description` 在上传接口中是兼容旧调用方的非必填字段，但本 skill 执行前端发布时必须自动生成并传入。不得要求用户手动填写，也不得降级为无描述上传。
+
+1. 先根据当前会话中已经完成的功能、修复和用户确认内容整理候选摘要，再在 `projectRoot` 用 Git 核对实际改动：
+   ```bash
+   git status --short
+   git diff HEAD --stat
+   git diff HEAD
+   git ls-files --others --exclude-standard
+   ```
+2. 对未跟踪但属于本次功能的源码文件，按需读取内容。若工作区无改动，使用当前会话的实施记录并读取最近提交核对，不得仅凭提交标题猜测：
+   ```bash
+   git log -1 --format='%s%n%b'
+   git show --stat --patch --format=fuller HEAD
+   ```
+3. 只总结与本次小程序版本有关的变化：
+   - 优先总结 `frontend/` 中用户可感知的新增、优化和修复。
+   - 全量部署时，可包含直接影响小程序功能的后端接口或数据能力变化。
+   - 忽略构建产物、依赖锁文件、自动生成文件、测试夹具和仅文档格式变化；依赖升级确实改变功能或修复问题时才纳入。
+4. 生成一条中文版本描述并记为 `versionDescription`：
+   - 10～200 个 Unicode 字符，单行；建议使用 1～3 个并列短句。
+   - 合并同类改动，避免逐文件罗列；不写“代码调整”“例行更新”等空泛内容。
+   - 不包含密钥、Token、内部地址、用户数据、文件绝对路径或实现细节。
+   - 不包含引号、反引号、`$`、换行等 Shell 特殊字符。
+   - 确实无法从改动判断时，使用兜底描述：`优化小程序功能与使用体验`。
+   - 生成后按 Unicode 字符数检查，超过 200 字时先压缩再继续。
+5. 在上传前输出一次，后续命令必须使用同一份内容：
+   ```text
+   本次版本描述：{自动生成的版本描述}
+   ```
+
+**Step 4.2：确认 CLI 支持版本描述**
+
 ```bash
-qdmp build         # 打包（必须使用 qdmp build，否则 upload 会失败）
-qdmp-cli login     # 登录（首次）
-qdmp-cli upload    # 上传
+qdmp-cli upload --help | grep -q -- '--description'
 ```
+
+- 支持 → 继续上传。
+- 不支持 → 执行 `npm install -g qdmp-cli@latest`，然后再次检查。
+- 升级后仍不支持 → 停止上传并报告错误，严禁退回无描述上传。
+
+**Step 4.3：构建并携带描述上传**
+
+以下命令的工作目录必须是 `{projectRoot}/frontend`（旧结构则是实际包含 `qdmp.json` 的前端目录）：
+
+```bash
+qdmp build                                  # 打包（必须使用 qdmp build，否则 upload 会失败）
+qdmp-cli login                              # 仅未登录或登录已失效时执行
+qdmp-cli upload -d "<versionDescription>"  # 上传并传入 Step 4.1 的描述
+```
+
+上传命令中的描述必须与 Step 4.1 输出完全一致。若上传因描述参数、登录态、构建或网络问题失败，报告原始错误并停止；修复后仍携带同一描述重试，不得改用无 `-d/--description` 参数的上传命令。
 
 上传后前往 [开发者后台](https://open.qiandao.com) 提交审核。

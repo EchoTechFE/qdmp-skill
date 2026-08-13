@@ -1,0 +1,4 @@
+interface:
+  display_name: "千岛入口路由配置"
+  short_description: "帮助生成并校验进入千岛小程序具体页面的入口跳转地址"
+  default_prompt: "使用 $qdmp-entry-route 帮我配置进入千岛小程序具体页面的跳转地址。"
