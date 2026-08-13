@@ -1,6 +1,6 @@
 {
   "name": "qdmp",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "千岛小程序开发助手，支持前后端开发、调试、部署、运维，并内置产品底线与 Taro 设计规范。",
   "author": {
     "name": "Qiandao"

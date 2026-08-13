@@ -1,6 +1,5 @@
 ---
 name: qdmp-skill
-version: 1.3.0
 description: "千岛小程序开发助手（外部版），支持前后端的开发和部署。"
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
                 mcp__qdmp-gitlab__qdmp_gitlab_list_versions, mcp__qdmp-gitlab__qdmp_gitlab_get_version,
@@ -252,7 +251,7 @@ qd.navigateTo({
 | `pnpm run build` | 打包构建（本地调试） |
 | `qdmp build` | 打包构建（发布上传前必须使用） |
 | `qdmp-cli login` | 登录账号 |
-| `qdmp-cli upload` | 上传部署 |
+| `qdmp-cli upload -d "<版本描述>"` | 上传部署；skill 自动总结当前版本变化并传入描述 |
 
 ## 常见问题
 
