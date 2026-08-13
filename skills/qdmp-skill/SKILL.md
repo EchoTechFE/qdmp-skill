@@ -250,7 +250,8 @@ qd.navigateTo({
 | `pnpm run dev` | 开发模式 |
 | `pnpm run build` | 打包构建（本地调试） |
 | `qdmp build` | 打包构建（发布上传前必须使用） |
-| `qdmp-cli login` | 登录账号 |
+| `qdmp getMe` | 在项目目录检查 CLI 登录态 |
+| `qdmp login` | 交互登录；必须在支持用户输入的前台 TTY/PTY 中单独执行，禁止在非交互命令中运行 |
 | `qdmp-cli upload -d "<版本描述>"` | 上传部署；skill 自动总结当前版本变化并传入描述 |
 
 ## 常见问题
@@ -260,4 +261,5 @@ qd.navigateTo({
 | 依赖安装 401/404 | 配置 npm Token |
 | qdmp-cli 未找到 | `npm install -g qdmp-cli` |
 | pnpm 未找到 | `npm install -g pnpm` |
+| 登录命令一直等待 | `qdmp login` 正在等待账号密码；改用用户可输入的交互终端单独执行，完成后用 `qdmp getMe` 验证 |
 | 图片 403 | index.html 加 `<meta name="referrer" content="no-referrer">` |
