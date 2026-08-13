@@ -857,14 +857,42 @@ qdmp-cli upload --help | grep -q -- '--description'
 - 不支持 → 执行 `npm install -g qdmp-cli@latest`，然后再次检查。
 - 升级后仍不支持 → 停止上传并报告错误，严禁退回无描述上传。
 
-**Step 4.3：构建并携带描述上传**
+**Step 4.3：构建**
 
 以下命令的工作目录必须是 `{projectRoot}/frontend`（旧结构则是实际包含 `qdmp.json` 的前端目录）：
 
 ```bash
-qdmp build                                  # 打包（必须使用 qdmp build，否则 upload 会失败）
-qdmp-cli login                              # 仅未登录或登录已失效时执行
-qdmp-cli upload -d "<versionDescription>"  # 上传并传入 Step 4.1 的描述
+qdmp build  # 必须使用 qdmp build，否则 upload 会失败
+```
+
+**Step 4.4：检查登录态并按需交互登录**
+
+先在同一工作目录执行：
+
+```bash
+qdmp getMe
+```
+
+- 已返回当前用户 → 跳过登录，继续 Step 4.5。
+- 提示未登录、登录失效或 Token 失效 → 单独执行 `qdmp login`。
+- 其他错误（例如 `qdmp.json`/`appId` 缺失、网络错误）→ 先报告并修复原始错误，不要误判为需要登录。
+
+`qdmp login` 会交互询问账号和密码，必须遵守：
+
+1. 只在支持用户输入的前台交互终端（TTY/PTY）中单独执行；不得与构建、上传使用 `&&`、管道或同一个批量命令串联。
+2. 启动后等待“请输入用户账号”和“请输入用户密码”提示，由用户直接在终端输入；密码输入时不回显属于正常现象。
+3. 不得在非交互执行器、后台任务或仅捕获输出的命令中运行，否则命令会因等待输入而卡住。
+4. 如果当前工具不能向用户开放终端输入，停止自动执行并提示用户在自己的终端进入前端目录运行 `qdmp login`；用户确认登录完成后，再重新执行 `qdmp getMe` 验证。
+5. 不得要求用户在聊天中发送账号或密码，不得用 `echo`、管道、命令参数或环境变量注入凭据。
+
+`qdmp-cli login` 是同一 CLI 的兼容别名，但文档和流程统一使用较短的 `qdmp login`。
+
+**Step 4.5：携带描述上传**
+
+确认 `qdmp getMe` 成功后执行：
+
+```bash
+qdmp-cli upload -d "<versionDescription>"
 ```
 
 上传命令中的描述必须与 Step 4.1 输出完全一致。若上传因描述参数、登录态、构建或网络问题失败，报告原始错误并停止；修复后仍携带同一描述重试，不得改用无 `-d/--description` 参数的上传命令。
