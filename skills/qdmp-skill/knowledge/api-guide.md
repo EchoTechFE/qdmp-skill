@@ -432,7 +432,65 @@ curl 'https://openapi.qiandao.com/wishspu/v1/list?typeId=15&offset=0&limit=20' \
 
 以下接口调用前应以其对应服务的最新 Swagger 为准。
 
-### 9.1 GET `/post/v1/me`
+### 9.1 GET `/post/v1/detail`
+
+查询小程序帖子详情。
+
+**operationId**：`OpenApiLifestyleService_GetPostDetail`
+
+| Query    | JSON 类型 | 必填 | 说明                         |
+| -------- | --------- | ---- | ---------------------------- |
+| `postId` | `string`  | 是   | 帖子 ID（int64 字符串）      |
+
+**成功响应**：`openapi_lifestyleGetPostDetailResponse`；非预期错误响应为 `rpcStatus`。
+
+`postId` 必须作为 Query 参数传递。它是 int64 字符串，不要转成 JavaScript `number`。
+
+```bash
+curl 'https://openapi.qiandao.com/post/v1/detail?postId=978074656223267833' \
+  -H 'access-token: <token>' \
+  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>'
+```
+
+### 9.2 GET `/post/v1/list`
+
+分页查询小程序帖子。
+
+**operationId**：`OpenApiLifestyleService_ListPosts`
+
+| Query    | JSON 类型 | 必填 | 说明                              |
+| -------- | --------- | ---- | --------------------------------- |
+| `offset` | `string`  | 否   | 分页偏移量（int64 字符串），默认 0 |
+| `limit`  | `string`  | 否   | 单页数量（int64 字符串），默认 20，最大 100 |
+
+**成功响应**：`openapi_lifestyleListPostsResponse`；非预期错误响应为 `rpcStatus`。
+
+```bash
+curl 'https://openapi.qiandao.com/post/v1/list?offset=0&limit=20' \
+  -H 'access-token: <token>' \
+  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>'
+```
+
+### 9.3 GET `/post/v1/me/list`
+
+分页查询当前用户发布的公开帖子。该接口只返回公开帖子。
+
+**operationId**：`OpenApiLifestyleService_ListMyPosts`
+
+| Query    | JSON 类型 | 必填 | 说明                              |
+| -------- | --------- | ---- | --------------------------------- |
+| `offset` | `string`  | 否   | 分页偏移量（int64 字符串），默认 0 |
+| `limit`  | `string`  | 否   | 单页数量（int64 字符串），默认 20，最大 100 |
+
+**成功响应**：`openapi_lifestyleListPostsResponse`；非预期错误响应为 `rpcStatus`。
+
+```bash
+curl 'https://openapi.qiandao.com/post/v1/me/list?offset=0&limit=20' \
+  -H 'access-token: <token>' \
+  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>'
+```
+
+### 9.4 GET `/post/v1/me`
 
 获取我的帖子列表。
 
@@ -452,7 +510,7 @@ curl 'https://openapi.qiandao.com/post/v1/me?limit=20&offset=0' \
   -H 'x-echo-qdmp-version: <x-echo-qdmp-version>'
 ```
 
-### 9.2 POST `/post/v1/search`
+### 9.5 POST `/post/v1/search`
 
 搜索帖子。
 
@@ -713,6 +771,9 @@ const PROXY_PREFIXES = [
 | 批量添加想要 | POST | `/wishspu/v1/add`    |
 | 批量取消想要 | POST | `/wishspu/v1/cancel` |
 | 想要列表     | GET  | `/wishspu/v1/list`   |
+| 帖子详情     | GET  | `/post/v1/detail`    |
+| 帖子列表     | GET  | `/post/v1/list`      |
+| 我的公开帖子 | GET  | `/post/v1/me/list`   |
 | 我的帖子列表 | GET  | `/post/v1/me`        |
 | 搜索帖子     | POST | `/post/v1/search`    |
 | 图片文字识别 | POST | `/ocr/v1/recognize`  |
