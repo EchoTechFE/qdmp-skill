@@ -208,6 +208,7 @@ questions:
 - 取消想要或删除标记：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「`qd.cancelWish` — 取消一条想要记录」和「`qd.cancelMark` — 删除一条 Mark 记录」；传列表或详情返回的记录 ID，不要误传 SPU ID，也不要改用同名 HTTP 接口。
 - IM 订阅消息：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「IM 消息订阅」，使用业务提供的模板 ID，并处理每个模板的订阅结果。
 - 顶部导航栏返回首页按钮：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「导航栏」，确认页面栈场景后调用 `qd.hideHomeButton`；不要把它当成隐藏普通返回箭头的接口。
+- 同步获取系统信息：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「`qd.getSystemInfoSync` — 同步获取系统信息」；直接同步调用并使用返回值，不要传回调、包装成 Promise 或添加 `await`。
 
 涉及页面、组件、样式、`DESIGN.md`、`app.css` token/公共组件类时，必须同时使用 `/qdmp:qdmp-design-rules`：
 
