@@ -836,13 +836,48 @@ qd.onMemoryWarning((res) => {
 
 横屏与自动旋转通过配置文件声明，不是本节的运行时 API。全局 `window.pageOrientation` 和页面级 `pageOrientation` 的写法见 [development-guide.md](./development-guide.md) 的「屏幕方向配置（SDK 1.0）」。
 
+### `qd.getSystemInfoSync` — 同步获取系统信息
+
+`qd.getSystemInfoSync()` 无需参数，会立即返回当前设备与运行环境的系统信息。能力广场通过取得 Bridge 方法后直接执行 `getBridgeMethod('getSystemInfoSync')()`；业务代码统一使用等价的 `qd.getSystemInfoSync()`。
+
+```js
+function readSystemInfo() {
+  if (typeof qd.getSystemInfoSync !== 'function') {
+    return null
+  }
+
+  const systemInfo = qd.getSystemInfoSync()
+  console.log(systemInfo.platform, systemInfo.system, systemInfo.screenWidth)
+  return systemInfo
+}
+```
+
+返回值为系统信息对象。iOS 与 Android 的原生实现和附加字段不同，跨端业务只依赖两端真机返回值的以下交集字段：
+
+| 字段 | 类型 | 说明 |
+| ---- | ---- | ---- |
+| `brand` | `string` | 设备品牌 |
+| `model` | `string` | 设备型号 |
+| `pixelRatio` | `number` | 设备像素比 |
+| `screenWidth` | `number` | 屏幕宽度，单位为逻辑像素 |
+| `screenHeight` | `number` | 屏幕高度，单位为逻辑像素 |
+| `windowWidth` | `number` | 可用窗口宽度，单位为逻辑像素 |
+| `windowHeight` | `number` | 可用窗口高度，单位为逻辑像素 |
+| `statusBarHeight` | `number` | 状态栏高度，单位为逻辑像素 |
+| `language` | `string` | 当前语言；格式可能为 `zh_CN` 或 `zh` |
+| `version` | `string` | 平台实现返回的版本字符串，两端语义和格式可能不同 |
+| `system` | `string` | 操作系统及版本，如 `iOS 26.6` 或 `Android 16` |
+| `platform` | `string` | 运行平台；可能为 `ios` 或带细分标识的 `android,kuril` |
+| `deviceOrientation` | `string` | 当前设备方向，如 `portrait` 或 `landscape` |
+
+不要把 iOS 返回的 `safeArea`、`SDKVersion`、权限状态等扩展字段当成 Android 必有字段。平台判断不要严格比较完整的 `platform` 字符串：Android 可能包含逗号分隔的细分标识，可使用 `platform.startsWith('android')`。语言值同样需要兼容 `zh_CN` 与 `zh` 等不同粒度。布局计算使用实际返回的窗口尺寸，不要把某台设备的具体尺寸写死。
+
+这是同步 Bridge API：不要传入 `success`、`fail`、`complete` 回调，不要添加 `await`，也不要用通用 Promise 回调包装器调用。需要异步调用时使用 `qd.getSystemInfo()`；需要回调式异步调用时使用 `qd.getSystemInfoAsync()`。能力广场标记该接口从 SDK 1.0.0 起支持 Android、iOS、Harmony 和 Web；兼容旧运行环境时仍应先检查函数是否存在。
+
 ```js
 // 异步获取系统信息（推荐）
 const sysInfo = await qd.getSystemInfo()
 console.log(sysInfo.platform, sysInfo.system, sysInfo.screenWidth)
-
-// 同步获取系统信息
-const sysInfoSync = qd.getSystemInfoSync()
 
 // 获取 App 基础信息
 const appInfo = qd.getAppBaseInfo()
