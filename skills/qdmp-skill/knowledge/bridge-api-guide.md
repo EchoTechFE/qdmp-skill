@@ -98,7 +98,21 @@ qd.joinIsland({ islandId: '301964' })
 
 ### qd.openPost — 打开帖子发布页
 
-发布帖子时如需携带媒体文件，`files` 参数需要对 JSON 数组做 UTF-8 Base64 编码：
+`qd.openPost` 在保留原有岛屿、应用和媒体参数的基础上，支持预填帖子标题、正文以及 SPU/Tag 标签。`files` 和 `labels` 都需要先序列化为 JSON，再对 UTF-8 字节进行 Base64 编码；不要直接传数组，也不要使用旧示例中的 `spuIds`、`tagIds`。
+
+| 参数 | 类型 | 必填 | 说明 |
+| ---- | ---- | ---- | ---- |
+| `islandId` | `string` | 是 | 发布目标岛屿 ID |
+| `appId` | `string` | 是 | 当前千岛小程序 App ID |
+| `title` | `string` | 否 | 预填的帖子标题 |
+| `content` | `string` | 否 | 预填的帖子正文 |
+| `labels` | `string` | 否 | `{ id, type }[]` 的 UTF-8 Base64；`type` 使用 `spu` 或 `tag` |
+| `files` | `string` | 否 | 媒体描述数组的 UTF-8 Base64 |
+| `success` | `BridgeSuccessCallback` | 否 | 打开成功回调 |
+| `fail` | `BridgeFailCallback` | 否 | 打开失败回调 |
+| `complete` | `BridgeCompleteCallback` | 否 | 调用结束回调 |
+
+网络图片使用 `fileType: 'url'`；通过 `qd.chooseImage` 得到的本地临时路径使用 `fileType: 'file'`：
 
 ```js
 import { utf8ToBase64 } from '@/utils/base64'
@@ -108,6 +122,39 @@ const files = [
     mimeType: 'image',
     fileType: 'url',
     value: 'https://public.qiandaocdn.com/interior/images/f8H2svWMB0f.jpg'
+  }
+]
+
+const labels = [
+  { id: '1035310528576136310', type: 'spu' },
+  { id: '1035310536092327061', type: 'spu' },
+  { id: '1888802', type: 'tag' }
+]
+
+qd.openPost({
+  islandId: '300358',
+  appId: 'xxxxxxxx',
+  title: '帖子标题',
+  content: '帖子正文',
+  labels: utf8ToBase64(JSON.stringify(labels)),
+  files: utf8ToBase64(JSON.stringify(files))
+})
+```
+
+本地图片示例：
+
+```js
+const res = await qd.chooseImage({
+  count: 1,
+  sizeType: ['compressed'],
+  sourceType: ['album', 'camera']
+})
+
+const files = [
+  {
+    mimeType: 'image',
+    fileType: 'file',
+    value: res.tempFilePaths[0]
   }
 ]
 
