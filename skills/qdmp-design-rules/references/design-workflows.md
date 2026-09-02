@@ -98,7 +98,7 @@ questions:
 执行 [design-spec.md](design-spec.md)：
 
 1. 生成 `{projectRoot}/DESIGN.md`。
-2. 从 HTML 设计页生成时，同步 `app.css :root` token + 公共组件类；从现有项目反向提取时，token 已在代码里则跳过同步。
+2. 从 HTML 设计页生成时，同步 `app.css` 的 `page` token + 公共组件类；从现有项目反向提取时，token 已在代码里则跳过同步。禁止生成或保留 `:root` 变量声明。
 3. 进入移植前必须展示摘要并询问确认：
 
 ```text
@@ -171,7 +171,7 @@ questions:
 你是一位资深设计评审师。对照设计系统与设计标准，严格审查页面实现的视觉质量。
 
 对每个页面与 app.css：
-1. 核对 taro-code-spec：除组件一次性几何外，无写死 #hex / font-size:数字px（含渐变/阴影颜色），无元素选择器，底部栏用 position:fixed，新增值落成具名 token，图标复用同概念内联 SVG，不用 emoji 当图标。
+1. 核对 taro-code-spec：任何小程序样式文件都没有 `:root` 变量声明，全局 token 只定义在 app.css 的 `page` 选择器下；除组件一次性几何外，无写死 #hex / font-size:数字px（含渐变/阴影颜色），无元素选择器，底部栏用 position:fixed，新增值落成具名 token，图标复用同概念内联 SVG，不用 emoji 当图标。
 2. 检查跨页一致性：同类按钮、卡片、输入框、标题、辅助文字的 class 结构与 token 用法一致。
 3. 若当前有可用 HTML 设计 skill，用它审独特性与反通用默认。
 

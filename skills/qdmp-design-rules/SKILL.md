@@ -40,7 +40,8 @@ allowed-tools: [Read, Grep, Glob, Bash]
 
 - 设计系统不能凭空生成；只能来自用户确认的 HTML 设计页面，或现有 Taro 页面与 `app.css` 的反向提取。
 - HTML 设计先于复杂 Taro 构图；Taro 负责像素级落地，不重新设计。
-- `app.css` 是设计系统唯一代码来源：`:root` token + 公共组件类。
+- `app.css` 是设计系统唯一代码来源：`page` 作用域下的 token + 公共组件类。
+- **禁止使用 `:root` 定义 CSS 变量**：小程序编译目标不识别 `:root`，生成、移植和 Review 时都不得在任何小程序样式文件中保留 `:root { --*: ... }`；全局 token 必须定义在 `app.css` 的 `page { ... }` 中。HTML 设计稿也使用实际根容器 class 承载变量，避免移植时带入 `:root`。
 - 写 Taro 时优先复用 token 和具名 class；不要用元素选择器，不要散落硬编码颜色、字号、圆角、阴影。
 - 需要复用的新元素先沉淀为 `app.css` 公共类并同步 `DESIGN.md`；只出现一次的几何布局可留在页面局部样式。
 - 移植完成后必须渲染验真；能截图就和 HTML 原稿并排比对，改到观感看不出差别。
