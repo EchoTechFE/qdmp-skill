@@ -16,6 +16,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 ## 知识库
 
+<<<<<<< Updated upstream
 | 文档 | 内容 |
 | ---- | ---- |
 | [development-guide.md](./knowledge/development-guide.md) | 开发指南：项目结构、全局权限配置、服务端 API、调试发布 |
@@ -24,6 +25,16 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | [backend-operations.md](./knowledge/backend-operations.md) | 后端操作详情：通用子流程 + 操作 1-7 的完整步骤 |
 | [project-workflows.md](./knowledge/project-workflows.md) | 项目工作流程：创建项目、开发调试、打包部署 |
 | [prd-template.md](./knowledge/prd-template.md) | PRD 模版：好的 PRD 应包含哪些内容 + 可直接使用的模版 |
+=======
+| 文档                                                       | 内容                                                                                      |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| [development-guide.md](./knowledge/development-guide.md)   | 开发指南：项目结构、全局权限配置、服务端 API、调试发布                                    |
+| [bridge-api-guide.md](./knowledge/bridge-api-guide.md)     | Bridge API：原生能力调用、发帖预填参数、IM 消息订阅、导航栏返回首页按钮、参数与返回值类型 |
+| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：场景化接口文档                                                                |
+| [backend-operations.md](./knowledge/backend-operations.md) | 后端操作详情：通用子流程 + 操作 1-7 的完整步骤                                            |
+| [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署                                                |
+| [prd-template.md](./knowledge/prd-template.md)             | PRD 模版：好的 PRD 应包含哪些内容 + 可直接使用的模版                                      |
+>>>>>>> Stashed changes
 
 ---
 
@@ -31,10 +42,10 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 本 skill 负责千岛小程序的项目、开发、调试、部署主流程；产品边界和前端设计规范由独立 skill 维护。开发类任务必须按需调用：
 
-| 依赖 skill | 使用时机 |
-| ---------- | -------- |
-| `/qdmp:qdmp-product-rules` | 新建/改造小程序、页面、路由、登录、权限、SPU/资料、内容回流、社区相关能力、留存机制、脚手架或代码 Review 前 |
-| `/qdmp:qdmp-design-rules` | 设计页面、生成/更新 `DESIGN.md`、编写/审查 Taro Vue/CSS、维护 `app.css` token/组件类、HTML 设计稿移植到 Taro 前 |
+| 依赖 skill                 | 使用时机                                                                                                        |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `/qdmp:qdmp-product-rules` | 新建/改造小程序、页面、路由、登录、权限、SPU/资料、内容回流、社区相关能力、留存机制、脚手架或代码 Review 前     |
+| `/qdmp:qdmp-design-rules`  | 设计页面、生成/更新 `DESIGN.md`、编写/审查 Taro Vue/CSS、维护 `app.css` token/组件类、HTML 设计稿移植到 Taro 前 |
 
 执行顺序：
 
@@ -153,18 +164,18 @@ questions:
 
 根据用户意图匹配操作，详细步骤见 [backend-operations.md](./knowledge/backend-operations.md)：
 
-| 关键词 | 操作 |
-| ------ | ---- |
-| 部署、打包部署、上线、发布（无前端/后端限定） | 流程四：打包部署（全量，见 project-workflows.md） |
-| 部署后端、发版后端、后端上线、只部署后端、部署新版本、release | 操作 1: publish（仅后端） |
-| 部署前端、上传前端、前端上线、只部署前端 | 流程四：打包部署（仅前端，见 project-workflows.md） |
-| 查看版本、版本列表、版本历史、发布记录 | 操作 2: versions |
-| 回滚、回退、恢复到某版本、rollback | 操作 3: rollback |
-| 查看日志、服务日志、启动失败、报错、logs、排查问题 | 操作 4: logs |
-| 部署状态、当前版本、线上版本、运行状态、status | 操作 5: status |
-| 部署后端测试环境、本地跑后端、调试后端、跑一下后端、test-deploy | 操作 6: test-deploy（仅后端） |
-| 部署测试环境、本地测试、本地运行、本地调试、启动开发环境 | 流程三：开发调试（全量，见 project-workflows.md） |
-| 数据建模、设计数据、我要存什么数据、数据库设计、定义数据结构、管理数据 | 操作 7: schema |
+| 关键词                                                                 | 操作                                                |
+| ---------------------------------------------------------------------- | --------------------------------------------------- |
+| 部署、打包部署、上线、发布（无前端/后端限定）                          | 流程四：打包部署（全量，见 project-workflows.md）   |
+| 部署后端、发版后端、后端上线、只部署后端、部署新版本、release          | 操作 1: publish（仅后端）                           |
+| 部署前端、上传前端、前端上线、只部署前端                               | 流程四：打包部署（仅前端，见 project-workflows.md） |
+| 查看版本、版本列表、版本历史、发布记录                                 | 操作 2: versions                                    |
+| 回滚、回退、恢复到某版本、rollback                                     | 操作 3: rollback                                    |
+| 查看日志、服务日志、启动失败、报错、logs、排查问题                     | 操作 4: logs                                        |
+| 部署状态、当前版本、线上版本、运行状态、status                         | 操作 5: status                                      |
+| 部署后端测试环境、本地跑后端、调试后端、跑一下后端、test-deploy        | 操作 6: test-deploy（仅后端）                       |
+| 部署测试环境、本地测试、本地运行、本地调试、启动开发环境               | 流程三：开发调试（全量，见 project-workflows.md）   |
+| 数据建模、设计数据、我要存什么数据、数据库设计、定义数据结构、管理数据 | 操作 7: schema                                      |
 
 意图不明确时，使用 AskUserQuestion 让用户选择。
 
@@ -212,6 +223,7 @@ questions:
 
 涉及页面、组件、样式、`DESIGN.md`、`app.css` token/公共组件类时，必须同时使用 `/qdmp:qdmp-design-rules`：
 
+- 小程序样式严禁使用 `:root` 定义 CSS 变量；全局 token 必须定义在 `src/app.css` 的 `page { ... }` 中。生成、移植和 Review 时发现存量 `:root` 必须迁移并删除。
 - 有 `DESIGN.md` 时先读取并延续设计系统。
 - 无 `DESIGN.md` 且是全新页面/成块 UI 时，先走设计规范中的页面设计和设计系统生成流程。
 - 无 `DESIGN.md` 但已有页面时，照现有页面和 `app.css` 保持一致，不凭空引入新 token。
@@ -242,25 +254,25 @@ qd.navigateTo({
 
 ## 命令速查
 
-| 命令 | 说明 |
-| ---- | ---- |
-| `qdmp-cli list` | 查看可用模板 |
-| `qdmp-cli create <name>` | 创建项目 |
-| `qdmp-cli init -a <id>` | 关联小程序 |
-| `pnpm install` | 安装依赖 |
-| `pnpm run dev` | 开发模式 |
-| `pnpm run build` | 打包构建（本地调试） |
-| `qdmp build` | 打包构建（发布上传前必须使用） |
-| `qdmp getMe` | 在项目目录检查 CLI 登录态 |
-| `qdmp login` | 交互登录；必须在支持用户输入的前台 TTY/PTY 中单独执行，禁止在非交互命令中运行 |
-| `qdmp-cli upload -d "<版本描述>"` | 上传部署；skill 自动总结当前版本变化并传入描述 |
+| 命令                              | 说明                                                                          |
+| --------------------------------- | ----------------------------------------------------------------------------- |
+| `qdmp-cli list`                   | 查看可用模板                                                                  |
+| `qdmp-cli create <name>`          | 创建项目                                                                      |
+| `qdmp-cli init -a <id>`           | 关联小程序                                                                    |
+| `pnpm install`                    | 安装依赖                                                                      |
+| `pnpm run dev`                    | 开发模式                                                                      |
+| `pnpm run build`                  | 打包构建（本地调试）                                                          |
+| `qdmp build`                      | 打包构建（发布上传前必须使用）                                                |
+| `qdmp getMe`                      | 在项目目录检查 CLI 登录态                                                     |
+| `qdmp login`                      | 交互登录；必须在支持用户输入的前台 TTY/PTY 中单独执行，禁止在非交互命令中运行 |
+| `qdmp-cli upload -d "<版本描述>"` | 上传部署；skill 自动总结当前版本变化并传入描述                                |
 
 ## 常见问题
 
-| 问题 | 解决方案 |
-| ---- | -------- |
-| 依赖安装 401/404 | 配置 npm Token |
-| qdmp-cli 未找到 | `npm install -g qdmp-cli` |
-| pnpm 未找到 | `npm install -g pnpm` |
+| 问题             | 解决方案                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------- |
+| 依赖安装 401/404 | 配置 npm Token                                                                              |
+| qdmp-cli 未找到  | `npm install -g qdmp-cli`                                                                   |
+| pnpm 未找到      | `npm install -g pnpm`                                                                       |
 | 登录命令一直等待 | `qdmp login` 正在等待账号密码；改用用户可输入的交互终端单独执行，完成后用 `qdmp getMe` 验证 |
-| 图片 403 | index.html 加 `<meta name="referrer" content="no-referrer">` |
+| 图片 403         | index.html 加 `<meta name="referrer" content="no-referrer">`                                |
