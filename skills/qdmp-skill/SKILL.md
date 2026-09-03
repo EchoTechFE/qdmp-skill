@@ -20,7 +20,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | [development-guide.md](./knowledge/development-guide.md)   | 开发指南：项目结构、全局权限配置、服务端 API、调试发布                                    |
 | [bridge-api-guide.md](./knowledge/bridge-api-guide.md)     | Bridge API：原生能力调用、发帖预填参数、IM 消息订阅、导航栏返回首页按钮、参数与返回值类型 |
-| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：场景化接口文档                                                                |
+| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：场景化接口文档，含帖子评论与回复（rcomment）                                   |
 | [backend-operations.md](./knowledge/backend-operations.md) | 后端操作详情：通用子流程 + 操作 1-7 的完整步骤                                            |
 | [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署                                                |
 | [prd-template.md](./knowledge/prd-template.md)             | PRD 模版：好的 PRD 应包含哪些内容 + 可直接使用的模版                                      |
@@ -196,6 +196,8 @@ questions:
 ## 代码编写规则
 
 开发类代码生成或 Review 必须先按「规范依赖」调用对应 skill。产品底线、设计系统和 Taro 视觉落地规则不在本节重复维护，避免规范漂移。
+
+涉及帖子评论、回复、评论列表或评论点赞（rcomment）时，必须读取 [api-guide.md](./knowledge/api-guide.md) 的「Lifestyle：评论与回复（Comment / RComment）」；严格区分一级评论列表的 `offset` 分页与回复列表的 `cursor` 分页，并将帖子、评论和回复 ID 保持为 int64 字符串。
 
 ### 前端（`frontend/`）
 

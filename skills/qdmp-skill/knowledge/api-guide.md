@@ -540,9 +540,167 @@ curl 'https://openapi.qiandao.com/post/v1/search' \
 
 ---
 
-## 10. 图片文字识别 OCR
+## 10. Lifestyle：评论与回复（Comment / RComment）
 
-### 10.1 POST `/ocr/v1/recognize`
+本节对应 rcomment 评论能力；Swagger 中的 tag 为 `comment`。所有接口都需要 `access-token` 和 `x-echo-qdmp-version` Header。帖子、评论、回复 ID 以及游标均为 `string(int64)`，在 JavaScript 中保持字符串，不要转成 `number`。
+
+### 10.1 类型定义
+
+```ts
+interface CommentAuthor {
+  openId: string
+  nickname: string
+  avatarUrl: string
+}
+
+interface CommentItem {
+  id: Int64String
+  content: string
+  createdAt: Int64String // 毫秒级 Unix 时间戳
+  creator: CommentAuthor
+  replyToUser?: CommentAuthor
+  rootCommentId: Int64String // 一级评论为 "0"
+  replyCommentId: Int64String // 一级评论为 "0"
+  likeCount: number
+  liked: boolean
+}
+
+interface CommentThread {
+  comment: CommentItem
+  replies: CommentItem[]
+  replyCount: Int64String
+}
+
+interface CommentRepliesPage {
+  items: CommentItem[]
+  hasMore: boolean
+  cursor: Int64String // 没有更多回复时为 "0"
+  count: number
+}
+```
+
+`replyToUser` 只在有明确回复对象时返回。`rootCommentId` 表示所属一级评论，`replyCommentId` 表示直接回复的评论或回复；一级评论的这两个字段都是字符串 `"0"`。
+
+### 10.2 POST `/comment`
+
+对帖子发表评论。
+
+**operationId**：`OpenApiLifestyleService_CreateComment`
+
+| Body 字段 | JSON 类型 | 必填 | 说明                        |
+| --------- | --------- | ---- | --------------------------- |
+| `postId`  | `string`  | 是   | 帖子 ID，必须大于 0         |
+| `content` | `string`  | 是   | 评论内容，不能为空          |
+
+**成功响应**：`LifestyleResponse<{ id: Int64String }>`，其中 `data.id` 是新建评论 ID。帖子不存在时返回 HTTP 404。
+
+```bash
+curl 'https://openapi.qiandao.com/comment' \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H 'access-token: <token>' \
+  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>' \
+  --data-raw '{
+  "postId": "978074656223267833",
+  "content": "这是一条评论"
+}'
+```
+
+### 10.3 POST `/comment/{commentId}/reply`
+
+回复评论或回复。路径中的 `commentId` 是直接被回复对象的 ID：回复一级评论时传一级评论 ID，回复某条回复时传该回复 ID。
+
+**operationId**：`OpenApiLifestyleService_ReplyComment`
+
+| 参数                | 位置 | JSON 类型 | 必填 | 说明                         |
+| ------------------- | ---- | --------- | ---- | ---------------------------- |
+| `commentId`         | Path | `string`  | 是   | 被回复的评论或回复 ID，大于 0 |
+| `content`           | Body | `string`  | 是   | 回复内容，不能为空           |
+
+**成功响应**：`LifestyleResponse<{ id: Int64String }>`，其中 `data.id` 是新建回复 ID。目标评论或回复不存在时返回 HTTP 404。
+
+```bash
+curl 'https://openapi.qiandao.com/comment/978074656223267834/reply' \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H 'access-token: <token>' \
+  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>' \
+  --data-raw '{ "content": "这是一条回复" }'
+```
+
+### 10.4 POST `/comment/{commentId}/like`
+
+点赞或取消点赞评论、回复，二者使用同一个接口。
+
+**operationId**：`OpenApiLifestyleService_LikeComment`
+
+| 参数        | 位置 | JSON 类型 | 必填 | 说明                                  |
+| ----------- | ---- | --------- | ---- | ------------------------------------- |
+| `commentId` | Path | `string`  | 是   | 评论或回复 ID，必须大于 0             |
+| `liked`     | Body | `boolean` | 是   | `true` 点赞；`false` 取消点赞          |
+
+**成功响应**：`code`、`message`、`requestId`，Swagger 未定义 `data`。目标评论或回复不存在时返回 HTTP 404；不要因其他 Lifestyle 响应通常带 `data` 而强行读取该字段。
+
+```bash
+curl 'https://openapi.qiandao.com/comment/978074656223267834/like' \
+  -X POST \
+  -H 'Content-Type: application/json' \
+  -H 'access-token: <token>' \
+  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>' \
+  --data-raw '{ "liked": true }'
+```
+
+### 10.5 GET `/post/{postId}/comments`
+
+按点赞数获取帖子的一级评论及其首批回复。
+
+**operationId**：`OpenApiLifestyleService_ListComments`
+
+| 参数     | 位置  | JSON 类型 | 必填 | 说明                                      |
+| -------- | ----- | --------- | ---- | ----------------------------------------- |
+| `postId` | Path  | `string`  | 是   | 帖子 ID，必须大于 0                       |
+| `limit`  | Query | `string`  | 否   | 一级评论单页数量，默认 10，最大 20        |
+| `offset` | Query | `string`  | 否   | 一级评论分页偏移量，默认 0                |
+
+**成功响应**：`LifestyleResponse<{ items: CommentThread[]; count: number }>`。每个 `CommentThread.replies` 是首批回复，`replyCount` 是回复总数。帖子不存在时返回 HTTP 404。
+
+```bash
+curl 'https://openapi.qiandao.com/post/978074656223267833/comments?limit=10&offset=0' \
+  -H 'access-token: <token>' \
+  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>'
+```
+
+### 10.6 GET `/comment/{commentId}/replies`
+
+继续获取某条一级评论下的回复。该接口使用 `cursor`，不是 `offset`。
+
+**operationId**：`OpenApiLifestyleService_ListCommentReplies`
+
+| 参数        | 位置  | JSON 类型 | 必填 | 说明                                                        |
+| ----------- | ----- | --------- | ---- | ----------------------------------------------------------- |
+| `commentId` | Path  | `string`  | 是   | 一级评论 ID，必须大于 0                                     |
+| `limit`     | Query | `string`  | 否   | 回复单页数量，默认 10，最大 20                              |
+| `cursor`    | Query | `string`  | 否   | 首次续载传评论列表首批回复最后一条 ID + 1；以后传上页返回值 |
+
+**成功响应**：`LifestyleResponse<CommentRepliesPage>`。继续分页时读取响应的 `data.cursor`；`data.hasMore` 为 `false` 或 `data.cursor` 为 `"0"` 时停止。一级评论不存在时返回 HTTP 404。
+
+```bash
+curl 'https://openapi.qiandao.com/comment/978074656223267834/replies?limit=10&cursor=978074656223267900' \
+  -H 'access-token: <token>' \
+  -H 'x-echo-qdmp-version: <x-echo-qdmp-version>'
+```
+
+不要用 JavaScript 数值执行 `lastReplyId + 1`，大 ID 会丢失精度。可使用 `BigInt` 计算后再转回字符串：
+
+```js
+const firstCursor = (BigInt(lastReply.id) + 1n).toString()
+```
+
+---
+
+## 11. 图片文字识别 OCR
+
+### 11.1 POST `/ocr/v1/recognize`
 
 识别图片中的文字。
 
@@ -596,7 +754,7 @@ export async function recognizeOcr({ imageBase64 }) {
 }
 ```
 
-### 10.2 小程序选图与 Base64 转换
+### 11.2 小程序选图与 Base64 转换
 
 选择图片时优先使用 `qd.chooseMedia`，不支持时回退到 `qd.chooseImage`：
 
@@ -695,7 +853,7 @@ async function chooseImageBase64() {
 
 `qd.readImage` 的返回值可能是字符串，也可能是包含 `data` 字段的对象，调用时应兼容两种形式。发送 OCR 请求前仍需通过 `stripDataUrlPrefix` 移除 Data URL 前缀。
 
-### 10.3 后端代理
+### 11.3 后端代理
 
 推荐由项目后端代理 OCR 请求：
 
@@ -712,6 +870,8 @@ async function chooseImageBase64() {
 ```javascript
 const PROXY_PREFIXES = [
   "/mark/",
+  "/post/",
+  "/comment/",
   "/spu/",
   "/tag/",
   "/user/",
@@ -723,7 +883,7 @@ const PROXY_PREFIXES = [
 
 代理应保留原始请求方法、路径和 JSON 请求体，并将 OpenAPI 响应原样返回。
 
-### 10.4 常见问题
+### 11.4 常见问题
 
 - **图片数据无效**：检查 `imageBase64` 是否仍包含 `data:image/...;base64,` 前缀。
 - **真机读取图片失败**：保留 `qd.readImage` 回退逻辑。
@@ -733,7 +893,7 @@ const PROXY_PREFIXES = [
 
 ---
 
-## 11. 与小程序开发的衔接
+## 12. 与小程序开发的衔接
 
 1. **凭证来源**：开放平台 `appId` / `appSecret` 与项目 **`qdmp-config.json`** 中字段对应关系以平台说明为准；不要在代码里硬编码密钥，可用环境变量或后端托管换票。
 2. **用户态 Token**：前端通过 `/auth/v1/token` 接口获取 `accessToken`，用于请求业务 API。
@@ -742,7 +902,7 @@ const PROXY_PREFIXES = [
 
 ---
 
-## 12. 错误与排查
+## 13. 错误与排查
 
 - HTTP 200 但业务 `code` 非成功：读 `message` 与各服务错误码说明。
 - `default` 响应可能为 `rpcStatus`（`code`、`message`、`details`）。
@@ -750,7 +910,7 @@ const PROXY_PREFIXES = [
 
 ---
 
-## 13. 接口速查
+## 14. 接口速查
 
 | 场景         | 方法 | 路径                 |
 | ------------ | ---- | -------------------- |
@@ -776,6 +936,11 @@ const PROXY_PREFIXES = [
 | 我的公开帖子 | GET  | `/post/v1/me/list`   |
 | 我的帖子列表 | GET  | `/post/v1/me`        |
 | 搜索帖子     | POST | `/post/v1/search`    |
+| 发表评论     | POST | `/comment`           |
+| 回复评论     | POST | `/comment/{commentId}/reply`   |
+| 评论点赞切换 | POST | `/comment/{commentId}/like`    |
+| 帖子评论列表 | GET  | `/post/{postId}/comments`      |
+| 评论回复列表 | GET  | `/comment/{commentId}/replies` |
 | 图片文字识别 | POST | `/ocr/v1/recognize`  |
 
 完整字段与枚举见各服务 Swagger（§1 表格）。
