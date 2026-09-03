@@ -98,7 +98,7 @@ qd.joinIsland({ islandId: '301964' })
 
 ### qd.openPost — 打开帖子发布页
 
-`qd.openPost` 在保留原有岛屿、应用和媒体参数的基础上，支持预填帖子标题、正文以及 SPU/Tag 标签。`files` 和 `labels` 都需要先序列化为 JSON，再对 UTF-8 字节进行 Base64 编码；不要直接传数组，也不要使用旧示例中的 `spuIds`、`tagIds`。
+`qd.openPost` 在保留原有岛屿、应用和媒体参数的基础上，支持预填帖子标题、正文、SPU/Tag 标签以及发布成功后的业务跳转信息。`files` 和 `labels` 都需要先序列化为 JSON，再对 UTF-8 字节进行 Base64 编码；`bizData` 只需传 JSON 字符串，不需要进行 Base64 编码。不要直接传数组，也不要使用旧示例中的 `spuIds`、`tagIds`。
 
 | 参数 | 类型 | 必填 | 说明 |
 | ---- | ---- | ---- | ---- |
@@ -108,9 +108,12 @@ qd.joinIsland({ islandId: '301964' })
 | `content` | `string` | 否 | 预填的帖子正文 |
 | `labels` | `string` | 否 | `{ id, type }[]` 的 UTF-8 Base64；`type` 使用 `spu` 或 `tag` |
 | `files` | `string` | 否 | 媒体描述数组的 UTF-8 Base64 |
+| `bizData` | `string` | 否 | 业务跳转信息的 JSON 字符串，结构为 `{ ShowTitle, DaoLink }`；不要进行 Base64 编码 |
 | `success` | `BridgeSuccessCallback` | 否 | 打开成功回调 |
 | `fail` | `BridgeFailCallback` | 否 | 打开失败回调 |
 | `complete` | `BridgeCompleteCallback` | 否 | 调用结束回调 |
+
+`bizData` 字段名区分大小写：`ShowTitle` 是跳转入口展示文案，`DaoLink` 是目标链接。需要跳转到小程序首页时，`DaoLink` 传空字符串 `''` 即可。
 
 网络图片使用 `fileType: 'url'`；通过 `qd.chooseImage` 得到的本地临时路径使用 `fileType: 'file'`：
 
@@ -131,13 +134,32 @@ const labels = [
   { id: '1888802', type: 'tag' }
 ]
 
+const bizData = {
+  ShowTitle: '查看详情',
+  DaoLink: 'https://qiandao.com/miniapp?appId=xxxxxxxx&path=/pages/detail/index'
+}
+
 qd.openPost({
   islandId: '300358',
   appId: 'xxxxxxxx',
   title: '帖子标题',
   content: '帖子正文',
   labels: utf8ToBase64(JSON.stringify(labels)),
-  files: utf8ToBase64(JSON.stringify(files))
+  files: utf8ToBase64(JSON.stringify(files)),
+  bizData: JSON.stringify(bizData)
+})
+```
+
+跳转小程序首页时：
+
+```js
+qd.openPost({
+  islandId: '300358',
+  appId: 'xxxxxxxx',
+  bizData: JSON.stringify({
+    ShowTitle: '返回首页',
+    DaoLink: ''
+  })
 })
 ```
 
