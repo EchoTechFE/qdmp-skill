@@ -268,3 +268,13 @@ qd.navigateTo({
 | pnpm 未找到      | `npm install -g pnpm`                                                                       |
 | 登录命令一直等待 | `qdmp login` 正在等待账号密码；改用用户可输入的交互终端单独执行，完成后用 `qdmp getMe` 验证 |
 | 图片 403         | index.html 加 `<meta name="referrer" content="no-referrer">`                                |
+
+## OpenAPI 权限申请流程
+
+编码涉及千岛 HTTP OpenAPI 时，从实际代码调用收集接口路径和方法，并通过 qdmp-cli 的 OpenAPI 能力清单查询每个接口唯一的 `id/key`，只记录真实使用的接口。
+
+待申请的多个 key 按稳定顺序编码为可逆的 `requiredApis` 短字符参数，并使用 `qdmp-cli openapi apply-url --env <env> --json` 生成申请链接。解码后 key 的数量、值和对应关系必须完全一致，参数需进行 URL 编码。
+
+权限页检测到合法 `requiredApis` 后，解析唯一 key，加载对应清单，默认勾选用户尚未拥有且需要申请的接口并主动打开申请能力弹框。没有 `requiredApis` 时保持原有页面行为，不触发额外的全量 OpenAPI/ability 分页请求。
+
+查找全部 OpenAPI 复用前端现有全量接口，不新增 BFF 接口。Redis 仅作为可选缓存，连接失败不得阻断 BFF 启动；实体及 Redis 读写逻辑放在 `model/redis`，service 层只做业务编排。
