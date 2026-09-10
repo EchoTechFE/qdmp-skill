@@ -905,6 +905,8 @@ qd.onMemoryWarning((res) => {
 
 横屏与自动旋转通过配置文件声明，不是本节的运行时 API。全局 `window.pageOrientation` 和页面级 `pageOrientation` 的写法见 [development-guide.md](./development-guide.md) 的「屏幕方向配置（SDK 1.0）」。
 
+截图黑屏的页面配置示例见 [development-guide.md](./development-guide.md) 的「截图黑屏（页面隐私模式）」。
+
 ### `qd.getSystemInfoSync` — 同步获取系统信息
 
 `qd.getSystemInfoSync()` 无需参数，会立即返回当前设备与运行环境的系统信息。能力广场通过取得 Bridge 方法后直接执行 `getBridgeMethod('getSystemInfoSync')()`；业务代码统一使用等价的 `qd.getSystemInfoSync()`。
