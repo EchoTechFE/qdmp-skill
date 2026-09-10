@@ -44,7 +44,7 @@ Swagger 中 Auth 的 `securityDefinitions` 为 `access_token` Header；**换票�
 
 **响应** `authTokenResponse`：`code`、`message`、`requestId`；成功时 `data` 含 `accessToken`、`expiresAt`（**秒级时间戳**）、`refreshToken`、`openId`。
 
-**业务错误码（节选）**：`10001` app_id 无效；`10002` 密钥不匹配；`10003` 授权码错误；`10004` 认证类型不支持。
+**业务错误码**：应用凭证、授权码与授权类型相关错误见 [13. 错误与排查](#13-错误与排查) 中的 `10001`–`10004`；授权码有效期为 5 分钟。
 
 **curl 最小示例**（将占位符换成你自己的凭证，**勿提交真实值**）：
 
@@ -68,7 +68,7 @@ curl 'https://openapi.qiandao.com/auth/v1/token' \
 
 **请求体**：`{ "refreshToken": "<refreshToken>" }`
 
-**响应**：`data` 含新的 `accessToken`、`expiresAt`（秒）。错误码节选：`10007`、`10008`。
+**响应**：`data` 含新的 `accessToken`、`expiresAt`（秒）。刷新失败原因见 [13. 错误与排查](#13-错误与排查) 中的 `10007`、`10008`。
 
 ```bash
 curl 'https://openapi.qiandao.com/auth/v1/refresh' \
@@ -96,7 +96,7 @@ User、Lifestyle、Library 等网关在 Swagger 中常要求：
 Authorization: Bearer <accessToken>
 ```
 
-**建议**：与线上一致；若 401，再尝试改为 `access-token` Header 或补全 `x-echo-qdmp-version`。
+**建议**：请求头与目标接口要求保持一致；若出现 401，结合业务 `code` 按 [13. 错误与排查](#13-错误与排查) 定位原因，并检查 Header 名及必需的 `x-echo-qdmp-version`。
 
 下文 **Library** 示例采用与线上一致的 **`Authorization: Bearer`**；**User / Mark** 示例同时给出 **`access-token` + `x-echo-qdmp-version`**（与 Swagger 一致）。
 
@@ -889,7 +889,7 @@ const PROXY_PREFIXES = [
 - **真机读取图片失败**：保留 `qd.readImage` 回退逻辑。
 - **请求体过大**：选图时使用 `sizeType: ["compressed"]`，必要时先压缩图片。
 - **HTTP 200 但识别失败**：检查业务字段 `code` 和 `message`。
-- **401 / 403**：检查 `access-token` 是否存在或过期，以及后端是否成功获取服务端 Token。
+- **401 / 403**：结合业务 `code` 按 [13. 错误与排查](#13-错误与排查) 区分凭证、Token 类型与有效性、应用权限及用户授权问题。
 
 ---
 
@@ -904,9 +904,42 @@ const PROXY_PREFIXES = [
 
 ## 13. 错误与排查
 
-- HTTP 200 但业务 `code` 非成功：读 `message` 与各服务错误码说明。
-- `default` 响应可能为 `rpcStatus`（`code`、`message`、`details`）。
-- 401 / 403：检查 Token 是否过期、Header 名是 `Authorization: Bearer` 还是 `access-token`，以及是否缺少 `x-echo-qdmp-version`。
+排查时同时读取 HTTP 状态、响应业务 `code` 与 `message`，保留 `requestId`（若返回）用于定位请求。HTTP 200 但业务 `code` 非成功时，也应按业务错误处理；`default` 响应可能为 `rpcStatus`（`code`、`message`、`details`）。
+
+### 13.1 OpenAPI 错误码与原因
+
+以下为 OpenAPI `AuthCode*` 常量定义（类型为 `int64`），HTTP 列为各错误码对应的状态；业务错误码与 HTTP 状态是不同字段。错误信息中的 `app_id`、`app_secret`、`grant_type`、`access_token`、`refresh_token` 对应本指南 Auth JSON 字段 `appId`、`appSecret`、`grantType`、`accessToken`、`refreshToken`。
+
+| 业务错误码 | 常量 | HTTP 状态 | 报错原因 |
+| ---------- | ---- | --------- | -------- |
+| `10001` | `AuthCodeAppIDInvalid` | 401 | `app_id` 无效：应用不存在或已禁用。 |
+| `10002` | `AuthCodeAppSecretInvalid` | 401 | `app_secret` 错误：密钥不匹配。 |
+| `10003` | `AuthCodeLoginCodeInvalid` | 401 | `code` 无效或已过期：授权码错误或超过 5 分钟有效期。 |
+| `10004` | `AuthCodeGrantTypeInvalid` | 401 | `grant_type` 不支持。 |
+| `10005` | `AuthCodeAccessTokenInvalid` | 401 | `access_token` 无效：Token 格式错误或已吊销。 |
+| `10006` | `AuthCodeAccessTokenExpired` | 401 | `access_token` 已过期。 |
+| `10007` | `AuthCodeRefreshTokenInvalid` | 401 | `refresh_token` 无效。 |
+| `10008` | `AuthCodeRefreshTokenExpired` | 401 | `refresh_token` 已过期。 |
+| `10009` | `AuthCodeScopeNotApply` | 403 | 应用无此接口权限：未申请对应 `scope`。 |
+| `10010` | `AuthCodeScopeNotAuthorize` | 403 | 应用未授权此权限。 |
+| `10011` | `AuthCodeRateLimit` | 429 | 请求过于频繁，触发限流。 |
+| `10012` | `AuthCodeServerErr` | 500 | 服务器内部错误。 |
+| `10013` | `AuthCodeServerBusy` | 500 | 操作太频繁，请稍后再试。 |
+| `10014` | `AuthCodeTokenGenErr` | 500 | Token 生成失败。 |
+| `10015` | `AuthCodeAppValidErr` | 401 | app 验签失败。 |
+| `10016` | `AuthCodeQuotaExceeded` | 429 | 调用配额已耗尽。 |
+| `10017` | `AuthCodeInvalidParam` | 400 | 请求参数错误。 |
+| `10018` | `AuthCodeTokenChannelMismatch` | 403 | Token 类型不允许访问该接口。 |
+| `10019` | `AuthCodeStorageRedisWriteFail` | 500 | Redis 写入失败。 |
+| `10020` | `AuthCodeApiUserAuthorizationNotApply` | 403 | 用户未申请权限。 |
+| `10021` | `AuthCodeApiUserAuthorizationNotAuthorize` | 403 | 用户未授权。 |
+
+### 13.2 排查要点
+
+- **401**：按业务码分别检查应用凭证、授权码、授权类型、Token 或 app 验签；同时核对接口要求的 Header。`10006` 表示访问 Token 过期，可进入刷新流程；`10007`、`10008` 表示刷新 Token 无效或过期，需要重新获取 Token，避免反复使用同一个无效刷新 Token。
+- **403**：`10009`、`10010` 属于应用权限问题，结合 [OpenAPI 权限申请流程](./openapi-permission-flow.md) 检查对应接口的申请和授权状态；`10020`、`10021` 属于用户权限问题。`10018` 则需检查接口允许的 Token 类型，不能将这些情况统一当成 Token 过期。
+- **429**：`10011` 应降低请求频率；`10016` 应检查调用配额，不能仅靠立即重试解决。`10013` 虽然也提示操作频繁，对应 HTTP 状态仍为 500。
+- **400 / 500**：`10017` 优先核对请求参数；`10012`、`10014`、`10019` 分别指向服务器内部错误、Token 生成失败和 Redis 写入失败，可携带业务码与 `requestId` 协助服务端排查。
 
 ---
 
