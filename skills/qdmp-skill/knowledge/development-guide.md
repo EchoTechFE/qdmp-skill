@@ -112,6 +112,54 @@ export default definePageConfig({
 
 ---
 
+## 截图黑屏（页面隐私模式）
+
+`screenShotForbidden` 是页面级隐私配置，Android、iOS、Harmony、Web 均支持。目标页面启用后，系统截屏产出黑屏图像；返回未启用的页面后，截屏恢复正常。
+
+### Taro 页面配置
+
+在需要保护的页面 `index.config.js` 中添加 `screenShotForbidden: true`，保留原有配置：
+
+```js
+// frontend/src/pages/secret/index.config.js
+export default definePageConfig({
+  navigationBarTitleText: '隐私页面',
+  screenShotForbidden: true,
+})
+```
+
+如果是新增页面，还需在 `frontend/src/app.config.js` 的 `pages` 数组中注册 `pages/secret/index`。已有页面直接修改其页面配置即可。
+
+### app-config.json 配置
+
+直接维护 `app-config.json` 的项目，也可以在 `modules` 中按页面路径配置：
+
+```json
+{
+  "modules": {
+    "pages/secret/index": {
+      "screenShotForbidden": true
+    }
+  }
+}
+```
+
+将 `pages/secret/index` 替换为实际页面路径，并保留其他模块及已有字段。Taro 项目优先修改源码中的页面配置，不要直接修改会被构建覆盖的产物。
+
+### 使用与验证
+
+该能力由页面配置启用，无需调用 `qd.screenShotForbidden()`，也无需注册 `qd.onUserCaptureScreen`；截屏监听仅用于接收事件，不能代替隐私配置。按需要保护的页面逐页配置，不要写入全局 `window` 或权限声明。
+
+构建并运行更新后的小程序，按以下步骤验证：
+
+1. 从普通页面进入隐私页面，使用系统截屏，确认截图为黑屏。
+2. 返回未启用该配置的上一页，再次截屏，确认截图正常。
+3. 再次进入隐私页面截屏，确认仍为黑屏。
+
+能力广场的演示入口为「屏幕 → screenShotForbidden → 运行」，对应 `pages/privacy-demo/index`。
+
+---
+
 ## 服务端 API 调用
 
 千岛小程序通过 `fetch` + Gateway 获取业务数据（SPU、帖子、交易等），详细接口文档见 [api-guide.md](./api-guide.md)。
