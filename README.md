@@ -222,7 +222,7 @@ claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/m
 3. 安装依赖 → pnpm install
 4. 开发调试 → pnpm run dev
 5. 打包构建 → qdmp build（发布时必须使用 qdmp build）
-6. 登录账号 → 先用 `qdmp getMe` 检查；未登录时在交互终端单独执行 `qdmp login`
+6. 登录账号 → 执行需要登录的 `qdmp` 命令；未登录时自动提供扫码、登录 URL、账号密码三种方式
 7. 上传部署 → 自动总结本次改动并执行 `qdmp-cli upload --description "<版本描述>"`
 ```
 
