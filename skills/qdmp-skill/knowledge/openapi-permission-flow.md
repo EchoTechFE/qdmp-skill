@@ -73,7 +73,7 @@ GET /qdmp-web/v1/developer/capabilities?app_id=<appId>&type=openapi&offset=<offs
 - `noPermissionRequiredResourceIds`：无需申请；
 - `unavailableResourceIds`：当前不可申请，必须在交付中提示。
 
-未登录时，提示用户在可交互终端运行 `qdmp login`，不要代填账号密码。登录完成后重试生成命令。
+未登录时，可交互终端由 CLI 自动提供扫码登录、手动登录 URL 或账号密码三种方式，完成后继续生成命令；非交互环境需预先设置 `QDMP_TOKEN`，否则输出错误并退出。不要代填或索取账号密码。
 
 ## 4. 16 位 queryKey 契约
 
