@@ -510,12 +510,62 @@ const res = await qd.uploadFile({
 
 ### qd.downloadFile — 下载文件
 
+`qd.downloadFile` 将 HTTP/HTTPS 文件下载到本地临时目录。API 名称严格写作 `downloadFile`（小写 `d`），不要写成 `downLoadFile`。能力广场标记该能力从 SDK 1.0.0 起支持 Android、iOS、Harmony 和 Web。
+
+| 参数 | 类型 | 必填 | 说明 |
+| ---- | ---- | ---- | ---- |
+| `url` | `string` | 是 | HTTP 或 HTTPS 文件地址 |
+| `success` | `(res: DownloadFileResult) => void` | 否 | 原生下载成功后的最终结果 |
+| `fail` | `BridgeFailCallback` | 否 | 下载失败回调 |
+| `complete` | `BridgeCompleteCallback` | 否 | 调用结束回调 |
+
+成功结果中的本地路径以运行端实际返回为准。能力广场会同时兼容读取 `tempFilePath` 和 `filePath`，业务代码也应优先使用 `tempFilePath`，并以 `filePath` 作为兼容回退：
+
 ```js
-const res = await qd.downloadFile({
-  url: 'https://example.com/file.png'
+qd.downloadFile({
+  url: 'https://example.com/file.png',
+  success(res) {
+    const localPath = res.tempFilePath || res.filePath
+    if (!localPath) {
+      console.error('下载结果未包含本地文件路径:', res)
+      return
+    }
+    console.log('文件已下载到:', localPath)
+  },
+  fail(err) {
+    console.error('下载失败:', err)
+  },
 })
-console.log(res.tempFilePath)
 ```
+
+该接口的同步返回值可能是带 `abort()` 的 `DownloadTask` 句柄，也可能是 Promise 或 `undefined`。`DownloadTask` 只代表任务已创建，Promise 也可能只表示调用已派发；二者都不能单独证明原生下载已经完成。需要取消下载时保留任务句柄并调用 `abort()`，最终成功或失败仍以 `success` / `fail`（或明确返回最终下载结果的 Promise）为准：
+
+```js
+let downloadTask
+
+function startDownload(url) {
+  downloadTask = qd.downloadFile({
+    url,
+    success(res) {
+      downloadTask = null
+      console.log(res.tempFilePath || res.filePath)
+    },
+    fail(err) {
+      downloadTask = null
+      console.error(err)
+    },
+  })
+}
+
+function cancelDownload() {
+  if (downloadTask && typeof downloadTask.abort === 'function') {
+    downloadTask.abort()
+  }
+  downloadTask = null
+}
+```
+
+页面离开时若不再需要本次下载，应调用 `abort()`（若运行端返回了可中止任务），并忽略随后到达的旧回调。不要仅因调用超时就假定原生任务已经停止。
 
 ### qd.connectSocket — WebSocket 连接
 
@@ -796,6 +846,95 @@ bgAudio.src = 'https://example.com/bg-audio.mp3'
 ---
 
 ## 十、设备 (device)
+
+### 陀螺仪
+
+陀螺仪能力由四个 API 组成：
+
+| API | 调用方式 | 说明 |
+| --- | -------- | ---- |
+| `qd.onGyroscopeChange(listener)` | 传入监听函数 | 监听原始三轴数据变化，回调返回 `x`、`y`、`z` |
+| `qd.startGyroscope(options)` | 选项对象 | 开始感应；能力广场示例使用 `{ interval: 'ui' }` |
+| `qd.stopGyroscope(options)` | 选项对象 | 停止感应 |
+| `qd.offGyroscopeChange(listener)` | 传入原监听函数 | 解除本页面注册的监听 |
+
+能力广场当前将这四个 API 标记为“待验证”，没有声明确定的平台支持范围。业务代码调用前应逐项检查函数是否存在；缺少能力时保留主流程并给出非阻塞提示，不要假定所有端均已支持。
+
+先注册监听，再调用 `startGyroscope`，可以避免启动后第一帧到达时尚未挂载监听。`offGyroscopeChange` 必须传入注册时的同一个函数引用，因此不要用两个内容相同但引用不同的匿名函数注册和解绑：
+
+```js
+const requiredGyroscopeApis = [
+  'onGyroscopeChange',
+  'startGyroscope',
+  'stopGyroscope',
+  'offGyroscopeChange',
+]
+
+let gyroscopeState = 'idle'
+let gyroscopeRunId = 0
+
+function handleGyroscopeChange(frame) {
+  const { x, y, z } = frame || {}
+  console.log('陀螺仪原始数据:', x, y, z)
+}
+
+function startGyroscope() {
+  const supported = requiredGyroscopeApis.every(
+    name => typeof qd[name] === 'function',
+  )
+  if (!supported || gyroscopeState !== 'idle') return
+
+  const runId = ++gyroscopeRunId
+  gyroscopeState = 'starting'
+  qd.onGyroscopeChange(handleGyroscopeChange)
+  qd.startGyroscope({
+    interval: 'ui',
+    success() {
+      // 页面可能在启动结果返回前已经离开；晚到的成功仍要再次停止。
+      if (runId !== gyroscopeRunId) {
+        qd.stopGyroscope({})
+        return
+      }
+      gyroscopeState = 'running'
+    },
+    fail(err) {
+      if (runId !== gyroscopeRunId) return
+      qd.offGyroscopeChange(handleGyroscopeChange)
+      gyroscopeState = 'idle'
+      console.error('启动陀螺仪失败:', err)
+    },
+  })
+}
+
+function stopGyroscope() {
+  // 即使启动状态不确定，也尝试停止并解绑，避免监听泄漏。
+  gyroscopeRunId += 1
+  gyroscopeState = 'idle'
+  if (typeof qd.offGyroscopeChange === 'function') {
+    qd.offGyroscopeChange(handleGyroscopeChange)
+  }
+  if (typeof qd.stopGyroscope === 'function') {
+    qd.stopGyroscope({
+      fail(err) {
+        console.error('停止陀螺仪失败:', err)
+      },
+    })
+  }
+}
+```
+
+在 Taro/Vue 页面中，至少在页面隐藏和卸载时执行清理；同一个清理函数重复执行时应安全无副作用：
+
+```js
+import { onBeforeUnmount } from 'vue'
+import { useDidHide, useUnload } from '@tarojs/taro'
+
+useDidHide(stopGyroscope)
+useUnload(stopGyroscope)
+onBeforeUnmount(stopGyroscope)
+```
+
+回调中的 `x`、`y`、`z` 是原始值。若用于 UI 反馈，可以直接读取或映射这些值；若要表达设备姿态，不要仅凭示例直接把三轴值当作姿态角，应按实际产品算法另行换算、积分或校正。
 
 ### 剪贴板
 
