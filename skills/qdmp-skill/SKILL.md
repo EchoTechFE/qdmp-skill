@@ -7,7 +7,11 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
                 mcp__qdmp-gitlab__qdmp_gitlab_pipeline_status, mcp__qdmp-gitlab__qdmp_gitlab_pipeline_logs,
                 mcp__qdmp-gitlab__qdmp_gitlab_rollback, mcp__qdmp-gitlab__qdmp_gitlab_init_repo,
                 mcp__qdmp-gitlab__qdmp_gitlab_repo_exists, mcp__qdmp-aliyun__qdmp_k8s_deployed_version,
-                mcp__qdmp-aliyun__qdmp_k8s_logs]
+                mcp__qdmp-aliyun__qdmp_k8s_logs,
+                mcp__agent-runtime-telemetry__grant_consent, mcp__agent-runtime-telemetry__consent_status,
+                mcp__agent-runtime-telemetry__register_project, mcp__agent-runtime-telemetry__revoke_consent,
+                mcp__agent-runtime-telemetry__record_checkpoint, mcp__agent-runtime-telemetry__record_artifacts,
+                mcp__agent-runtime-telemetry__record_skill_event, mcp__agent-runtime-telemetry__telemetry_status]
 ---
 
 # 千岛小程序开发助手（外部版）
@@ -24,8 +28,23 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | [backend-operations.md](./knowledge/backend-operations.md) | 后端操作详情：通用子流程 + 操作 1-7 的完整步骤                                            |
 | [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署                                                |
 | [prd-template.md](./knowledge/prd-template.md)             | PRD 模版：好的 PRD 应包含哪些内容 + 可直接使用的模版                                      |
+| [skill-data-consent.md](./references/skill-data-consent.md) | Skill 运行数据采集授权文案、项目范围和用户控制入口                                      |
 
 ---
+
+## Skill 运行数据采集授权入口
+
+涉及当前项目的开发、调试、部署、运维或 Skill 生命周期记录时，先读取 [Skill 数据采集授权文案](./references/skill-data-consent.md)。首次在当前项目触发本 skill 时，向用户展示“Agent 授权询问文案”，并等待用户明确回复“同意采集”或“不同意”。回复前不得调用遥测注册、Hook、MCP 记录或上传入口；回复“不同意”时继续提供 qdmp-skill 的正常能力，但不启动数据采集。
+
+授权只适用于系统识别出的当前项目。项目根目录按 QDMP 项目根目录、Git 仓库根目录或用户启用采集时注册的文件夹确定，子目录沿用该项目授权，其他项目必须重新询问。当前项目的授权控制入口为：
+
+- “同意采集”：调用遥测 MCP 的 `grant_consent`，传入当前项目 `cwd` 和协议版本；成功后再调用 `register_project`。
+- “关闭数据采集”：调用 `revoke_consent`，撤回事件成功上报前保持撤回流程，之后停止当前项目的采集。
+- “开启数据采集”：展示完整说明并再次取得“同意采集”，不得把历史同意状态当作新的明确授权。
+- “查看数据采集状态”：调用 `consent_status`，只返回当前项目状态。
+- “删除已收集的数据”：记录用户申请并转人工处理，不向用户承诺已删除，联系 `openqiandao@echo.tech`。
+
+即使用户要求 Agent 访问项目外内容，仍须遵守当前项目采集边界；工具调用参数和结果可能进入当前项目运行记录，文案中的敏感信息提示必须一并展示。
 
 ## 规范依赖
 
@@ -251,6 +270,8 @@ qd.navigateTo({
 
 ## 命令速查
 
+Agent 对话中需要登录或用户要求登录时，先读 [Agent 对话登录](./knowledge/agent-login.md)，使用 `qdmp login --agent --env <prod|dev>`，立即将真实登录链接和 PNG 图片展示给用户，并保持命令等待登录结果。此入口不需要扫描/创建小程序项目或检查 PRD。
+
 | 命令                              | 说明                                                                          |
 | --------------------------------- | ----------------------------------------------------------------------------- |
 | `qdmp-cli list`                   | 查看可用模板                                                                  |
@@ -262,6 +283,7 @@ qd.navigateTo({
 | `qdmp build`                      | 打包构建（发布上传前必须使用）                                                |
 | `qdmp getMe`                      | 在项目目录检查 CLI 登录态；失效时自动提供扫码、登录 URL、账号密码三种方式 |
 | `qdmp login`                      | 主动打开三选一登录流程；扫码或 URL 登录成功后自动轮询并保存 Token |
+| `qdmp login --agent --env prod`   | Agent 登录：输出链接与 PNG 路径的 JSON 事件，等待浏览器回调或 App 扫码成功 |
 | `qdmp-cli upload -d "<版本描述>"` | 上传部署；skill 自动总结当前版本变化并传入描述                                |
 
 ## 常见问题
