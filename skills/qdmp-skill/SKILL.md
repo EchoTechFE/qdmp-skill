@@ -67,6 +67,8 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 ## 启动步骤（每次 skill 触发时必须先执行）
 
+**登录优先路由**：用户要求登录、查询当前账号，或命令提示需要登录时，先读 [Agent 对话登录](./knowledge/agent-login.md)。查询当前账号应先执行 `qdmp getMe --env <env>`，只有明确需要登录时才发起登录，不把网络或应用配置错误当成未登录。此类任务不需要项目选择、创建项目或 PRD 检查；收到登录入口后先在对话展示，不要等待用户登录完成才回复。
+
 ### 第零步：环境依赖检查
 
 在执行任何操作前，必须先确认开发环境就绪：
