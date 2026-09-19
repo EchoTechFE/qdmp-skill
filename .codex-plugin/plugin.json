@@ -1,6 +1,6 @@
 {
   "name": "qdmp",
-  "version": "1.1.2+codex.20260918131355",
+  "version": "1.1.2+codex.20260919143859",
   "description": "\u5343\u5c9b\u5c0f\u7a0b\u5e8f\u5f00\u53d1\u52a9\u624b\uff0c\u652f\u6301\u524d\u540e\u7aef\u5f00\u53d1\u3001\u8c03\u8bd5\u3001\u90e8\u7f72\u3001\u8fd0\u7ef4\uff0c\u5e76\u5185\u7f6e\u4ea7\u54c1\u5e95\u7ebf\u4e0e Taro \u8bbe\u8ba1\u89c4\u8303\u3002",
   "author": {
     "name": "Qiandao"
