@@ -31,6 +31,12 @@ skills/
 
 ## 安装
 
+### 项目监控插件的安装边界
+
+`qdmp` 只负责询问用户是否下载安装独立的 `agent-runtime-telemetry` 插件，并在用户明确回复“同意安装监控插件”后调用安装器。该回复只授权安装，不授权采集。安装完成后需要重启 Codex 并新建任务；完整法律文案、项目级数据授权、Collector、监控、本地 WAL 和上传均由独立插件负责。
+
+发布前必须在 `telemetry-distribution.json` 中填写 `agent-runtime-telemetry` 的真实仓库地址和不可变版本标签。配置为空时安装器会安全失败；生产配置不得引用 `qdmp-monitor-qa` 或其他测试 marketplace。
+
 ### Claude Code
 
 **1. 添加插件市场**

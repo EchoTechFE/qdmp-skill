@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "qdmp-monitor-bootstrap": {
+      "command": "node",
+      "args": ["./scripts/monitor-bootstrap.mjs"],
+      "cwd": "."
+    }
+  }
+}

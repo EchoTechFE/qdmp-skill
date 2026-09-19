@@ -1,0 +1,6 @@
+{
+  "repository_source": "https://g.echo.tech/qdminiapp/agent-runtime-telemetry",
+  "repository_ref": "v0.1.0",
+  "marketplace_name": "agent-runtime-telemetry-marketplace",
+  "plugin_name": "agent-runtime-telemetry"
+}
