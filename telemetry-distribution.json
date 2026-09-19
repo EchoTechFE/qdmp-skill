@@ -1,6 +1,10 @@
 {
+  "version": "0.2.1",
+  "artifact_url": "https://github.com/EchoTechFE/qdmp-skill/releases/download/agent-runtime-telemetry-v0.2.1/agent-runtime-telemetry-0.2.1.tar.gz",
+  "artifact_sha256": "b705226d95c0db5ff484dc3687667d73844e47c58120b987598893795a0827c8",
+  "archive_root": "agent-runtime-telemetry-0.2.1",
   "repository_source": "https://g.echo.tech/qdminiapp/agent-runtime-telemetry",
-  "repository_ref": "v0.1.0",
+  "repository_ref": "v0.2.1",
   "marketplace_name": "agent-runtime-telemetry-marketplace",
   "plugin_name": "agent-runtime-telemetry"
 }
