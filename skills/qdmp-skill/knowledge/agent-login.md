@@ -5,7 +5,7 @@
 ## 调用与展示
 
 1. 按用户指定或当前操作选择环境：生产 `prod`，开发 `dev`；没有指定时沿用 CLI 默认 `prod`。先检查 `qdmp login --help` 是否包含 `--agent`。旧版缺少该参数时说明需要更新 CLI，不能假装已提供图片登录。
-2. 单独执行 `qdmp login --agent --env prod`（开发改为 `dev`）。无需 TTY，无需选择登录方式。使用能保留运行进程并增量读取输出的命令工具；首次等待设为约 1 秒，获取运行会话 ID 后继续读取。不要与上传等命令串联。
+2. 单独执行 `qdmp login --agent --env prod`（开发改为 `dev`）。无需 TTY，无需选择登录方式。按下面的「工具执行方式」启动并读取输出，不要与上传等命令串联。该命令会一直等待用户登录；用同步调用等它结束，用户就拿不到登录入口。
 3. stdout 为每行一条 JSON（NDJSON）。收到 `type: "ready"` 后立即向用户展示 `markdown` 中的链接和图片，不要等命令结束。CLI stdout 本身不会自动成为聊天图片，需要 Agent 在回复中渲染。
 
    展示格式（字段均取自本次真实返回值，不使用占位链接）：
@@ -21,6 +21,25 @@
 5. 收到 `type: "success"` 且命令正常退出才确认登录完成，再重试原先已获用户授权的命令。`getMe` 还会检查应用配置，缺少 appId 的错误不等于登录失败。
 
 `ready` 包含 `env`、`loginUrl`、`qrImagePath`、`expiresAt`、`message` 和 `markdown`。`expiresAt` 是 CLI 最长等待截止时间（默认 2 分钟），二维码也可能提前失效。链接使用开放平台 `/login` 的回调登录；图片编码的是千岛 App 的扫码确认地址，两者不是同一个 URL。不要把图片中的 `qiandao.com/login/scanning/confirm` 当作浏览器登录页。
+
+## 工具执行方式
+
+按当前宿主实际提供的工具选择，不要把一种工具的参数传给另一种工具：
+
+| 工具能力 | 启动和读取方式 |
+| --- | --- |
+| Codex `exec_command` / `write_stdin` | 启动时设置 `yield_time_ms: 1000`，保留返回的 `session_id`；若还没有 `ready`，用 `write_stdin` 短暂读取同一会话。拿到 `ready` 先回复用户，再检查后续结果。 |
+| Claude Code `Bash` 后台任务 | 启动时设置 `run_in_background: true`，保留任务 ID 和输出文件路径；用 `Read` 读取输出文件中的 `ready`。此时不要调用阻塞等待完成的 `TaskOutput`；展示入口后再用非阻塞查询（支持时 `block: false`）检查结果。 |
+
+例如 Claude Code 的 Bash 参数（仅适用于该工具）：
+
+```json
+{"command":"qdmp login --agent --env prod","run_in_background":true}
+```
+
+`timeout` 是命令的最长运行时间，不等于提前返回输出；不要仅设置短 `timeout`，也不要长时间同步等待。工具不支持保留后台进程或读取运行中输出时，说明限制，不假装已提供可用登录入口。
+
+拿到 `ready` 的这一轮就展示链接、图片、环境及“浏览器登录或千岛 App 扫码”的说明，不要先持续轮询至成功/超时。展示后保持进程存活；宿主允许继续工作时检查同一任务并反馈结果，否则请用户操作后回复再检查。不要为检查状态新建登录会话。
 
 ## 结果与异常
 
