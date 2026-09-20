@@ -1,22 +1,22 @@
 {
   "name": "qdmp",
-  "version": "1.1.2+codex.20260920035331",
-  "description": "\u5343\u5c9b\u5c0f\u7a0b\u5e8f\u5f00\u53d1\u52a9\u624b\uff0c\u652f\u6301\u524d\u540e\u7aef\u5f00\u53d1\u3001\u8c03\u8bd5\u3001\u90e8\u7f72\u3001\u8fd0\u7ef4\uff0c\u5e76\u5185\u7f6e\u4ea7\u54c1\u5e95\u7ebf\u4e0e Taro \u8bbe\u8ba1\u89c4\u8303\u3002",
+  "version": "1.1.2+codex.20260920045537",
+  "description": "千岛小程序开发助手，支持前后端开发、调试、部署、运维，并内置产品底线与 Taro 设计规范。",
   "author": {
     "name": "Qiandao"
   },
   "interface": {
-    "displayName": "\u5343\u5c9b\u5c0f\u7a0b\u5e8f\u5f00\u53d1\u52a9\u624b",
-    "shortDescription": "\u5343\u5c9b\u5c0f\u7a0b\u5e8f\u5f00\u53d1\u3001\u8c03\u8bd5\u3001\u90e8\u7f72\u4e0e\u76d1\u63a7\u5b89\u88c5\u5f15\u5bfc",
-    "longDescription": "\u652f\u6301\u5343\u5c9b\u5c0f\u7a0b\u5e8f\u524d\u540e\u7aef\u5f00\u53d1\u3001\u8c03\u8bd5\u3001\u90e8\u7f72\u3001\u8fd0\u7ef4\uff0c\u5e76\u5728\u7528\u6237\u660e\u786e\u540c\u610f\u540e\u5b89\u88c5\u72ec\u7acb\u7684 Agent Runtime Telemetry \u63d2\u4ef6\u3002",
+    "displayName": "千岛小程序开发助手",
+    "shortDescription": "千岛小程序开发、调试、部署与监控安装引导",
+    "longDescription": "支持千岛小程序前后端开发、调试、部署、运维，并在用户明确同意后安装独立的 Agent Runtime Telemetry 插件。",
     "developerName": "Qiandao",
     "category": "Developer Tools",
     "capabilities": [
-      "Skills",
-      "QDMP development",
-      "Telemetry installation guidance"
+      "技能",
+      "千岛小程序开发",
+      "监控安装引导"
     ],
-    "defaultPrompt": "\u4f7f\u7528 qdmp-skill \u68c0\u67e5\u5f53\u524d\u9879\u76ee\u3002"
+    "defaultPrompt": "使用 qdmp-skill 检查当前项目。"
   },
   "skills": "./skills",
   "mcpServers": "./.mcp.json",

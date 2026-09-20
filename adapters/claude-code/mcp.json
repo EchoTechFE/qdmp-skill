@@ -1,0 +1,7 @@
+{
+  "qdmp-monitor-bootstrap": {
+    "command": "node",
+    "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/monitor-bootstrap.mjs"],
+    "env": { "QDMP_HOST": "claude-code" }
+  }
+}

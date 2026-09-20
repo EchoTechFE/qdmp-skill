@@ -10,6 +10,12 @@ import { fileURLToPath } from "node:url";
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DISTRIBUTION_FILE = path.join(PLUGIN_ROOT, "telemetry-distribution.json");
 const MAX_ARTIFACT_BYTES = 20 * 1024 * 1024;
+const SUPPORTED_HOSTS = new Set(["codex", "claude-code", "qoder"]);
+const HOST_LABELS = {
+  codex: "Codex",
+  "claude-code": "Claude Code",
+  qoder: "Qoder"
+};
 
 function canonicalRoot(candidate) {
   const resolved = path.resolve(candidate || process.cwd());
@@ -29,7 +35,23 @@ function atomicWriteJson(file, value) {
   fs.chmodSync(file, 0o600);
 }
 
-function receiptFile(projectRoot, homeDir = os.homedir()) {
+export function detectHost(args = {}, options = {}) {
+  const env = options.env ?? process.env;
+  const requested = args.host || options.host || env.QDMP_HOST
+    || (env.QODER_PLUGIN_ROOT ? "qoder" : "")
+    || (env.CLAUDE_PLUGIN_ROOT ? "claude-code" : "")
+    || "codex";
+  if (!SUPPORTED_HOSTS.has(requested)) throw new Error(`unsupported telemetry installation host: ${requested}`);
+  return requested;
+}
+
+function receiptFile(projectRoot, homeDir = os.homedir(), host = "codex") {
+  const root = canonicalRoot(projectRoot);
+  const id = crypto.createHash("sha256").update(`${root}\0${host}`).digest("hex").slice(0, 32);
+  return { root, file: path.join(homeDir, ".qdmp-skill", "telemetry-install", `${id}.json`) };
+}
+
+function legacyReceiptFile(projectRoot, homeDir = os.homedir()) {
   const root = canonicalRoot(projectRoot);
   const id = crypto.createHash("sha256").update(root).digest("hex").slice(0, 32);
   return { root, file: path.join(homeDir, ".qdmp-skill", "telemetry-install", `${id}.json`) };
@@ -58,7 +80,7 @@ function distribution(overrides = {}) {
 }
 
 function commandResult(command, args, options = {}) {
-  const result = (options.spawn ?? spawnSync)(command, args, { encoding: "utf8", env: process.env });
+  const result = (options.spawn ?? spawnSync)(command, args, { encoding: "utf8", env: options.env ?? process.env });
   if (result.error) throw result.error;
   if (result.status !== 0) {
     const detail = String(result.stderr || result.stdout || `exit ${result.status}`).trim();
@@ -68,9 +90,10 @@ function commandResult(command, args, options = {}) {
   try { return text ? JSON.parse(text) : {}; } catch { return { output: text }; }
 }
 
-function marketplaceEntry(command, expectedName, options = {}) {
+function marketplaceEntry(command, expectedName, host, options = {}) {
   const listed = commandResult(command, ["plugin", "marketplace", "list", "--json"], options);
-  return listed.marketplaces?.find((candidate) => candidate.name === expectedName) ?? null;
+  const marketplaces = Array.isArray(listed) ? listed : listed.marketplaces ?? [];
+  return marketplaces.find((candidate) => candidate.name === expectedName) ?? null;
 }
 
 function sameSource(actual, expected) {
@@ -78,21 +101,58 @@ function sameSource(actual, expected) {
   return actual === expected || canonicalRoot(actual) === canonicalRoot(expected);
 }
 
-function ensureMarketplace(command, release, source, options = {}) {
-  const entry = marketplaceEntry(command, release.marketplace_name, options);
-  const previousSource = entry?.marketplaceSource?.source || "";
+function entrySource(entry) {
+  return entry?.marketplaceSource?.source || entry?.path || entry?.repo || "";
+}
+
+function pluginCliProfile(host) {
+  if (host === "codex") return { install: "add", mutationJson: true };
+  if (host === "claude-code" || host === "qoder") return { install: "install", mutationJson: false };
+  throw new Error(`unsupported plugin CLI host: ${host}`);
+}
+
+function ensureMarketplace(command, release, source, host, options = {}) {
+  const profile = pluginCliProfile(host);
+  const entry = marketplaceEntry(command, release.marketplace_name, host, options);
+  const previousSource = entrySource(entry);
   if (entry && sameSource(previousSource, source)) return;
-  if (entry) commandResult(command, ["plugin", "marketplace", "remove", release.marketplace_name, "--json"], options);
+  if (entry) {
+    const removeArgs = ["plugin", "marketplace", "remove", release.marketplace_name];
+    if (profile.mutationJson) removeArgs.push("--json");
+    commandResult(command, removeArgs, options);
+  }
   try {
-    const addArgs = ["plugin", "marketplace", "add", source, "--json"];
-    if (!release.artifact_url && release.repository_ref) addArgs.push("--ref", release.repository_ref);
+    const addArgs = ["plugin", "marketplace", "add", source];
+    if (profile.mutationJson) addArgs.push("--json");
+    if (host === "codex" && !release.artifact_url && release.repository_ref) addArgs.push("--ref", release.repository_ref);
     commandResult(command, addArgs, options);
   } catch (error) {
     if (previousSource) {
-      try { commandResult(command, ["plugin", "marketplace", "add", previousSource, "--json"], options); } catch {}
+      const restoreArgs = ["plugin", "marketplace", "add", previousSource];
+      if (profile.mutationJson) restoreArgs.push("--json");
+      try { commandResult(command, restoreArgs, options); } catch {}
     }
     throw error;
   }
+}
+
+function installPluginCli(command, release, source, host, options = {}) {
+  const profile = pluginCliProfile(host);
+  ensureMarketplace(command, release, source, host, options);
+  const args = ["plugin", profile.install, `${release.plugin_name}@${release.marketplace_name}`];
+  if (profile.mutationJson) args.push("--json");
+  return commandResult(command, args, options);
+}
+
+function installDesktopMcp(command, release, source, host, options = {}) {
+  if (!['qoder'].includes(host)) throw new Error(`${HOST_LABELS[host] || host} desktop MCP installation is not supported`);
+  const definition = {
+    name: release.plugin_name,
+    command: options.nodeCommand || process.execPath,
+    args: [path.join(source, "scripts", "mcp.mjs")],
+    env: { ART_HOST: host }
+  };
+  return commandResult(command, ["--add-mcp", JSON.stringify(definition)], options);
 }
 
 function validateArchiveListing(text, expectedRoot) {
@@ -124,11 +184,47 @@ function rejectExtractedLinks(root) {
 }
 
 function validateExtractedPlugin(pluginRoot, release) {
-  const plugin = readJson(path.join(pluginRoot, ".codex-plugin", "plugin.json"), null);
-  const marketplace = readJson(path.join(pluginRoot, ".codex-plugin", "marketplace.json"), null);
-  if (plugin?.name !== release.plugin_name) throw new Error("telemetry artifact contains an unexpected plugin");
-  if (plugin?.version !== release.version) throw new Error(`telemetry artifact version ${plugin?.version || "missing"} does not match ${release.version}`);
-  if (marketplace?.name !== release.marketplace_name) throw new Error("telemetry artifact contains an unexpected marketplace");
+  const manifests = [
+    ".codex-plugin/plugin.json",
+    ".qoder-plugin/plugin.json",
+    ".claude-plugin/plugin.json",
+    ".cursor-plugin/plugin.json",
+    ".codebuddy-plugin/plugin.json",
+    ".workbuddy-plugin/plugin.json"
+  ];
+  for (const relative of manifests) {
+    const plugin = readJson(path.join(pluginRoot, relative), null);
+    if (plugin?.name !== release.plugin_name) throw new Error(`telemetry artifact contains an unexpected plugin in ${relative}`);
+    if (plugin?.version !== release.version) throw new Error(`telemetry artifact version ${plugin?.version || "missing"} in ${relative} does not match ${release.version}`);
+  }
+  for (const relative of [".agents/plugins/marketplace.json", ".codex-plugin/marketplace.json"]) {
+    const marketplace = readJson(path.join(pluginRoot, relative), null);
+    if (marketplace?.name !== release.marketplace_name) throw new Error(`telemetry artifact contains an unexpected marketplace in ${relative}`);
+  }
+}
+
+function ensureHostMarketplaceFiles(pluginRoot, release) {
+  const manifest = {
+    name: release.marketplace_name,
+    metadata: { description: "Agent Runtime Telemetry 多宿主插件市场。" },
+    owner: { name: "Agent Runtime Telemetry Team" },
+    plugins: [{
+      name: release.plugin_name,
+      source: "./",
+      description: "项目级 Agent 与 Skill 运行数据授权、采集、脱敏和上报插件。",
+      author: { name: "Agent Runtime Telemetry Team" },
+      category: "developer-tools",
+      tags: ["telemetry", "monitoring", "consent", "qdmp"]
+    }]
+  };
+  for (const relative of [".claude-plugin/marketplace.json", ".qoder-plugin/marketplace.json"]) {
+    const file = path.join(pluginRoot, relative);
+    if (!fs.existsSync(file)) atomicWriteJson(file, manifest);
+    const marketplace = readJson(file, null);
+    if (marketplace?.name !== release.marketplace_name || !marketplace.plugins?.some((entry) => entry.name === release.plugin_name)) {
+      throw new Error(`invalid derived marketplace: ${relative}`);
+    }
+  }
 }
 
 export async function prepareTelemetryArtifact(release, options = {}) {
@@ -142,6 +238,7 @@ export async function prepareTelemetryArtifact(release, options = {}) {
   const finalRoot = path.join(cacheRoot, `${release.version}-${release.artifact_sha256.slice(0, 12)}`);
   if (fs.existsSync(finalRoot)) {
     validateExtractedPlugin(finalRoot, release);
+    ensureHostMarketplaceFiles(finalRoot, release);
     return { plugin_root: finalRoot, cached: true };
   }
 
@@ -175,6 +272,7 @@ export async function prepareTelemetryArtifact(release, options = {}) {
     const pluginRoot = path.join(extractRoot, release.archive_root);
     rejectExtractedLinks(pluginRoot);
     validateExtractedPlugin(pluginRoot, release);
+    ensureHostMarketplaceFiles(pluginRoot, release);
     fs.mkdirSync(cacheRoot, { recursive: true, mode: 0o700 });
     fs.renameSync(pluginRoot, finalRoot);
     atomicWriteJson(path.join(finalRoot, ".qdmp-distribution.json"), {
@@ -189,9 +287,13 @@ export async function prepareTelemetryArtifact(release, options = {}) {
   }
 }
 
-export function telemetryInstallStatus({ cwd, homeDir = os.homedir() } = {}) {
-  const target = receiptFile(cwd, homeDir);
-  return { project_root: target.root, receipt: readJson(target.file, null) };
+export function telemetryInstallStatus(args = {}, options = {}) {
+  const homeDir = args.homeDir ?? options.homeDir ?? os.homedir();
+  const host = detectHost(args, options);
+  const target = receiptFile(args.cwd, homeDir, host);
+  let receipt = readJson(target.file, null);
+  if (!receipt && host === "codex") receipt = readJson(legacyReceiptFile(args.cwd, homeDir).file, null);
+  return { project_root: target.root, host, receipt };
 }
 
 export function resolveCodexCommand(options = {}) {
@@ -210,14 +312,46 @@ export function resolveCodexCommand(options = {}) {
     ?? "codex";
 }
 
+function commandExists(command, options = {}) {
+  if (options.commandExists) return options.commandExists(command);
+  if (path.isAbsolute(command)) return (options.existsSync ?? fs.existsSync)(command);
+  const checked = (options.spawn ?? spawnSync)(command, ["--version"], { encoding: "utf8", env: options.env ?? process.env });
+  return !checked.error && checked.status === 0;
+}
+
+export function resolveHostInstaller(host, options = {}) {
+  if (options.hostInstaller) return options.hostInstaller;
+  if (host === "codex") return { host, mode: "plugin_cli", command: resolveCodexCommand(options) };
+  if (host === "claude-code") {
+    const command = options.claudeCommand || (options.env ?? process.env).CLAUDE_CLI_PATH || "claude";
+    return { host, mode: "plugin_cli", command };
+  }
+  if (host === "qoder") {
+    const env = options.env ?? process.env;
+    const cli = options.qoderCliCommand || env.QODER_CLI_PATH || "qoderclicn";
+    if (commandExists(cli, options)) return { host, mode: "plugin_cli", command: cli };
+    const homeDir = options.homeDir ?? os.homedir();
+    const exists = options.existsSync ?? fs.existsSync;
+    const candidates = (options.platform ?? process.platform) === "darwin" ? [
+      "/Applications/Qoder IDE.app/Contents/Resources/app/bin/qoder",
+      path.join(homeDir, "Applications", "Qoder IDE.app", "Contents", "Resources", "app", "bin", "qoder")
+    ] : [];
+    const desktop = candidates.find((candidate) => exists(candidate));
+    if (desktop) return { host, mode: "desktop_mcp", command: desktop };
+    throw new Error("Qoder installer unavailable: install Qoder Desktop or qoderclicn");
+  }
+  throw new Error(`unsupported telemetry installation host: ${host}`);
+}
+
 export async function installTelemetry(args = {}, options = {}) {
   if (args.accepted !== true) throw new Error("explicit installation consent is required");
-  const target = receiptFile(args.cwd, options.homeDir);
+  const host = detectHost(args, options);
+  const target = receiptFile(args.cwd, options.homeDir, host);
   const release = options.distribution ?? distribution(args);
   if (!release.artifact_url && !release.repository_source) {
     throw new Error("agent-runtime-telemetry distribution is not configured");
   }
-  const command = resolveCodexCommand(options);
+  const installer = resolveHostInstaller(host, options);
   const receipt = {
     schema_version: "1.0",
     status: "installing",
@@ -225,6 +359,9 @@ export async function installTelemetry(args = {}, options = {}) {
     accepted: true,
     accepted_at: new Date().toISOString(),
     agreement: "install_project_monitor",
+    host,
+    host_label: HOST_LABELS[host],
+    installer_mode: installer.mode,
     distribution_mode: release.artifact_url ? "verified_artifact" : "git_repository",
     version: release.version || null,
     artifact_url: release.artifact_url || null,
@@ -238,9 +375,18 @@ export async function installTelemetry(args = {}, options = {}) {
   try {
     const prepared = release.artifact_url ? await prepareTelemetryArtifact(release, options) : null;
     const source = prepared?.plugin_root || release.repository_source;
-    ensureMarketplace(command, release, source, options);
-    const installed = commandResult(command, ["plugin", "add", `${release.plugin_name}@${release.marketplace_name}`, "--json"], options);
-    const completed = { ...receipt, status: "installed_restart_required", installed_at: new Date().toISOString(), local_source: source, artifact_cached: prepared?.cached ?? null };
+    const installed = installer.mode === "plugin_cli"
+      ? installPluginCli(installer.command, release, source, host, options)
+      : installDesktopMcp(installer.command, release, source, host, options);
+    const completed = {
+      ...receipt,
+      status: "installed_restart_required",
+      installed_at: new Date().toISOString(),
+      local_source: source,
+      artifact_cached: prepared?.cached ?? null,
+      restart_host: HOST_LABELS[host],
+      activation: installer.mode === "desktop_mcp" ? "qdmp_telemetry_tools_after_restart" : "tracked_domain_work_after_restart"
+    };
     atomicWriteJson(target.file, completed);
     return { ...completed, restart_required: true, install_result: installed };
   } catch (error) {
@@ -253,12 +399,12 @@ const TOOLS = [
   {
     name: "telemetry_install_status",
     description: "Read the project-scoped Agent Runtime Telemetry installation authorization and result.",
-    inputSchema: { type: "object", properties: { cwd: { type: "string" } }, required: ["cwd"] }
+    inputSchema: { type: "object", properties: { cwd: { type: "string" }, host: { type: "string", enum: ["codex", "claude-code", "qoder"] } }, required: ["cwd"] }
   },
   {
     name: "install_telemetry",
     description: "Install Agent Runtime Telemetry only after explicit installation consent. This does not grant data collection consent.",
-    inputSchema: { type: "object", properties: { cwd: { type: "string" }, accepted: { type: "boolean" }, repository_source: { type: "string" }, repository_ref: { type: "string" }, artifact_url: { type: "string" }, artifact_sha256: { type: "string" } }, required: ["cwd", "accepted"] }
+    inputSchema: { type: "object", properties: { cwd: { type: "string" }, accepted: { type: "boolean" }, host: { type: "string", enum: ["codex", "claude-code", "qoder"] }, repository_source: { type: "string" }, repository_ref: { type: "string" }, artifact_url: { type: "string" }, artifact_sha256: { type: "string" } }, required: ["cwd", "accepted"] }
   }
 ];
 

@@ -6,6 +6,7 @@
   "author": {
     "name": "Qiandao"
   },
+  "mcpServers": "./adapters/claude-code/mcp.json",
   "keywords": [
     "qdmp",
     "qiandao",

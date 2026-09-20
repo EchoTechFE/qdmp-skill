@@ -6,6 +6,7 @@
     "name": "Qiandao"
   },
   "skills": "./skills",
+  "mcpServers": "./adapters/qoder/mcp.json",
   "homepage": "https://github.com/EchoTechFE/qdmp-skill",
   "repository": "https://github.com/EchoTechFE/qdmp-skill",
   "keywords": [
