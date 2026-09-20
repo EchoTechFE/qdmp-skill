@@ -140,6 +140,8 @@ questions:
 
 ### 第三步：PRD 检查（仅开发意图时执行）
 
+开发前必须先执行 [依赖栈兜底检查（不通过必须停止）](./knowledge/project-workflows.md#依赖栈兜底检查不通过必须停止)，新建和已有项目均适用。命中 `echo-effuse`、`flyio` 或 `tailwindcss` 即判定为 1.0 工程，停止开发并确认是否迁移，禁止在 2.0 代码里混用 effuse、flyio 或 Tailwind。
+
 **判断用户意图**：若当前请求属于以下开发类意图，执行 PRD 检查；否则跳过直接进入操作路由。
 
 开发类意图（需检查 PRD）：
@@ -281,7 +283,7 @@ Agent 对话中需要登录或用户要求登录时，先读 [Agent 对话登录
 | 命令                              | 说明                                                                          |
 | --------------------------------- | ----------------------------------------------------------------------------- |
 | `qdmp-cli list`                   | 查看可用模板                                                                  |
-| `qdmp-cli create <name>`          | 创建项目                                                                      |
+| `qdmp-cli create <项目名> -t default` | 创建 2.0 项目；创建后必须通过模板自检和依赖栈检查                              |
 | `qdmp-cli init -a <id>`           | 关联小程序                                                                    |
 | `pnpm install`                    | 安装依赖                                                                      |
 | `pnpm run dev`                    | 开发模式                                                                      |
@@ -291,6 +293,8 @@ Agent 对话中需要登录或用户要求登录时，先读 [Agent 对话登录
 | `qdmp login`                      | 主动打开三选一登录流程；扫码或 URL 登录成功后自动轮询并保存 Token |
 | `qdmp login --agent --env prod`   | Agent 登录：输出链接与 PNG 路径的 JSON 事件，等待浏览器回调或 App 扫码成功 |
 | `qdmp-cli upload -d "<版本描述>"` | 上传部署；skill 自动总结当前版本变化并传入描述                                |
+
+创建命令禁止省略 `-t`（CLI ≤0.1.11、0.1.13、0.1.15 的默认模板就是 1.0）；禁止使用 `-t qdmp`（指向 `frontend/miniapp-taro-template`，即 effuse 版 1.0）。创建后必须读取 `qdmp.json` 确认 `loader` 为 `EMP`，并确认模板信息没有「默认模版(1.0)」或 `miniapp-taro-template`；不通过就停止并报告，禁止手改配置硬转。完整步骤见 [创建项目](./knowledge/project-workflows.md#流程一创建项目)。
 
 ## 常见问题
 
