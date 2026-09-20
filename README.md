@@ -31,6 +31,12 @@ skills/
 
 ## 安装
 
+### 项目监控插件的安装边界
+
+`qdmp` 只负责询问用户是否下载安装独立的 `agent-runtime-telemetry` 插件，并在用户明确回复“同意安装监控插件”后调用安装器。该回复只授权安装，不授权采集。Bootstrap 会自动识别 Codex、Claude Code 或 Qoder，优先使用对应插件 CLI；只有 Qoder CLI 不可用时才通过 Qoder 桌面版写入 telemetry MCP。安装完成后需要重启返回结果指定的宿主并新建任务；完整法律文案、项目级数据授权、Collector、监控、本地 WAL 和上传均由独立插件负责。
+
+生产安装默认从 `telemetry-distribution.json` 指定的公开 HTTPS 制品地址下载固定版本，校验内置 SHA-256 后安全解压到用户目录，再通过本地 Marketplace 安装；用户不需要 GitLab 账号。私有 GitLab 仓库地址只保留为显式开发覆盖，生产配置不得引用 `qdmp-monitor-qa` 或其他测试 Marketplace。公开制品必须与 GitLab 发布流水线生成的 `.sha256` 完全一致。
+
 ### Claude Code
 
 **1. 添加插件市场**
@@ -112,6 +118,8 @@ qoderclicn plugin marketplace add EchoTechFE/qdmp-skill
 ```bash
 qoderclicn plugin install qdmp@qdmp-marketplace
 ```
+
+如果用户只安装了 Qoder 桌面版而没有 `qoderclicn`，qdmp 的监控 Bootstrap 会使用桌面应用内置命令注册 telemetry MCP；重启 Qoder 后再由 telemetry MCP 完成项目授权和 Hooks 初始化。
 
 **3. 使用**
 

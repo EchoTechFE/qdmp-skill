@@ -2,6 +2,7 @@
 name: qdmp-skill
 description: "千岛小程序开发助手（外部版），支持前后端的开发和部署。"
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
+                mcp__qdmp-monitor-bootstrap__telemetry_install_status, mcp__qdmp-monitor-bootstrap__install_telemetry,
                 mcp__qdmp-gitlab__qdmp_gitlab_list_versions, mcp__qdmp-gitlab__qdmp_gitlab_get_version,
                 mcp__qdmp-gitlab__qdmp_gitlab_diff, mcp__qdmp-gitlab__qdmp_gitlab_publish,
                 mcp__qdmp-gitlab__qdmp_gitlab_pipeline_status, mcp__qdmp-gitlab__qdmp_gitlab_pipeline_logs,
@@ -34,11 +35,14 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 ## Skill 运行数据采集授权入口
 
-涉及当前项目的开发、调试、部署、运维或 Skill 生命周期记录时，先读取 [Skill 数据采集授权文案](./references/skill-data-consent.md)。首次在当前项目触发本 skill 时，向用户展示“Agent 授权询问文案”，并等待用户明确回复“同意采集”或“不同意”。回复前不得调用遥测注册、Hook、MCP 记录或上传入口；回复“不同意”时继续提供 qdmp-skill 的正常能力，但不启动数据采集。
+涉及当前项目的开发、调试、部署、运维或 Skill 生命周期记录时，先调用 `telemetry_install_status` 检查当前项目、当前宿主的监控插件安装状态。Bootstrap 会从 Codex、Claude Code 或 Qoder 的插件环境自动识别宿主；只有调用方明确知道宿主时才传 `host`，不得猜测。未安装时读取 [项目级监控插件安装提示](./references/skill-data-consent.md)，只询问是否下载安装监控插件。只有用户明确回复“同意安装监控插件”后，才调用 `install_telemetry`，参数 `accepted` 必须为 `true`；拒绝、取消、无回复时继续提供 qdmp-skill 的正常能力，不安装任何监控组件。
+
+qdmp-skill 的安装授权不等于数据采集授权。安装成功后停止当前监控激活流程，根据返回的 `restart_host` 提示用户完全重启对应宿主并在当前项目中新建任务。若 `activation` 为 `tracked_domain_work_after_restart`，新任务中调用 `/agent-runtime-telemetry:tracked-domain-work`；若为 `qdmp_telemetry_tools_after_restart`（Qoder 桌面版无插件 CLI 的回退模式），新任务中再次调用 qdmp-skill，读取安装回执 `local_source` 下的 `docs/legal/skill-data-consent.md` 并完整展示授权说明。两种模式都必须等待用户明确回复“同意采集”或“不同意”。只有取得“同意采集”后，才能调用 telemetry MCP 的 `grant_consent` 和 `register_project`；`register_project` 成功后 Collector 才能启动采集和上报。
 
 授权只适用于系统识别出的当前项目。项目根目录按 QDMP 项目根目录、Git 仓库根目录或用户启用采集时注册的文件夹确定，子目录沿用该项目授权，其他项目必须重新询问。当前项目的授权控制入口为：
 
-- “同意采集”：调用遥测 MCP 的 `grant_consent`，传入当前项目 `cwd` 和协议版本；成功后再调用 `register_project`。
+- “同意安装监控插件”：仅调用 qdmp bootstrap 的 `install_telemetry`，不授予数据采集权限。
+- telemetry 安装后的“同意采集”：优先由 `/agent-runtime-telemetry:tracked-domain-work` 展示 telemetry 包内的法律文案；Qoder 桌面回退模式由 qdmp-skill 从安装回执的 `local_source` 读取同一份文案。随后调用遥测 MCP 的 `grant_consent`，成功后调用 `register_project`。
 - “关闭数据采集”：调用 `revoke_consent`，撤回事件成功上报前保持撤回流程，之后停止当前项目的采集。
 - “开启数据采集”：展示完整说明并再次取得“同意采集”，不得把历史同意状态当作新的明确授权。
 - “查看数据采集状态”：调用 `consent_status`，只返回当前项目状态。
