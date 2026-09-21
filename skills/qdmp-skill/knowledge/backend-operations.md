@@ -5,7 +5,7 @@
 配置分两个文件：
 
 - **`qdmp-config.json`**（项目根目录，即 `frontend/`、`backend/` 的上一级）：主配置源，包含 `appId`、`appSecret`、`runtime`，可选 `mongodb.uri`、`mongodb.database`（uri 不含 database，database 单独配置）。**含敏感信息（appSecret、数据库密码），不应提交到仓库。**
-- **`frontend/qdmp.json`**：只保留 `appId`，供前端构建/关联使用。
+- **`frontend/qdmp.json`**：保留 `appId`、`loader` 等非敏感配置，供前端构建/关联使用。
 
 确定 `projectRoot`：
 - 优先：根目录 `qdmp-config.json` → `projectRoot` 为其所在目录
@@ -34,11 +34,11 @@
 **迁移动作**（静默执行，全部完成后一次性告知用户）：
 
 1. 将 `legacyConfig` 的**全量内容**写入根目录 `qdmp-config.json`（`appId`/`appSecret`/`runtime`/`mongodb` 原样保留）。
-2. 将 `legacyConfig`（若在根目录，则改写为 `frontend/qdmp.json`；若本就在 `frontend/`，原地改写）**裁剪为仅 appId**：
+2. 将 `legacyConfig`（若在根目录，则改写为 `frontend/qdmp.json`；若本就在 `frontend/`，原地改写）**移除 `appSecret`、`runtime`、`mongodb` 等后端字段，保留原有 `appId`、`loader` 及其他非敏感前端配置**。以下仅为原 loader 为 EMP 时的示例，不覆盖其他字段：
    ```json
-   { "appId": "<原 appId>" }
+   { "appId": "<原 appId>", "loader": "EMP" }
    ```
-   若旧文件在根目录，裁剪后的 appId 文件应位于 `frontend/qdmp.json`；根目录不再保留 `qdmp.json`。
+   若旧文件在根目录，分离后的前端配置文件应位于 `frontend/qdmp.json`；根目录不再保留 `qdmp.json`。
 3. 追加 `.gitignore`（见「通用子流程: 保护敏感配置」）：
    ```bash
    grep -qxF 'qdmp-config.json' {projectRoot}/.gitignore 2>/dev/null || echo 'qdmp-config.json' >> {projectRoot}/.gitignore
@@ -54,10 +54,12 @@
 ```
 已将旧配置迁移到新结构：
 - qdmp-config.json（根目录）：appId、appSecret、runtime{、mongodb}
-- frontend/qdmp.json：仅保留 appId
+- frontend/qdmp.json：保留原 appId、loader 等非敏感前端配置
 - 已将 qdmp-config.json 加入 .gitignore
 {可选：⚠️ 密钥泄露警告}
 ```
+
+本节仅处理已确认的 2.0 工程配置布局。发现非 EMP 或 effuse/echo-effuse/effues 运行时时停止，不执行配置迁移或旧版发布；缺失 loader 时先核对模板和平台，不能默认为 EMP。
 
 迁移完成后，按新结构从 `qdmp-config.json` 读取字段，继续后续流程。
 
@@ -84,10 +86,11 @@ questions:
 }
 ```
 
-同时在 `frontend/qdmp.json` 只写入 `appId`：
+同时在 `frontend/qdmp.json` 更新 `appId`，保留已有 loader 及其他非敏感前端配置。文件不存在时先核对模板和平台类型再创建；以下示例只适用于已确认的 2.0（EMP）项目：
 ```json
 {
-  "appId": "从平台获取的小程序 ID"
+  "appId": "从平台获取的小程序 ID",
+  "loader": "EMP"
 }
 ```
 
@@ -110,7 +113,7 @@ questions:
 - 确保 `{projectRoot}/.gitignore` 存在且包含一行 `qdmp-config.json`；不存在则创建，已存在但缺该行则追加。
 - **后端打包**：`zip` 的是 `{sourceDir}`（即 `backend/`），`qdmp-config.json` 在其上一级，不会被打入；无需改排除清单。
 - **前端打包**：`qdmp build` / `qdmp-cli upload` 在 `frontend/` 目录内执行，`qdmp-config.json` 在其上一级，不会被打入。发布前须确认 `qdmp-config.json` 未被复制进 `frontend/`——若因误操作出现 `frontend/qdmp-config.json`，先移除再打包。
-- `frontend/qdmp.json` 只含 `appId`，非敏感，可正常提交。
+- `frontend/qdmp.json` 保留 `appId`、`loader` 等非敏感配置，不含 `appSecret`、数据库配置，可正常提交。
 
 ---
 
