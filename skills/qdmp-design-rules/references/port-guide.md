@@ -51,7 +51,7 @@ token 和共享组件流程四已建在 `app.css`，移植**主要是拼装 + �
 
 - 事件统一 **`@click`**，**不用 `@tap`**——`@tap` 在 Taro H5 是合成事件，嵌套 / 滚动结构里会丢点击、handler 不触发；`@click` 是原生 DOM 事件，稳。
 - 设计页的屏间互链 `<a href="<屏名>.html">` → `<view @click>` + `Taro.navigateTo({ url: 'pages/<名>/index' })`。
-- 列表用 `v-for`；HTML 里 JS 动态生成的 DOM，移植成 `v-for` + 响应式数据。纯展示页用静态占位数据，不调 effuse / 后端。
+- 列表用 `v-for`；HTML 里 JS 动态生成的 DOM，移植成 `v-for` + 响应式数据。纯展示页用静态占位数据，不调用后端。
 
 ---
 

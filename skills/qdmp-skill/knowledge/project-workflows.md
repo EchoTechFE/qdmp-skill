@@ -11,10 +11,37 @@
 ### Step 2: 创建本地项目
 
 ```bash
-qdmp-cli list              # 查看可用模板
-qdmp-cli create <项目名称>  # 创建项目
-cd <项目名称>
-pnpm install               # 安装依赖
+qdmp-cli list                       # 查看可用模板信息
+qdmp-cli create <项目名> -t default  # 必须显式指定 2.0 模板
+cd <项目名>
+```
+
+**模板禁令**：
+- 禁止省略 `-t`：CLI ≤0.1.11、0.1.13、0.1.15 的默认模板就是 1.0，不能依赖 CLI 的默认选择。
+- 禁止使用 `-t qdmp`：它指向 `frontend/miniapp-taro-template`，即 effuse 版 1.0。
+
+#### 创建后自检（不通过必须停止）
+
+创建完成后、安装依赖或修改项目文件前，必须：
+1. 读取生成的 `qdmp.json`，确认 `loader` 必须是 `EMP`。
+2. 核对 `qdmp-cli list` 和创建输出中的所选模板信息，确认没有「默认模版(1.0)」或 `miniapp-taro-template`。
+
+任何一项不通过（包括文件缺失、无法读取或无法确认模板信息），立即停止流程并向用户报告检查结果；不允许手改配置硬转 2.0，也不允许继续安装依赖或开发。
+
+#### 依赖栈兜底检查（不通过必须停止）
+
+在前端项目目录执行（新建项目为当前目录，分离目录后为 `frontend/`；已有项目在开发前同样必须执行）：
+
+```bash
+grep -nE '"(echo-effuse|flyio|tailwindcss)"' package.json
+```
+
+命中任意一项即判定为 1.0 工程，立即停止开发，报告命中内容并与用户确认是否迁移；禁止在 2.0 代码里混用 effuse、flyio 或 Tailwind。退出码 1 表示无命中；文件缺失或命令执行错误不能视为通过，必须停止并报告。
+
+两项检查均通过后，才安装依赖并继续后续步骤：
+
+```bash
+pnpm install
 ```
 
 **依赖安装失败**: 请确认 npm 已正确配置，网络可正常访问 npm registry。
@@ -54,14 +81,15 @@ questions:
 }
 ```
 
-在 `frontend/qdmp.json` 只写入 appId（供前端构建/关联使用）：
+在 `frontend/qdmp.json` 更新 appId（供前端构建/关联使用），保留模板生成的 `loader: "EMP"` 及其他非敏感配置，不要用以下示例覆盖整个文件：
 ```json
 {
-  "appId": "<appId>"
+  "appId": "<appId>",
+  "loader": "EMP"
 }
 ```
 
-> 说明：`qdmp-config.json` 是主配置源，含 `appSecret` 等敏感信息，**必须加入项目 `.gitignore`**（见下）；`frontend/qdmp.json` 只保留 appId，可正常提交。
+> 说明：`qdmp-config.json` 是主配置源，含 `appSecret` 等敏感信息，**必须加入项目 `.gitignore`**（见下）；`frontend/qdmp.json` 保留 appId、loader 等非敏感配置，不写入 appSecret，可正常提交。
 
 **保护敏感配置**：确保项目根目录 `.gitignore` 存在且包含 `qdmp-config.json` 一行。不存在则创建，已存在但缺该行则追加：
 ```bash
@@ -597,6 +625,10 @@ questions:
 ---
 
 ## 流程三：开发调试
+
+**前置检查：依赖栈**
+
+先执行流程一中的「依赖栈兜底检查（不通过必须停止）」，通过后才继续开发调试；已有项目同样适用。
 
 **前置检查：PRD**
 

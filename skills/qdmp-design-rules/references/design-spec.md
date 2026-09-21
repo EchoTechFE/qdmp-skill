@@ -11,7 +11,7 @@
 从下列输入生成 `DESIGN.md`，写入 `{projectRoot}/DESIGN.md`。两种输入来源：
 
 1. 流程三的**设计声明** + `design/*.html`（全部 HTML 设计页面）
-2. 现有 `frontend/src/pages/*` + `app.css`（及 `tailwind.config.js`）——**反向提取**，只记录现状，**不为对齐去改动现有页面**；token 已在代码里，跳过下文「同步到代码」。
+2. 现有 `frontend/src/pages/*` + `app.css`——**反向提取**，只记录现状，**不为对齐去改动现有页面**；token 已在代码里，跳过下文「同步到代码」。
 
 以设计声明为理念骨架，从 HTML/CSS 读取精确 token 填充；声明里的主色 / 强调色等决策必须保持一致，**不得重新发明**。来源 2 没有设计声明时，从现有页面的 CSS 中提取它们实际遵循的设计系统。
 
@@ -168,4 +168,4 @@ DESIGN.md 生成后，把设计系统写进 `app.css`——它是设计系统的
 - 来源以 `design/assets/` 为准（DESIGN.md `components` 只列关键几个，不全）。
 - 写法遵守 [taro-code-spec.md](./taro-code-spec.md)（只挑 token、具名类不用元素选择器）。
 
-`tailwind.config.js` 只做薄引用（`colors: { brand: 'var(--brand)' }`、`spacing: { x: 'var(--space-x)' }`），指向同一组变量防漂移；token 不直接写在 tailwind 里。
+2.0 不引入 Tailwind，token 只在 `app.css` 的 `page` 中定义。
