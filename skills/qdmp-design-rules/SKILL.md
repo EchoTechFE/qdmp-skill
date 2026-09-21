@@ -6,6 +6,8 @@ allowed-tools: [Read, Grep, Glob, Bash]
 
 # 千岛小程序设计规范
 
+仅支持 default 官方模板的 2.0（EMP）小程序，不支持 effuse/SPA 工程。HTML 设计稿仅为视觉参照，不作为浏览器运行时开发路径。
+
 本 skill 维护千岛小程序 Taro 前端设计、设计系统、HTML 到 Taro 移植和页面审查规范。产品底线由 `/qdmp:qdmp-product-rules` 维护；不要把产品判断写进本 skill。
 
 本规范参考并内置自 `qdmp-taro-design`：

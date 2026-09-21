@@ -1,5 +1,7 @@
 # 千岛小程序开发指南
 
+> 本指南用于 2.0（EMP）小程序。文中的 SDK 1.0.0 是能力版本，不是 1.0 小程序运行时；不提供 effuse/SPA 配置或开发路径。
+
 ## 项目结构
 
 ```
@@ -13,7 +15,7 @@ myApp/
 │   │   ├── assets/          # 静态资源
 │   │   └── app.vue          # 应用入口
 |   ├── package.json
-|   └── qdmp.json            # 小程序配置（仅 appId）
+|   └── qdmp.json            # 小程序配置（appId、loader 等非敏感配置）
 ├── backend/                 # 后端服务目录（详见 project-workflows.md）
 └── qdmp-config.json         # 主配置：appId、appSecret、runtime、mongodb（敏感，需加入 .gitignore）
 ```

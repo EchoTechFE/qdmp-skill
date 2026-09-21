@@ -82,7 +82,7 @@ qdmp-skill 的安装授权不等于数据采集授权。安装成功后停止当
 qdmp-cli --version 2>/dev/null
 ```
 
-- **命令成功**（输出版本号） → 继续第一步
+- **命令成功**（输出版本号） → 开发、创建或前端构建/上传前，运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`，要求 CLI ≥0.1.29。旧版本按 [升级说明](./references/upgrade.md) 更新并复检，不仅凭命令存在放行。纯后端操作、账号查询和登录不受该前端版本门槛限制。
 - **命令失败**（command not found 或报错） → 执行自动安装：
 
 ```bash
@@ -94,7 +94,7 @@ npm install -g qdmp-cli
 qdmp-cli --version 2>/dev/null
 ```
 
-- **验证通过** → 继续第一步
+- **验证通过** → 按上述任务范围执行版本检查后继续第一步
 - **仍然失败** → 停止流程，向用户报告错误信息，提示可能原因（npm 未安装、网络问题、权限不足等），并建议用户手动排查后重试。**严禁在 qdmp-cli 不可用的状态下执行创建项目或发布操作。**
 
 同时检查 pnpm 是否可用（创建和开发项目需要）：
@@ -131,6 +131,8 @@ questions:
 
 ### 第二步：读取项目配置
 
+执行项目操作前检查前端 loader、依赖和源码引用；仅允许 EMP。搜索 effuse / echo-effuse / effues（含 npm 别名、锁文件、导入与构建脚本），发现有效引用则停止并说明需迁移到官方 2.0 模板。不要删除字符串或改 loader 冒充迁移。配置文件布局调整不等于运行时升级。
+
 详细步骤见 [backend-operations.md](./knowledge/backend-operations.md) 的「通用子流程: 读取项目配置」。
 
 关键变量：
@@ -140,7 +142,7 @@ questions:
 
 ### 第三步：PRD 检查（仅开发意图时执行）
 
-开发前必须先执行 [依赖栈兜底检查（不通过必须停止）](./knowledge/project-workflows.md#依赖栈兜底检查不通过必须停止)，新建和已有项目均适用。命中 `echo-effuse`、`flyio` 或 `tailwindcss` 即判定为 1.0 工程，停止开发并确认是否迁移，禁止在 2.0 代码里混用 effuse、flyio 或 Tailwind。
+开发前必须先执行 [依赖栈兜底检查（不通过必须停止）](./knowledge/project-workflows.md#依赖栈兜底检查不通过必须停止)，新建和已有项目均适用。结合 loader、模板来源和实际构建链判断工程类型；通用依赖或 package.json.version 不能单独作为 1.0 判据。绑定和上传前核对本地与平台 loader 一致，新建 2.0 项目必须为 EMP。
 
 **判断用户意图**：若当前请求属于以下开发类意图，执行 PRD 检查；否则跳过直接进入操作路由。
 

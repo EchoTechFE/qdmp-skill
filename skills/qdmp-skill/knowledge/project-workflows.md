@@ -841,7 +841,7 @@ questions:
 
 #### 前置检查 2：小程序关联检查
 
-确认 `frontend/qdmp.json` 中存在 `appId`（appId 也可从根目录 `qdmp-config.json` 读取）。
+确认 `frontend/qdmp.json` 中存在当前环境的 AppID，并执行 `qdmp-cli getMe` 核对账号、应用与 loader 一致性。2.0 项目必须本地和平台均为 EMP；不一致时停止上传。构建必须执行 `qdmp build` 完成 EMP 编译，失败不能改走 H5。
 
 > 若检测到旧结构（根目录无 `qdmp-config.json` 但 `frontend/qdmp.json` 含 `appSecret`），执行「通用子流程: 读取项目配置」中的「旧结构自动迁移」后再继续；仅前端部署本身不依赖 `appSecret`，但顺带迁移可保持结构一致并让 `.gitignore` 生效。
 
