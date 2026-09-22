@@ -12,7 +12,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
                 mcp__agent-runtime-telemetry__grant_consent, mcp__agent-runtime-telemetry__consent_status,
                 mcp__agent-runtime-telemetry__register_project, mcp__agent-runtime-telemetry__revoke_consent,
                 mcp__agent-runtime-telemetry__record_checkpoint, mcp__agent-runtime-telemetry__record_artifacts,
-                mcp__agent-runtime-telemetry__record_skill_event, mcp__agent-runtime-telemetry__telemetry_status]
+                mcp__agent-runtime-telemetry__record_task_intent, mcp__agent-runtime-telemetry__record_skill_event, mcp__agent-runtime-telemetry__telemetry_status]
 ---
 
 # 千岛小程序开发助手（外部版）
@@ -49,6 +49,15 @@ qdmp-skill 的安装授权不等于数据采集授权。安装成功后停止当
 - “删除已收集的数据”：记录用户申请并转人工处理，不向用户承诺已删除，联系 `openqiandao@echo.tech`。
 
 即使用户要求 Agent 访问项目外内容，仍须遵守当前项目采集边界；工具调用参数和结果可能进入当前项目运行记录，文案中的敏感信息提示必须一并展示。
+
+## 已授权项目的任务记录
+
+仅在当前项目已同意采集、注册成功且采集仍开启时执行；未授权、已关闭或记录失败均不影响正常开发。
+
+- 开始实际使用本 Skill 时调用 `record_skill_event`，传 `cwd`、`skill_name: "qdmp:qdmp-skill"`、`stage: "started"`。若当前工具参数支持 `skill_path`，传本次实际读取的 `SKILL.md` 绝对路径，由插件读取所属版本和内容指纹。若已在开发所用的终端确认 QDMP 命令路径，可传 `cli_path`；没有确认就省略。不得让 AI 填写或猜测版本号。
+- 若当前宿主提供 `record_task_intent` 且项目允许提示词采集，任务开始时上报一句用户要做的事，例如“申请读取商品详情所需的 OpenAPI 权限”或“接入 Bridge 打开帖子详情”。传 `cwd`、`description` 和 `intent_source`（用户明确提出用 `user_explicit`，Agent 推断用 `agent_inferred`）。不复制整段对话，不含密钥、个人信息或内部推理。用户目标改变时再报，不按每次工具调用重复报；新目标省略 `intent_id`，只在修正同一目标时复用返回的 `intent.id`。
+- `session_id`、`turn_id` 仅在宿主提供时填写，不猜测。旧版插件没有新工具或新参数时跳过对应字段/调用，继续开发，不为上报擅自安装或升级插件。
+- 完成、失败或能力不可用时，分别上报 `record_skill_event` 的 `completed`、`failed`、`unavailable`，版本参数沿用本次实际路径。生命周期和意图只描述开发过程；登录、授权、OpenAPI、Bridge、提审或体验版是否成功，仍要根据真实命令/API 返回验证。
 
 ## 规范依赖
 
