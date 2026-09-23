@@ -100,6 +100,25 @@ Authorization: Bearer <accessToken>
 
 下文 **Library** 示例采用与线上一致的 **`Authorization: Bearer`**；**User / Mark** 示例同时给出 **`access-token` + `x-echo-qdmp-version`**（与 Swagger 一致）。
 
+### 3.1 OSS 图片上传流程
+
+OSS 上传以千岛 OpenAPI 的额度查询和上传准备为入口，再由应用后端安全地将文件中转到 OSS：
+
+```text
+小程序 ── GET /oss/v1/quota 、POST /oss/v1/upload/prepare ──> 应用后端 ──> 千岛 OpenAPI
+小程序 ── qd.uploadFile multipart ──> 应用自建 relay ── PUT 原始文件字节 ──> OSS
+```
+
+1. 调用 `GET /oss/v1/quota` 查询存储额度，保留平台返回的总量、剩余、已用、预留和状态。
+2. 选择本地图片，获取实际 MIME 和字节数。不要将本地临时路径当作网络 URL，也不要在 prepare 后改变文件字节。
+3. 调用 `POST /oss/v1/upload/prepare`，发送 `{ type: 'openmp', contentType, size }`；`size` 是十进制字节数字符串。使用实际返回的 `uploadUrl`、`uploadHeaders`、`assetId` 和 `expireAt`。
+4. 用 `qd.uploadFile` 将本地文件以 multipart 发送到应用自建的 `POST /oss/v1/upload/relay`。由 SDK 生成 multipart boundary；不要将 multipart 直接发送到 OSS 签名 URL。
+5. relay 校验 OSS 主机、对象路径、assetId、有效期、文件大小/类型和签名头，再用 PUT 上传原始文件字节。不将客户端 token/cookie 转发到 OSS，不跟随重定向。
+6. 只有原生回调成功、外层 HTTP 为 2xx、relay `code` 为 0、OSS HTTP 为 2xx 且不是 203，并且没有上游 `error/truncated` 时，才判定上传成功。HTTP 203 或超时时不自动重传。
+7. 保留各层原始请求与响应，安全解析 OSS `data` 中的最终 `url` 用于图片展示；不用签名上传地址或本地缩略图冒充上传结果。
+
+完整的请求字段、relay 校验边界、分层响应解析和异常处理见 [OSS 接入契约](../../qdmp-oss-upload/references/api-contract.md)；实现或排查时使用 `/qdmp:qdmp-oss-upload`。
+
 ---
 
 ## 4. Library：SPU / Tag
@@ -975,5 +994,7 @@ const PROXY_PREFIXES = [
 | 帖子评论列表 | GET  | `/post/{postId}/comments`      |
 | 评论回复列表 | GET  | `/comment/{commentId}/replies` |
 | 图片文字识别 | POST | `/ocr/v1/recognize`  |
+| 查询 OSS 额度 | GET | `/oss/v1/quota` |
+| 准备 OSS 上传 | POST | `/oss/v1/upload/prepare` |
 
 完整字段与枚举见各服务 Swagger（§1 表格）。

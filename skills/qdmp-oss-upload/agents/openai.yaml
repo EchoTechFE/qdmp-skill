@@ -1,0 +1,4 @@
+interface:
+  display_name: "千岛 OSS 文件上传"
+  short_description: "接入千岛存储额度、上传准备、后端中转上传与响应图片展示"
+  default_prompt: "使用 $qdmp-oss-upload 为当前千岛小程序接入 OSS 图片上传，复用已有登录和后端，并保留请求、响应与上传后的图片。"
