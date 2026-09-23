@@ -25,7 +25,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | [development-guide.md](./knowledge/development-guide.md)   | 开发指南：项目结构、全局权限配置、屏幕方向、截图黑屏、服务端 API、调试发布                  |
 | [bridge-api-guide.md](./knowledge/bridge-api-guide.md)     | Bridge API：原生能力调用、文件下载、陀螺仪、发帖预填参数、IM 消息订阅、导航栏返回首页按钮、参数与返回值类型 |
-| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：场景化接口文档、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
+| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：场景化接口文档、OSS 上传流程、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
 | [backend-operations.md](./knowledge/backend-operations.md) | 后端操作详情：通用子流程 + 操作 1-7 的完整步骤                                            |
 | [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署                                                |
 | [prd-template.md](./knowledge/prd-template.md)             | PRD 模版：好的 PRD 应包含哪些内容 + 可直接使用的模版                                      |
@@ -230,6 +230,8 @@ questions:
 
 涉及千岛 OpenAPI 报错排查或错误处理时，读取 [api-guide.md 的「错误与排查」](./knowledge/api-guide.md#13-错误与排查)，根据业务 `code`、`message` 和 HTTP 状态定位原因；区分应用权限、用户授权、Token 无效或过期、限流与配额耗尽。
 
+涉及 OSS 文件上传时，读取 [api-guide.md 的「OSS 图片上传流程」](./knowledge/api-guide.md#oss-图片上传流程)；区分平台 `quota/prepare` OpenAPI 与应用自建 relay，不要将 multipart 直接发送到 OSS 签名 URL。
+
 ### 前端（`frontend/`）
 
 修改前端代码前，必须先读取 `frontend/README.md`（如果存在），确保代码风格、目录结构、命名约定与项目现有规范一致。
@@ -239,7 +241,7 @@ questions:
 - 系统级权限声明：读取 [development-guide.md](./knowledge/development-guide.md) 的「小程序全局权限配置」，修改 `frontend/src/app.config.js`，不要把声明误写成运行时 Bridge 调用。
 - 横屏与自动旋转：读取 [development-guide.md](./knowledge/development-guide.md) 的「屏幕方向配置（SDK 1.0）」；按作用域修改全局 `app.config.js` 或页面 `index.config.js`，不要把 `pageOrientation` 当成运行时 Bridge API。
 - 截图黑屏或页面隐私模式：读取 [development-guide.md](./knowledge/development-guide.md) 的「截图黑屏（页面隐私模式）」；在目标页面配置 `screenShotForbidden: true`，Android、iOS、Harmony、Web 均支持。该字段是页面配置，不是 `qd.*` 方法，也不需要注册截屏监听。
-- 打开帖子发布页：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「`qd.openPost` — 打开帖子发布页」；保留原有 `islandId`、`appId`、`files` 调用方式，按需新增 `title`、`content`、`labels`、`bizData`。其中 `files` 和 `labels` 必须分别进行 JSON 序列化与 UTF-8 Base64 编码，`bizData` 只进行 JSON 序列化、不进行 Base64 编码；`bizData.DaoLink` 跳小程序首页时传空字符串。不要直接传数组或继续生成 `spuIds`、`tagIds`。
+- 打开帖子发布页：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「`qd.openPost` — 打开帖子发布页」；保留原有 `islandId`、`appId`、`files` 调用方式，按需新增 `title`、`content`、`labels`、`bizData`。其中 `files` 和 `labels` 必须分别进行 JSON 序列化与 UTF-8 Base64 编码，`bizData` 只进行 JSON 序列化、不进行 Base64 编码；保留 `ShowTitle`，用 `path` 和由开发者自定义的 `query` 替代原有的 `DaoLink`。图案详情场景可将 `path` 设为 `pages/view/index`、`query` 设为 `patternId=${normalizedPatternId}`。不要直接传数组或继续生成 `spuIds`、`tagIds`。
 - 取消想要或删除标记：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「`qd.cancelWish` — 取消一条想要记录」和「`qd.cancelMark` — 删除一条 Mark 记录」；传列表或详情返回的记录 ID，不要误传 SPU ID，也不要改用同名 HTTP 接口。
 - IM 订阅消息：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「IM 消息订阅」，使用业务提供的模板 ID，并处理每个模板的订阅结果。
 - 顶部导航栏返回首页按钮：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「导航栏」，确认页面栈场景后调用 `qd.hideHomeButton`；不要把它当成隐藏普通返回箭头的接口。

@@ -100,6 +100,132 @@ Authorization: Bearer <accessToken>
 
 下文 **Library** 示例采用与线上一致的 **`Authorization: Bearer`**；**User / Mark** 示例同时给出 **`access-token` + `x-echo-qdmp-version`**（与 Swagger 一致）。
 
+## OSS 图片上传流程
+
+OSS 上传以千岛 OpenAPI 的额度查询和上传准备为入口，再由应用后端安全地将文件中转到 OSS：
+
+```text
+小程序 ── GET /oss/v1/quota 、POST /oss/v1/upload/prepare ──> 应用后端 ──> 千岛 OpenAPI
+小程序 ── qd.uploadFile multipart ──> 应用自建 relay ── PUT 原始文件字节 ──> OSS
+```
+
+1. 调用 `GET /oss/v1/quota` 查询存储额度，保留平台返回的总量、剩余、已用、预留和状态。
+2. 选择本地图片，获取实际 MIME 和字节数。不要将本地临时路径当作网络 URL，也不要在 prepare 后改变文件字节。
+3. 调用 `POST /oss/v1/upload/prepare`，发送 `{ type: 'openmp', contentType, size }`；`size` 是十进制字节数字符串。使用实际返回的 `uploadUrl`、`uploadHeaders`、`assetId` 和 `expireAt`。
+4. 用 `qd.uploadFile` 将本地文件以 multipart 发送到应用自建的 `POST /oss/v1/upload/relay`。由 SDK 生成 multipart boundary；不要将 multipart 直接发送到 OSS 签名 URL。
+5. relay 校验 OSS 主机、对象路径、assetId、有效期、文件大小/类型和签名头，再用 PUT 上传原始文件字节。不将客户端 token/cookie 转发到 OSS，不跟随重定向。
+6. 只有原生回调成功、外层 HTTP 为 2xx、relay `code` 为 0、OSS HTTP 为 2xx 且不是 203，并且没有上游 `error/truncated` 时，才判定上传成功。HTTP 203 或超时时不自动重传。
+7. 保留各层原始请求与响应，安全解析 OSS `data` 中的最终 `url` 用于图片展示；不用签名上传地址或本地缩略图冒充上传结果。
+
+### 查询存储额度
+
+`GET /oss/v1/quota` 无请求体。成功响应中的 `data` 包含：
+
+| 字段 | 含义 |
+| ---- | ---- |
+| `quotaBytes` | 总额度，字节字符串 |
+| `availableBytes` | 当前剩余额度，字节字符串 |
+| `usedBytes` | 已使用额度，字节字符串 |
+| `reservedBytes` | 已预留额度，字节字符串 |
+| `status` | 存储状态；`ACTIVE` 可显示“可用”，其他值如实保留 |
+| `warningLevel` | 预警级别；`NORMAL` 可显示“正常”，未知值不得当作正常 |
+
+保留原始字符串用于诊断；展示容量时先校验再换算。不要通过总量减已用量代替平台返回的 `availableBytes`，缺失或非法值显示未知，大整数不得静默丢失精度。
+
+### 准备上传
+
+`POST /oss/v1/upload/prepare` 的图片场景请求体：
+
+```json
+{
+  "type": "openmp",
+  "contentType": "image/jpeg",
+  "size": "9241"
+}
+```
+
+- `type: openmp` 是当前已确认的取值，不推断其他枚举。
+- `contentType` 必须对应待上传文件的实际 MIME。
+- `size` 是实际文件字节数的十进制字符串，不是文件路径、Base64 或 multipart 总长度。
+- prepare 后必须上传同一份文件字节；压缩、裁剪或重新选图后重新 prepare。
+
+成功时读取 `data.uploadUrl`、`data.uploadHeaders`、`data.assetId` 和 `data.expireAt`。`expireAt` 是 Unix 秒；签名 URL 和请求头必须使用本次真实返回值，不自行生成、解码、重排或拼接。
+
+### 调用应用 Relay
+
+`POST /oss/v1/upload/relay` 是应用自行实现的接口，不是千岛平台 OpenAPI。前端调用形状：
+
+```js
+qd.uploadFile({
+  url: `${backendBase}/oss/v1/upload/relay`,
+  filePath: selectedImage.filePath,
+  name: 'file',
+  header: {
+    accept: 'application/json',
+    'access-token': accessToken
+  },
+  formData: {
+    uploadUrl: prepared.uploadUrl,
+    uploadHeaders: JSON.stringify(prepared.uploadHeaders),
+    assetId: String(prepared.assetId),
+    expireAt: String(prepared.expireAt),
+    size: String(selectedImage.size)
+  },
+  timeout: 120000,
+  success(response) {
+    record({ callback: 'success', response })
+  },
+  fail(response) {
+    record({ callback: 'fail', response })
+  }
+})
+```
+
+`Content-Type` 和 multipart boundary 由 SDK 生成，不要在前端手写。`uploadHeaders` 属于 relay → OSS 的请求头，应放入 `formData` 传给 relay，不要全部放入前端 → relay 的 header。
+
+Relay 至少需要满足以下边界：
+
+- 只接收字段名为 `file` 的单文件，以及 `uploadUrl/uploadHeaders/assetId/expireAt/size` 五个表单字段；拒绝未知、重复或过长字段。当前应用适配层单图上限为 20 MiB，不将其表述为平台统一上限。
+- 只允许配置白名单中的 HTTPS OSS 主机，拒绝任意域名、端口、URL 用户信息和 fragment；对象路径必须匹配当前应用的前缀、appId 和 assetId。
+- 校验签名参数唯一性、签名版本、有效期、`expireAt`、凭据格式和签名请求头；最终签名真实性仍由 OSS 验证。
+- 校验 `size` 与实际文件长度一致，并检查扩展名、`Content-Type`、multipart MIME 和文件头。当前适配范围为 jpg/jpeg/png/webp/gif/heic/heif。
+- 向 OSS 发送 `PUT + 原始文件字节`，不是 JSON、Base64 或 multipart；`Content-Length` 使用真实字节数。
+- 不向 OSS 转发客户端 token/cookie，不跟随重定向，并限制接收超时、上游超时和响应大小。
+
+### 分层响应与成功判断
+
+页面需要分别保留 `qd.uploadFile` 原始响应、relay 业务响应和 OSS 响应，不得用解析结果覆盖原始记录：
+
+```js
+function parseBody(value) {
+  if (typeof value !== 'string') return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
+}
+
+const relay = parseBody(rawUpload.response.data)
+const ossResponse = relay?.data?.response
+const ossBody = parseBody(ossResponse?.data)
+const imageUrl = ossBody && typeof ossBody === 'object' ? ossBody.url : ''
+```
+
+错误 body 可能是 XML 或普通文本，解析失败不得导致页面白屏。成功条件必须同时成立：
+
+- 原生 callback 为 `success`。
+- `qd.uploadFile` 外层 HTTP 状态为 2xx。
+- relay 业务 `code` 为 0。
+- OSS HTTP 状态为 2xx 且不是 203。
+- 上游响应不存在 `error` 或 `truncated`。
+
+OSS HTTP 203 表示平台回调失败，文件可能已写入；超时也可能发生在 OSS 已写入后。遇到这两类结果时保留 assetId、requestId、`x-oss-request-id` 和请求时间，不自动重复 PUT。当前契约未提供资产状态查询或补回调接口，不得自行编造。
+
+成功且 OSS body 中存在有效 HTTP(S) `url` 时，在完整响应下方展示图片；不要使用签名 `uploadUrl` 或本地缩略图冒充上传结果。新一轮上传清理旧图片；图片加载失败单独提示，不修改已经确认的上传结论。
+
+调试页可按任务要求保留完整请求与响应，但公开文档和常规持久日志不得记录 appSecret、长期存储凭据、历史 token 或签名 URL。
+
 ---
 
 ## 4. Library：SPU / Tag
@@ -975,5 +1101,7 @@ const PROXY_PREFIXES = [
 | 帖子评论列表 | GET  | `/post/{postId}/comments`      |
 | 评论回复列表 | GET  | `/comment/{commentId}/replies` |
 | 图片文字识别 | POST | `/ocr/v1/recognize`  |
+| 查询 OSS 额度 | GET | `/oss/v1/quota` |
+| 准备 OSS 上传 | POST | `/oss/v1/upload/prepare` |
 
 完整字段与枚举见各服务 Swagger（§1 表格）。
