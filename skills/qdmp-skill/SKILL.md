@@ -230,7 +230,7 @@ questions:
 
 涉及千岛 OpenAPI 报错排查或错误处理时，读取 [api-guide.md 的「错误与排查」](./knowledge/api-guide.md#13-错误与排查)，根据业务 `code`、`message` 和 HTTP 状态定位原因；区分应用权限、用户授权、Token 无效或过期、限流与配额耗尽。
 
-涉及 OSS 文件上传时，读取 [api-guide.md 的「OSS 图片上传流程」](./knowledge/api-guide.md#31-oss-图片上传流程) 并使用 `/qdmp:qdmp-oss-upload`；区分平台 `quota/prepare` OpenAPI 与应用自建 relay，不要将 multipart 直接发送到 OSS 签名 URL。
+涉及 OSS 文件上传时，读取 [api-guide.md 的「OSS 图片上传流程」](./knowledge/api-guide.md#oss-图片上传流程)；区分平台 `quota/prepare` OpenAPI 与应用自建 relay，不要将 multipart 直接发送到 OSS 签名 URL。
 
 ### 前端（`frontend/`）
 

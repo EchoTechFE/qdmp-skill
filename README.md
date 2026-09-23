@@ -17,9 +17,6 @@
 skills/
   qdmp-skill/
     SKILL.md
-  qdmp-oss-upload/
-    SKILL.md
-    references/api-contract.md
   qdmp-product-rules/
     SKILL.md
     references/product-baseline.md
@@ -67,7 +64,6 @@ claude plugin list
 
 ```text
 /qdmp:qdmp-skill
-/qdmp:qdmp-oss-upload
 /qdmp:qdmp-product-rules
 /qdmp:qdmp-design-rules
 ```
@@ -103,7 +99,6 @@ codex
 
 ```text
 /qdmp:qdmp-skill
-/qdmp:qdmp-oss-upload
 /qdmp:qdmp-product-rules
 /qdmp:qdmp-design-rules
 ```
@@ -130,7 +125,6 @@ qoderclicn plugin install qdmp@qdmp-marketplace
 
 ```text
 /qdmp:qdmp-skill
-/qdmp:qdmp-oss-upload
 /qdmp:qdmp-product-rules
 /qdmp:qdmp-design-rules
 ```
@@ -142,7 +136,6 @@ qoderclicn plugin install qdmp@qdmp-marketplace
 | Skill | 用途 |
 | ----- | ---- |
 | `/qdmp:qdmp-skill` | 千岛小程序主开发助手，负责项目创建、开发、调试、部署、运维流程 |
-| `/qdmp:qdmp-oss-upload` | OSS 文件上传，覆盖存储额度、上传准备、应用后端中转与响应解析 |
 | `/qdmp:qdmp-product-rules` | 产品底线规范，约束代码生成和 Review 中可明确执行的产品边界 |
 | `/qdmp:qdmp-design-rules` | Taro 前端设计规范，维护页面设计、`DESIGN.md`、`app.css` token、HTML 到 Taro 移植和 UI Review |
 
