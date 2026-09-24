@@ -4,7 +4,7 @@
 
 千岛小程序通过 `qd.*` Bridge API 与千岛 App 原生能力交互。统一使用 `qd.*` 调用，SDK 会将请求映射到对应的原生实现。
 
-> 所有 API 自 SDK v1.0.0 起可用。平台支持情况以下表标注为准。
+> 能力版本、平台支持与调用形式以各节说明为准。未标明支持范围的能力，应在目标运行端逐项检测，不根据版本号推断全部可用。
 
 以下回调类型供各异步接口复用：
 
@@ -809,22 +809,27 @@ const cameraCtx = qd.createCameraContext()
 
 ### 音频
 
+#### 普通音频实例
+
+普通音频接入与排错先读 [普通音频播放指南](./inner-audio.md)，其中包含可复制的调用模板、实例生命周期、返回值与事件记录方式。
+
+| 能力 | 调用 | 关键约束 |
+| ---- | ---- | -------- |
+| 创建 | `qd.createInnerAudioContext()` | 正确拼写为 `createInnerAudioContext`；创建不自动播放 |
+| 播放 / 继续 | `audio.play()` | 首次播放前设置 `src`；暂停后沿用同一实例和音源 |
+| 暂停 | `audio.pause()` | 保留实例，后续用 `play()` 继续 |
+| 停止 | `audio.stop()` | 与暂停分开；重新播放的位置需在目标端验证 |
+| 销毁 | `audio.destroy()` | 成功调用后清除引用，再次播放前明确创建新实例 |
+
+这五个方法均按无参数方式调用，不添加 `success` / `fail`。保留实际同步返回或 Promise 结果；调用完成不等于已经发声。原生实例不要放入 Vue 深层响应式状态，调用实例方法时保留 `this`，网络音源可直接赋给 `src`。
+
+如需跳转播放位置，可在检测实例方法后调用 `audio.seek(10)`（跳到 10 秒）；此操作另按目标运行端验证。
+
+#### 其他音频能力
+
+以下入口与普通音频实例分开管理；有对应需求时再接入，并检查目标运行端是否提供相关方法。
+
 ```js
-// 创建音频上下文
-const audio = qd.createInnerAudioContext()
-audio.src = 'https://example.com/audio.mp3'
-audio.autoplay = false
-
-audio.onPlay(() => console.log('开始播放'))
-audio.onEnded(() => console.log('播放结束'))
-audio.onError((err) => console.error('播放失败', err))
-
-audio.play()
-audio.pause()
-audio.stop()
-audio.seek(10) // 跳到 10 秒
-audio.destroy() // 销毁实例
-
 // 获取音频输入源
 const sources = await qd.getAvailableAudioSources()
 
@@ -988,38 +993,13 @@ const contact = await qd.chooseContact()
 
 ### 蓝牙
 
-```js
-// 初始化蓝牙
-await qd.openBluetoothAdapter()
-const state = await qd.getBluetoothAdapterState()
+BLE 接入、Review 与排错先读 [蓝牙 BLE 指南](./bluetooth.md)，其中包含完整 API 目录、调用顺序、二进制读写、MTU 分包、监听管理、断线恢复和 Android 配对说明。
 
-// 搜索设备
-await qd.startBluetoothDevicesDiscovery()
-qd.onBluetoothDeviceFound((res) => {
-  console.log('发现设备:', res.devices)
-})
+范围为手机作为 BLE 中心设备连接外设；原生调用统一使用 `qd.*`，Taro 负责页面与生命周期。蓝牙信标、外围设备广播和 GATT 服务端不在本指南范围内。
 
-// 停止搜索
-await qd.stopBluetoothDevicesDiscovery()
+基本顺序：初始化适配器 → 注册监听 → 搜索 → 选择真实设备 → 停止搜索 → 连接 → 查询服务和特征 → 按 `properties` 读写或开启通知。读取和通知数据由 `qd.onBLECharacteristicValueChange` 接收，必须先监听再发起操作。
 
-// BLE 连接
-await qd.createBLEConnection({ deviceId: 'xxx' })
-const services = await qd.getBLEDeviceServices({ deviceId: 'xxx' })
-const chars = await qd.getBLEDeviceCharacteristics({ deviceId: 'xxx', serviceId: 'yyy' })
-
-// 读写特征值
-await qd.readBLECharacteristicValue({ deviceId, serviceId, characteristicId })
-await qd.writeBLECharacteristicValue({ deviceId, serviceId, characteristicId, value: buffer })
-
-// 监听特征值变化
-qd.onBLECharacteristicValueChange((res) => {
-  console.log(res.value) // ArrayBuffer
-})
-
-// 断开连接
-await qd.closeBLEConnection({ deviceId: 'xxx' })
-await qd.closeBluetoothAdapter()
-```
+`deviceId` 来自本次扫描或系统连接结果，服务和特征 ID 来自当前连接查询；写入传 `ArrayBuffer` 并串行分包。接口返回成功、收到数据事件、协议确认和设备实际动作分别判断。断开或切换设备后废弃旧服务、特征、订阅、MTU 与待处理回复，重连后重新查询和订阅。真实蓝牙行为需在千岛 App 真机验证。
 
 ### 内存告警
 
@@ -1279,7 +1259,7 @@ qd.nextTick(() => {
 
 ## 通用回调模式
 
-所有异步 Bridge API 支持两种调用方式：
+对明确支持 Promise 和回调的异步 Bridge API，可按下列方式调用；返回值语义与支持形式以具体接口为准。普通音频的创建和实例控制方法按无参数方式调用，不套用此回调模式；蓝牙请求的 callback 适配方式见 [蓝牙 BLE 指南](./bluetooth.md#bridge-调用与状态管理)，`on*` / `off*` 监听方法单独管理。
 
 ```js
 // Promise 方式（推荐）
