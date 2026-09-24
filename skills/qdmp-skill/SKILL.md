@@ -24,7 +24,9 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | 文档                                                       | 内容                                                                                      |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | [development-guide.md](./knowledge/development-guide.md)   | 开发指南：项目结构、全局权限配置、屏幕方向、截图黑屏、服务端 API、调试发布                  |
-| [bridge-api-guide.md](./knowledge/bridge-api-guide.md)     | Bridge API：原生能力调用、文件下载、陀螺仪、发帖预填参数、IM 消息订阅、导航栏返回首页按钮、参数与返回值类型 |
+| [bridge-api-guide.md](./knowledge/bridge-api-guide.md)     | Bridge API：原生能力调用、蓝牙、音频、文件下载、陀螺仪、发帖预填参数、IM 消息订阅、导航栏返回首页按钮、参数与返回值类型 |
+| [bluetooth.md](./knowledge/bluetooth.md)                  | BLE 中心设备：发现、连接、GATT 读写与通知、MTU、断线清理与重连、Android 配对 |
+| [inner-audio.md](./knowledge/inner-audio.md)              | 普通音频：创建、播放、暂停、停止、销毁、实例生命周期与真实调用结果记录 |
 | [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：场景化接口文档、OSS 上传流程、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
 | [backend-operations.md](./knowledge/backend-operations.md) | 后端操作详情：通用子流程 + 操作 1-7 的完整步骤                                            |
 | [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署                                                |
@@ -248,6 +250,8 @@ questions:
 - 同步获取系统信息：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「`qd.getSystemInfoSync` — 同步获取系统信息」；直接同步调用并使用返回值，不要传回调、包装成 Promise 或添加 `await`。
 - 下载文件：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「`qd.downloadFile` — 下载文件」；API 名称是小写 `d` 的 `downloadFile`，用 `success` / `fail` 或明确返回的最终结果判断下载是否完成，不要把返回的 `DownloadTask`、`undefined` 或仅表示派发完成的 Promise 当成下载成功。
 - 陀螺仪：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「陀螺仪」；使用同一个监听函数注册和解绑，先监听再启动，并在页面隐藏或卸载时同时调用 `stopGyroscope` 和 `offGyroscopeChange` 清理资源。
+- 蓝牙 / BLE：读取 [bluetooth.md](./knowledge/bluetooth.md)，统一使用 `qd.*` 完成中心设备流程；先监听再扫描或读写，设备、服务和特征 ID 必须来自真实结果，按特征能力选择操作，断线后重建会话状态。
+- 普通音频播放：读取 [inner-audio.md](./knowledge/inner-audio.md)，使用 `qd.createInnerAudioContext()` 和实例的 `play()`、`pause()`、`stop()`、`destroy()`；实例保存在普通变量或闭包中，暂停后沿用同一实例和音源，方法返回与实际播放事件分别记录。
 
 涉及页面、组件、样式、`DESIGN.md`、`app.css` token/公共组件类时，必须同时使用 `/qdmp:qdmp-design-rules`：
 
