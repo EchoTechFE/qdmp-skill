@@ -214,6 +214,12 @@ claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/m
 启动小程序开发
 ```
 
+### 真机扫码与体验版（CLI ≥0.1.32）
+
+在前端目录执行 `qdmp debug`，用千岛 App 扫码运行并在终端查看真机日志；手机需要能访问电脑局域网，Ctrl+C 结束。
+
+需要给体验人员使用时，先 `qdmp build`，再执行 `qdmp upload --experience -d "更新说明"`。CLI 自动获取本次版本号并设置体验版，无需手填版本号，也不会自动发布正式版。Agent 可使用 `--json` 读取二维码和结果。完整说明见 [开发指南](skills/qdmp-skill/knowledge/development-guide.md#真机调试)。
+
 ### 部署发布
 
 ```

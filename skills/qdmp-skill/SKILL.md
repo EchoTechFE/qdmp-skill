@@ -1,6 +1,6 @@
 ---
 name: qdmp-skill
-description: "千岛小程序开发助手（外部版），支持前后端的开发和部署。"
+description: "千岛小程序开发助手（外部版），支持前后端开发、部署、真机扫码调试和设置体验版。"
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
                 mcp__qdmp-monitor-bootstrap__telemetry_install_status, mcp__qdmp-monitor-bootstrap__install_telemetry,
                 mcp__qdmp-gitlab__qdmp_gitlab_list_versions, mcp__qdmp-gitlab__qdmp_gitlab_get_version,
@@ -182,10 +182,14 @@ questions:
 
 ## 操作路由
 
+用户明确要求“真机调试 / 手机扫码运行”或“上传体验版 / 设置体验版”时，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`，再读取 [真机调试与体验版](./knowledge/development-guide.md#真机调试)。这两类请求是前端操作，不自动部署后端。普通上传仍保持原有行为。
+
 根据用户意图匹配操作，详细步骤见 [backend-operations.md](./knowledge/backend-operations.md)：
 
 | 关键词                                                                 | 操作                                                |
 | ---------------------------------------------------------------------- | --------------------------------------------------- |
+| 真机调试、手机扫码运行、真机日志                                      | `qdmp debug`，见 development-guide.md 的真机调试 |
+| 上传体验版、设置体验版、给体验人员扫码                                | 构建后 `qdmp upload --experience`，见 development-guide.md 的设置体验版 |
 | 部署、打包部署、上线、发布（无前端/后端限定）                          | 流程四：打包部署（全量，见 project-workflows.md）   |
 | 部署后端、发版后端、后端上线、只部署后端、部署新版本、release          | 操作 1: publish（仅后端）                           |
 | 部署前端、上传前端、前端上线、只部署前端                               | 流程四：打包部署（仅前端，见 project-workflows.md） |
@@ -301,6 +305,9 @@ Agent 对话中需要登录或用户要求登录时，先读 [Agent 对话登录
 | `qdmp login`                      | 主动打开三选一登录流程；扫码或 URL 登录成功后自动轮询并保存 Token |
 | `qdmp login --agent --env prod`   | Agent 登录：输出链接与 PNG 路径的 JSON 事件，等待浏览器回调或 App 扫码成功 |
 | `qdmp-cli upload -d "<版本描述>"` | 上传部署；skill 自动总结当前版本变化并传入描述                                |
+| `qdmp upload --experience -d "<版本描述>"` | CLI ≥0.1.32；上传后自动设置本次版本为体验版并输出二维码，无需手填版本号 |
+| `qdmp debug` | CLI ≥0.1.32；构建后启动 EMP 真机扫码调试，持续输出日志 |
+| `qdmp debug --no-build --json` | 使用已有 EMP 产物，输出二维码和设备日志的 NDJSON 事件 |
 
 创建命令禁止省略 `-t`（CLI ≤0.1.11、0.1.13、0.1.15 的默认模板就是 1.0）；禁止使用 `-t qdmp`（指向 `frontend/miniapp-taro-template`，即 effuse 版 1.0）。创建后必须读取 `qdmp.json` 确认 `loader` 为 `EMP`，并确认模板信息没有「默认模版(1.0)」或 `miniapp-taro-template`；不通过就停止并报告，禁止手改配置硬转。完整步骤见 [创建项目](./knowledge/project-workflows.md#流程一创建项目)。
 

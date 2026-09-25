@@ -697,12 +697,38 @@ pnpm run dev
 
 ### 真机调试
 
+要求 CLI **0.1.32 或更高稳定版**，仅支持 EMP。先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`；不足时按升级说明更新。在包含 `qdmp.json` 的前端目录执行：
+
 ```bash
-qdmp build
-qdmp-cli upload -d "真机调试版本"
+qdmp debug
+# 已有本次改动的 EMP 编译产物时，可以跳过构建
+qdmp debug --no-build
+# 多网卡时选择手机可访问的本机 IPv4 地址
+qdmp debug --host 192.168.1.20 --port 9000
 ```
 
-使用千岛 App 扫码预览。
+默认执行项目构建和 EMP 编译，启动本地 HTTP 包下载与 WebSocket 日志服务。使用千岛 App 扫码后查看设备连接、设备信息和实时日志；Ctrl+C 停止。此流程不上传平台版本，不设置体验版或发布正式版。首期不支持源码变动自动构建/刷新、断点和单步调试；改动后重新运行命令。
+
+手机必须能够访问运行 CLI 的机器及端口，通常连接同一局域网；不要把 `localhost` 当作手机可访问的电脑地址。Agent 若运行在隔离容器或云端，先确认手机可达；不可达时说明需要在开发者本机运行，不能把容器内部二维码称为可用真机入口。业务接口的域名和环境沿用项目配置，不自动部署后端或替换为浏览器代理 `/api`。
+
+Agent 使用 `qdmp debug --json` 读取 NDJSON；需要对话内展示图片时加 `--qr-output <新的绝对PNG路径>`，确保父目录存在且文件不存在。收到 `ready` 后立即展示 `deepLink` 和实际 `qrImagePath`（或宿主支持的 `qrDataUrl`），保持后台进程运行并读取 `device-connected`、`device-info`、`log`、`device-disconnected`、`error`、`stopped` 事件。不要等待长期进程结束才展示二维码；`ready` 只说明服务就绪，不能当作手机已运行成功。缺少登录态时先执行 `qdmp login --agent --env prod`，完成登录后重试调试命令。
+
+### 设置体验版
+
+要求 CLI **0.1.32 或更高稳定版**。用户明确要求上传体验版时，在前端目录执行：
+
+```bash
+qdmp build
+qdmp upload --experience -d "本次更新说明"
+# Agent / CI 使用结构化结果
+qdmp upload --experience --json -d "本次更新说明"
+```
+
+CLI 自动读取上传接口返回的真实版本号并设为体验版，开发者无需手动输入版本号。普通 `qdmp upload` 不会自动设置体验版；设置体验版不等于提审或正式发布。体验链接和二维码打开平台“当前体验版”，再次切换后会打开新版本，体验权限沿用平台规则。默认使用正式平台的同一个 appId；`--env dev` 选择开发环境 API，不表示“体验版”。
+
+收到 JSON `type=result` 且 `experienceUpdated=true` 后，展示 `versionCode`、`experienceUrl` 和二维码。需要图片文件可使用 `--qr-output <新的绝对PNG路径>`。若有 `warning`，但体验版已设置成功，则说明只是二维码生成/保存失败，直接展示体验链接，不要重新上传。
+
+上传成功但设置失败时，保留 `uploaded=true`、`versionCode`，使用 CLI 返回的 `retryCommand` 重试设置，不重新构建上传。`qdmp experience --version <实际版本号>` 仅用于这类重试或用户明确选择已有版本；优先复制返回的命令，不要求用户猜版本号。
 
 ### 常见问题
 
