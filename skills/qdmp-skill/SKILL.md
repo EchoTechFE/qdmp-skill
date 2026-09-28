@@ -29,7 +29,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | [inner-audio.md](./knowledge/inner-audio.md)              | 普通音频：创建、播放、暂停、停止、销毁、实例生命周期与真实调用结果记录 |
 | [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：场景化接口文档、OSS 上传流程、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
 | [backend-operations.md](./knowledge/backend-operations.md) | 后端操作详情：通用子流程 + 操作 1-7 的完整步骤                                            |
-| [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署                                                |
+| [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署（真机调试与体验版另见开发指南）                                                |
 | [prd-template.md](./knowledge/prd-template.md)             | PRD 模版：好的 PRD 应包含哪些内容 + 可直接使用的模版                                      |
 | [skill-data-consent.md](./references/skill-data-consent.md) | Skill 运行数据采集授权文案、项目范围和用户控制入口                                      |
 
@@ -154,7 +154,7 @@ questions:
 - 数据建模（操作 7）
 
 运维类意图（跳过 PRD 检查）：
-- 查日志、查版本、回滚、查状态、部署/发版
+- 查日志、查版本、回滚、查状态、部署/发版、仅启动真机调试、设置体验版
 
 **PRD 检查逻辑**：检查 `{projectRoot}/doc/prd.md` 是否存在：
 - 存在 → 继续，PRD 将在后续流程中按需读取
@@ -182,14 +182,15 @@ questions:
 
 ## 操作路由
 
-用户明确要求“真机调试 / 手机扫码运行”或“上传体验版 / 设置体验版”时，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`，再读取 [真机调试与体验版](./knowledge/development-guide.md#真机调试)。这两类请求是前端操作，不自动部署后端。普通上传仍保持原有行为。
+用户明确要求“真机调试 / 手机扫码运行”或“上传体验版 / 设置体验版”时，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`，再按意图读取 [真机调试](./knowledge/development-guide.md#真机调试) 或 [设置体验版](./knowledge/development-guide.md#设置体验版)。这两类请求是前端操作，不自动部署后端。普通上传仍保持原有行为。
 
 根据用户意图匹配操作，详细步骤见 [backend-operations.md](./knowledge/backend-operations.md)：
 
 | 关键词                                                                 | 操作                                                |
 | ---------------------------------------------------------------------- | --------------------------------------------------- |
 | 真机调试、手机扫码运行、真机日志                                      | `qdmp debug`，见 development-guide.md 的真机调试 |
-| 上传体验版、设置体验版、给体验人员扫码                                | 构建后 `qdmp upload --experience`，见 development-guide.md 的设置体验版 |
+| 上传体验版、上传当前代码给体验人员扫码                                | 构建后 `qdmp upload --experience`，见 development-guide.md 的设置体验版 |
+| 将已上传版本设为体验版、切换体验版本                                  | `qdmp experience --version <实际版本号>`，无需重新构建上传 |
 | 部署、打包部署、上线、发布（无前端/后端限定）                          | 流程四：打包部署（全量，见 project-workflows.md）   |
 | 部署后端、发版后端、后端上线、只部署后端、部署新版本、release          | 操作 1: publish（仅后端）                           |
 | 部署前端、上传前端、前端上线、只部署前端                               | 流程四：打包部署（仅前端，见 project-workflows.md） |
@@ -201,7 +202,7 @@ questions:
 | 部署测试环境、本地测试、本地运行、本地调试、启动开发环境               | 流程三：开发调试（全量，见 project-workflows.md）   |
 | 数据建模、设计数据、我要存什么数据、数据库设计、定义数据结构、管理数据 | 操作 7: schema                                      |
 
-意图不明确时，使用 AskUserQuestion 让用户选择。
+只说“设置体验版 / 给体验人员扫码”且上下文无法判断目标时，确认是上传当前代码还是使用已上传版本；不要默认重复上传。其他意图不明确时，使用 AskUserQuestion 让用户选择。
 
 工作流程（创建项目、开发调试、打包部署）见 [project-workflows.md](./knowledge/project-workflows.md)。
 
@@ -306,6 +307,7 @@ Agent 对话中需要登录或用户要求登录时，先读 [Agent 对话登录
 | `qdmp login --agent --env prod`   | Agent 登录：输出链接与 PNG 路径的 JSON 事件，等待浏览器回调或 App 扫码成功 |
 | `qdmp-cli upload -d "<版本描述>"` | 上传部署；skill 自动总结当前版本变化并传入描述                                |
 | `qdmp upload --experience -d "<版本描述>"` | CLI ≥0.1.32；上传后自动设置本次版本为体验版并输出二维码，无需手填版本号 |
+| `qdmp experience --version <实际版本号>` | CLI ≥0.1.32；将已上传的开发版本设为体验版，不重新构建上传 |
 | `qdmp debug` | CLI ≥0.1.32；构建后启动 EMP 真机扫码调试，持续输出日志 |
 | `qdmp debug --no-build --json` | 使用已有 EMP 产物，输出二维码和设备日志的 NDJSON 事件 |
 
