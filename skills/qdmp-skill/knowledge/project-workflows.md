@@ -626,6 +626,8 @@ questions:
 
 ## 流程三：开发调试
 
+**真机扫码与体验版分流**：明确要求真机扫码、查看真机日志或设置体验版时，分别执行 [真机调试](./development-guide.md#真机调试) 或 [设置体验版](./development-guide.md#设置体验版)，要求 CLI ≥0.1.32；这类前端操作不触发下面的全量后端部署，也不自动把业务 API 改成 `/api`。手机端业务请求应使用实际可访问的服务地址。
+
 **前置检查：依赖栈**
 
 先执行流程一中的「依赖栈兜底检查（不通过必须停止）」，通过后才继续开发调试；已有项目同样适用。
@@ -737,7 +739,7 @@ pgrep nginx > /dev/null 2>&1 && nginx -s reload || nginx
   http://localhost:8888
 ```
 
-真机调试：`qdmp build` 后使用千岛 App 扫码预览。
+用户要求真机调试时，按 [真机调试指南](./development-guide.md#真机调试) 执行 `qdmp debug`；已有本次改动的 EMP 编译产物可用 `qdmp debug --no-build`。收到二维码后使用千岛 App 扫码，保持 CLI 进程运行。
 
 ---
 
@@ -936,4 +938,6 @@ qdmp-cli upload -d "<versionDescription>"
 
 上传命令中的描述必须与 Step 4.1 输出完全一致。若上传因描述参数、登录态、构建或网络问题失败，报告原始错误并停止；修复后仍携带同一描述重试，不得改用无 `-d/--description` 参数的上传命令。
 
-上传后前往 [开发者后台](https://open.qiandao.com) 提交审核。
+用户明确要求上传并设置体验版时，将本步骤的上传命令替换为 `qdmp upload --experience -d "<versionDescription>"`，按 [设置体验版](./development-guide.md#设置体验版) 展示结果；不要先普通上传再执行一次 `upload --experience`。已上传版本使用 `qdmp experience --version <实际版本号>`。
+
+普通上传成功不代表已经设为体验版或正式发布；需要提审时前往 [开发者后台](https://open.qiandao.com) 提交审核。

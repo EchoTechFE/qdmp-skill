@@ -697,12 +697,60 @@ pnpm run dev
 
 ### 真机调试
 
+要求 CLI **0.1.32 或更高稳定版**，仅支持 EMP。先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`；不足时按升级说明更新。确认本地和平台应用均为 EMP、当前账号具有应用开发权限后，在包含 `qdmp.json` 的前端目录执行（也支持根目录下存在 `frontend/qdmp.json` 的项目）：
+
 ```bash
-qdmp build
-qdmp-cli upload -d "真机调试版本"
+qdmp debug
+# 已有本次改动的 EMP 编译产物时，可以跳过构建
+qdmp debug --no-build
+# 多网卡时选择手机可访问的本机 IPv4 地址
+qdmp debug --host 192.168.1.20 --port 9000
 ```
 
-使用千岛 App 扫码预览。
+`--host` 必须替换为本机网卡上手机可访问的 IPv4 地址；默认自动选择。`--port` 范围为 0–65535，默认 0 自动分配端口，以 `ready.port` 为准。
+
+默认执行项目构建和 EMP 编译，启动本地 HTTP 包下载与 WebSocket 日志服务。使用千岛 App 扫码后查看设备连接、设备信息和实时日志；Ctrl+C 停止。此流程不上传平台版本，不设置体验版或发布正式版。首期不支持源码变动自动构建/刷新、断点和单步调试；改动后重新运行命令。
+
+手机必须能够访问运行 CLI 的机器及端口，通常连接同一局域网；不要把 `localhost` 当作手机可访问的电脑地址。Agent 若运行在隔离容器或云端，先确认手机可达；不可达时说明需要在开发者本机运行，不能把容器内部二维码称为可用真机入口。业务接口的域名和环境沿用项目配置，不自动部署后端或替换为浏览器代理 `/api`。
+
+Agent 使用 `qdmp debug --json` 读取 NDJSON；需要对话内展示图片时加 `--qr-output <新的绝对PNG路径>`，确保父目录存在且文件不存在。收到 `ready` 后立即展示 `deepLink` 和实际 `qrImagePath`（或宿主支持的 `qrDataUrl`），保持后台进程运行并读取 `device-connected`、`device-info`、`log`、`device-disconnected`、`error`、`stopped` 事件。不要等待长期进程结束才展示二维码；`ready` 只说明服务就绪，不能当作手机已运行成功。JSON 模式不会交互登录；明确缺少登录态时，按 [Agent 对话登录](./agent-login.md) 执行 `qdmp login --agent --env <prod|dev>`，完成后重试原命令。登录和操作必须使用同一环境；默认 `prod` 读取 `qdmp.json.appId`，显式 `--env dev` 读取 `devAppId`。设置体验版也遵循这一环境与登录规则。
+
+常见失败：无应用开发权限时核对登录账号和平台协作者权限；扫码连接失败时检查 Wi-Fi、所选网卡、端口与防火墙；`--no-build` 提示缺少产物时重新运行 `qdmp debug` 完成构建。重启会产生新的构建快照，使用本次返回的二维码重新扫码。
+
+### 设置体验版
+
+要求 CLI **0.1.32 或更高稳定版**，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`。根据用户指定的是当前代码还是已上传版本选择以下入口，保持应用和环境一致。
+
+#### 上传当前代码并设为体验版
+
+用户明确要求上传体验版时，在前端目录执行。`qdmp upload` 本身不会构建，必须先完成 `qdmp build`；版本描述按 [发布流程 Step 4.1](./project-workflows.md#step-4-部署前端服务) 从本次改动生成，限 200 字：
+
+```bash
+qdmp build
+qdmp upload --experience -d "本次更新说明"
+# Agent / CI 可将上面的上传命令替换为以下形式（不要再上传一次）
+qdmp upload --experience --json -d "本次更新说明"
+```
+
+CLI 自动读取上传接口返回的真实版本号并设为体验版，开发者无需手动输入版本号。普通 `qdmp upload` 不会自动设置体验版；设置体验版不等于提审或正式发布。体验链接和二维码打开平台“当前体验版”，再次切换后会打开新版本，体验权限沿用平台规则。默认使用正式平台的同一个 appId；`--env dev` 选择开发环境 API，不表示“体验版”。
+
+#### 将已上传版本设为体验版
+
+用户已明确选择平台上的版本时，无需重新构建或上传，在同一项目目录执行：
+
+```bash
+qdmp experience --version <实际版本号> --env prod
+# Agent 使用结构化结果时，改用以下形式
+qdmp experience --version <实际版本号> --env prod --json --qr-output <新的绝对PNG路径>
+```
+
+`--version` 必填，使用上传结果的 `versionCode` 或开放平台确认的正整数版本号，不使用 `package.json.version`，也不猜测“最新版本”。没有明确目标版本时先确认。CLI 只允许将 `DEVELOPMENT` 状态版本设为体验版；目标已经是当前体验版且状态为 `REVIEW` 时会直接返回成功，其余状态会报错。
+
+#### 结果展示与失败处理
+
+收到 JSON `type=result` 且 `experienceUpdated=true` 后，展示 `versionCode`、`experienceUrl` 和二维码。需要图片文件可使用 `--qr-output <新的绝对PNG路径>`，父目录须存在，目标文件不能已存在；`upload` 仅在同时传入 `--experience` 时支持该参数。若有 `warning`，但体验版已设置成功，则说明只是二维码生成/保存失败，直接展示体验链接，不要重新上传。
+
+上传成功但设置失败时，保留 `uploaded=true`、`versionCode`，使用 CLI 返回的 `retryCommand` 重试设置，不重新构建上传。`qdmp experience --version <实际版本号>` 仅用于这类重试或用户明确选择已有版本；优先复制返回的命令，不要求用户猜版本号。Agent 重试时可追加 `--json`，保留返回的版本号和环境。若提示“无法确认体验版设置结果”，先在开放平台核对当前体验版，再决定是否重试；不要把未知结果报告为失败后自动重复上传。
 
 ### 常见问题
 
