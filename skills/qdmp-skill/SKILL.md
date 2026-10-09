@@ -27,7 +27,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | [bridge-api-guide.md](./knowledge/bridge-api-guide.md)     | Bridge API：用户授权查询与申请、原生能力调用、蓝牙、音频、文件下载、陀螺仪、发帖预填参数、IM 消息订阅、导航栏返回首页按钮、参数与返回值类型 |
 | [bluetooth.md](./knowledge/bluetooth.md)                  | BLE 中心设备：发现、连接、GATT 读写与通知、MTU、断线清理与重连、Android 配对 |
 | [inner-audio.md](./knowledge/inner-audio.md)              | 普通音频：创建、播放、暂停、停止、销毁、实例生命周期与真实调用结果记录 |
-| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：场景化接口文档、OSS 上传流程、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
+| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：岛屿详情/加入状态/搜索、合作游戏价格、OSS 上传、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
 | [backend-operations.md](./knowledge/backend-operations.md) | 后端操作详情：通用子流程 + 操作 1-7 的完整步骤                                            |
 | [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署（真机调试与体验版另见开发指南）                                                |
 | [prd-template.md](./knowledge/prd-template.md)             | PRD 模版：好的 PRD 应包含哪些内容 + 可直接使用的模版                                      |

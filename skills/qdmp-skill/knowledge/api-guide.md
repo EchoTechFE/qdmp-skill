@@ -228,9 +228,9 @@ OSS HTTP 203 表示平台回调失败，文件可能已写入；超时也可能�
 
 ---
 
-## 4. Library：SPU / Tag
+## 4. Library：SPU / Tag / Island
 
-**响应壳**（Library）：`code`（**string**，`"0"` 表示成功）、`message`、`data`、`requestId`。
+**响应壳**：`code`、`message`、`data`、`requestId`。下列 SPU / Tag 接口的 `code` 为 **string**，`"0"` 表示成功；岛屿详情的清单定义为整数 `0`，见 §4.7。
 
 ### 4.1 GET `/spu/v1/detail`
 
@@ -325,6 +325,94 @@ curl 'https://openapi.qiandao.com/tag/v1/follow' \
 curl 'https://openapi.qiandao.com/tag/v1/following?offset=0&limit=20' \
   -H 'Authorization: Bearer <token>'
 ```
+
+### 4.7 岛屿详情与加入状态
+
+**GET** `/island/v1/detail`
+
+根据岛屿 ID 查询基本信息，通过 `data.island.joined` 判断当前用户是否已加入。接口与字段依据 [官方全量接口清单](https://g.echo.tech/openapi/openapi-doc/-/raw/master/all-endpoints.json) 中的 `LibraryService_GetIsland`、`libraryGetIslandResponse` 和 `libraryIsland`；SDK 调用约定参照 [官方服务端 SDK 的 OpenAPI 定义](https://github.com/EchoTechFE/qdmp-server-sdk/blob/main/shared/openapi.yaml)。
+
+| Query | 类型 | 必填 | 说明 |
+| ----- | ---- | ---- | ---- |
+| `id` | `string` | 是 | 岛屿 ID；即使源类型为 int64/uint64，也保持字符串，避免精度损失 |
+
+全量清单声明的必需请求头为 `access-token`；SDK 另携带 `x-echo-qdmp-version`（默认协议标识为 `1.0`，不是小程序运行时版本）。查询某个用户的加入状态时使用该用户的授权凭证；应用凭证虽然可以查询岛屿基本信息，但不能据此判断某个真实用户是否加入。
+
+```bash
+curl --get 'https://openapi.qiandao.com/island/v1/detail' \
+  --data-urlencode 'id=<islandId>' \
+  -H 'access-token: <userAccessToken>' \
+  -H 'x-echo-qdmp-version: 1.0'
+```
+
+成功响应包含 `code`、`message`、`requestId` 和 `data.island`：
+
+| `data.island` 字段 | 类型 | 说明 |
+| ----------------- | ---- | ---- |
+| `id` | `string` | 岛屿 ID |
+| `name` | `string` | 岛屿名称 |
+| `image` | `string` | 岛屿封面 URL |
+| `joined` | `boolean` | 当前用户是否已加入：`true` 已加入，`false` 未加入 |
+| `joinCount` | `string` | 加入人数，源类型为 int64，保持字符串 |
+
+全量清单将本接口的 `code` 定义为整数，`0` 表示成功；兼容 SDK 历史响应时也可接受字符串 `"0"`。先确认业务成功，再检查 `joined` 是否为布尔值。请求失败、岛屿对象缺失、`joined` 缺失或类型不符均属于无法判断，不要用 `Boolean(joined)` 或 `joined ?? false` 将其误判为未加入。权限、Token 等错误按 [错误与排查](#13-错误与排查) 处理；需要用户授权时，scope 必须来自正式接口映射或可信业务响应，不能从接口名称猜测。
+
+用户主动点击加入入口时调用 [Bridge `qd.joinIsland`](./bridge-api-guide.md#qdjoinisland--加入岛屿)。加入操作完成后重新查询本接口刷新状态，不把打开加入交互当作已加入，也不要用加入操作试探原有成员状态。
+
+### 4.8 GET `/island/v1/isJoined`
+
+仅查询当前用户是否已加入指定岛。与详情接口不同，Query 名为 **`islandId`**，结果直接位于 **`data.joined`**。使用当前用户的 `access-token`；方法名大小写保留 `isJoined`。
+
+| Query | 类型 | 必填 | 说明 |
+| ----- | ---- | ---- | ---- |
+| `islandId` | `string` | 是 | 岛 ID，int64 十进制字符串 |
+
+**响应**：`libraryIsJoinedIslandResponse`，`code` 为整数，`0` 表示成功；`data.joined` 为布尔值。先判断业务成功，再读取状态；错误、缺字段和非布尔值均不能当作未加入。
+
+```bash
+curl --get 'https://openapi.qiandao.com/island/v1/isJoined' \
+  --data-urlencode 'islandId=<islandId>' \
+  -H 'access-token: <userAccessToken>'
+```
+
+### 4.9 GET `/island/v1/joined`
+
+获取当前用户已加入的岛列表，使用当前用户的 `access-token`。
+
+| Query | 类型 | 必填 | 说明 |
+| ----- | ---- | ---- | ---- |
+| `limit` | `integer` | 否 | 1–50，默认 20 |
+| `offset` | `integer` | 否 | ≥ 0，默认 0 |
+| `orderBy` | `string` | 否 | `JOIN_TIME`（默认，加入时间倒序）或 `LAST_POST_TIME`（用户在岛内最近发帖时间倒序） |
+
+**响应**：`libraryGetMyIslandsResponse`，整数 `code: 0` 表示成功；`data.items` 为 `libraryIsland[]`，字段见 §4.7；`data.totalCount` 为 int64 字符串。列表按 offset 分页，不能仅凭当前页不包含目标岛就判定用户未加入；判断单岛状态用 §4.8。
+
+```bash
+curl 'https://openapi.qiandao.com/island/v1/joined?limit=20&offset=0&orderBy=JOIN_TIME' \
+  -H 'access-token: <userAccessToken>'
+```
+
+### 4.10 GET `/island/v1/search`
+
+搜索岛，必需请求头为 `access-token`。需要展示当前用户的 `joined` 时使用该用户的授权凭证，不根据应用凭证响应推断用户状态。
+
+| Query | 类型 | 必填 | 说明 |
+| ----- | ---- | ---- | ---- |
+| `keyword` | `string` | 是 | 搜索关键词，最多 32 字符 |
+| `limit` | `integer` | 否 | 1–50，默认 20 |
+| `offset` | `integer` | 否 | ≥ 0，默认 0 |
+
+**响应**：`librarySearchIslandsResponse`，整数 `code: 0` 表示成功；`data.items` 为 `libraryIsland[]`，`data.totalCount` 为 int64 字符串。
+
+```bash
+curl --get 'https://openapi.qiandao.com/island/v1/search' \
+  --data-urlencode 'keyword=<搜索关键词>' \
+  --data-urlencode 'limit=20' \
+  --data-urlencode 'offset=0' \
+  -H 'access-token: <token>'
+```
+
+以上岛屿接口均依据同一份全量清单。鉴权、错误处理和未知状态的处理沿用 §4.7；所需权限以平台正式配置为准。
 
 ---
 
@@ -1019,6 +1107,89 @@ const PROXY_PREFIXES = [
 
 ---
 
+## C2C：合作游戏价格查询
+
+本节依据 [官方全量接口清单](https://g.echo.tech/openapi/openapi-doc/-/raw/master/all-endpoints.json) 的 `c2c-openapi` 服务。响应包含 `code`、`message`、`requestId`、`data`，整数 `code: 0` 才表示业务成功；业务失败时 `code` 非零、`data` 为空。不要仅凭 HTTP 200 或价格数组为空判断查询成功。
+
+### GET `/c2c-openapi/v1/ping`
+
+服务连通检查，无 Query 或请求体，必需请求头为 `access-token`。成功时读取 `data.message`（string）；不要预设固定返回文案。此接口成功不代表价格接口已获授权或目标 SPU 在允许范围内。
+
+```bash
+curl 'https://openapi.qiandao.com/c2c-openapi/v1/ping' \
+  -H 'access-token: <token>'
+```
+
+### 合作游戏价格接口的范围与鉴权
+
+下面两个价格接口使用**应用 Access-Token**，请求头为 `access-token`，无需用户登录态；请求体为 JSON。服务端固定校验 SPU 的真实类目和 IP：`typeId` 必须为 `1822163`，IP 必须为下列之一。
+
+| IP ID | 游戏 |
+| ----- | ---- |
+| `1861088` | 永恒之塔2 |
+| `1877607` | 冒险岛怀旧服 |
+| `1824611` | DAD |
+| `1824607` | 暗黑4 |
+| `1824609` | 火炬之光 |
+| `1824608` | 流放之路2 |
+| `1824610` | 流放之路 |
+
+越界或无法验证时不查询价格；不要通过请求体伪造 `typeId` 或 IP 绕过校验。请求字段名是 **`id`** 和 **`specIDs`**，均使用实际 ID 的十进制字符串，不要套用 Bridge 的 `spuId` 参数名。应用凭证由服务端按既有认证流程获取，不向前端暴露 `appSecret`。
+
+### POST `/c2c-openapi/v1/gamePriceLine`
+
+**请求体**：`c2cGamePriceLineRequest`。
+
+| 字段 | 类型 | 必填 | 说明 |
+| ---- | ---- | ---- | ---- |
+| `id` | `string` | 是 | SPU ID，正整数的十进制字符串 |
+| `bucketLength` | `string` | 否 | 时间粒度；不传使用默认值，后续选择使用返回的 `availableBucketLengths` |
+| `specIDs` | `string[]` | 否 | 规格值 ID，均为正整数的十进制字符串；有值时按所选规格查询，不传或空数组沿用原查询 |
+
+**data**：`prices`（价格趋势点数组）、`availableBucketLengths`（string[]）、`spuInfo`（SPU 基础信息）。
+
+- `prices[]`：`bucketTimestamp`（int64 字符串）、`bucketStr`（string）、`price`（number）、`unit`（string）、`tradingVolume`（int32）。时间戳单位未在清单中明确，不根据名称推定秒或毫秒。
+- `spuInfo`：`id`（int64 字符串）、`name`、`cover`、`publishPrice`（均为 string）。
+
+```bash
+curl 'https://openapi.qiandao.com/c2c-openapi/v1/gamePriceLine' \
+  -X POST \
+  -H 'access-token: <appAccessToken>' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{"id":"<spuId>"}'
+```
+
+### POST `/c2c-openapi/v1/gamePriceModule`
+
+**请求体**：`c2cGameSpuPriceModuleRequest`。
+
+| 字段 | 类型 | 必填 | 说明 |
+| ---- | ---- | ---- | ---- |
+| `id` | `string` | 是 | SPU ID，正整数的十进制字符串 |
+| `specIDs` | `string[]` | 否 | 规格值 ID；传入时成交均价、涨跌幅和成交量严格按这些规格查询，不传或空数组使用默认规格 |
+
+**闪购最低价和在售数量仍按 SPU 统计**，不因 `specIDs` 而变成所选规格的统计值。
+
+**data**：`priceSummaryList`，按固定价、闪购价顺序返回有价格的模块。每项包含：
+
+| 字段 | 类型 | 说明 |
+| ---- | ---- | ---- |
+| `priceTitle` / `price` | `string` / `number` | 价格标题与价格 |
+| `priceIncreaseRatio` | `number` | 价格涨幅；清单未明确百分比换算规则，展示前核实单位 |
+| `volumeTitle` / `volume` | `string` / `integer` | 成交量标题与成交量 |
+| `sellingCountTitle` / `sellingCount` | `string` / `integer` | 在售数量标题与在售数量 |
+| `tradeType` / `currency` | `string` / `string` | 交易类型与币种；不编造枚举 |
+
+```bash
+curl 'https://openapi.qiandao.com/c2c-openapi/v1/gamePriceModule' \
+  -X POST \
+  -H 'access-token: <appAccessToken>' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{"id":"<spuId>"}'
+```
+
+---
+
 ## 12. 与小程序开发的衔接
 
 1. **凭证来源**：开放平台 `appId` / `appSecret` 与项目 **`qdmp-config.json`** 中字段对应关系以平台说明为准；不要在代码里硬编码密钥，可用环境变量或后端托管换票。
@@ -1083,6 +1254,10 @@ const PROXY_PREFIXES = [
 | Tag 搜索     | GET  | `/tag/v1/search`     |
 | 关注 Tag     | POST | `/tag/v1/follow`     |
 | 已关注 Tag   | GET  | `/tag/v1/following`  |
+| 岛屿详情与加入状态 | GET | `/island/v1/detail` |
+| 查询是否已加入岛 | GET | `/island/v1/isJoined` |
+| 已加入的岛列表 | GET | `/island/v1/joined` |
+| 搜索岛 | GET | `/island/v1/search` |
 | 当前用户     | GET  | `/user/v1/me`        |
 | 添加标记     | POST | `/mark/v1/add`       |
 | 批量添加标记 | POST | `/mark/v1/batch/add` |
@@ -1105,5 +1280,8 @@ const PROXY_PREFIXES = [
 | 图片文字识别 | POST | `/ocr/v1/recognize`  |
 | 查询 OSS 额度 | GET | `/oss/v1/quota` |
 | 准备 OSS 上传 | POST | `/oss/v1/upload/prepare` |
+| C2C 连通检查 | GET | `/c2c-openapi/v1/ping` |
+| 合作游戏价格曲线 | POST | `/c2c-openapi/v1/gamePriceLine` |
+| 合作游戏价格模块 | POST | `/c2c-openapi/v1/gamePriceModule` |
 
 完整字段与枚举见各服务 Swagger（§1 表格）。

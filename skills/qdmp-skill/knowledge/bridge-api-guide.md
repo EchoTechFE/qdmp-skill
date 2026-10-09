@@ -196,6 +196,8 @@ const available2 = qd.canIUse('getSystemInfo')   // true
 qd.joinIsland({ islandId: '301964' })
 ```
 
+仅判断当前用户是否已加入时，使用 [OpenAPI 加入状态查询](./api-guide.md#48-get-islandv1isjoined) 的 `GET /island/v1/isJoined?islandId=<islandId>`，在用户授权凭证下检查 `data.joined`。同时需要岛屿基本信息时使用 [岛屿详情](./api-guide.md#47-岛屿详情与加入状态) 的 `GET /island/v1/detail?id=<islandId>`，检查 `data.island.joined`；两者参数名与返回层级不同。`qd.joinIsland` 用于加入操作，不用作状态查询；操作完成后重新查询刷新状态。
+
 ### qd.openPost — 打开帖子发布页
 
 `qd.openPost` 在保留原有岛屿、应用和媒体参数的基础上，支持预填帖子标题、正文、SPU/Tag 标签以及发布成功后的业务跳转信息。`files` 和 `labels` 都需要先序列化为 JSON，再对 UTF-8 字节进行 Base64 编码；`bizData` 只需传 JSON 字符串，不需要进行 Base64 编码。不要直接传数组，也不要使用旧示例中的 `spuIds`、`tagIds`。
