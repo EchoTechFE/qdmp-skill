@@ -2,17 +2,12 @@
 name: qdmp-skill
 description: "千岛小程序开发助手（外部版），支持前后端开发、部署、真机扫码调试和设置体验版。"
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
-                mcp__qdmp-monitor-bootstrap__telemetry_install_status, mcp__qdmp-monitor-bootstrap__install_telemetry,
                 mcp__qdmp-gitlab__qdmp_gitlab_list_versions, mcp__qdmp-gitlab__qdmp_gitlab_get_version,
                 mcp__qdmp-gitlab__qdmp_gitlab_diff, mcp__qdmp-gitlab__qdmp_gitlab_publish,
                 mcp__qdmp-gitlab__qdmp_gitlab_pipeline_status, mcp__qdmp-gitlab__qdmp_gitlab_pipeline_logs,
                 mcp__qdmp-gitlab__qdmp_gitlab_rollback, mcp__qdmp-gitlab__qdmp_gitlab_init_repo,
                 mcp__qdmp-gitlab__qdmp_gitlab_repo_exists, mcp__qdmp-aliyun__qdmp_k8s_deployed_version,
-                mcp__qdmp-aliyun__qdmp_k8s_logs,
-                mcp__agent-runtime-telemetry__grant_consent, mcp__agent-runtime-telemetry__consent_status,
-                mcp__agent-runtime-telemetry__register_project, mcp__agent-runtime-telemetry__revoke_consent,
-                mcp__agent-runtime-telemetry__record_checkpoint, mcp__agent-runtime-telemetry__record_artifacts,
-                mcp__agent-runtime-telemetry__record_skill_event, mcp__agent-runtime-telemetry__telemetry_status]
+                mcp__qdmp-aliyun__qdmp_k8s_logs]
 ---
 
 # 千岛小程序开发助手（外部版）
@@ -35,22 +30,13 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 ---
 
-## Skill 运行数据采集授权入口
+## 强烈建议开启运行监控
 
-涉及当前项目的开发、调试、部署、运维或 Skill 生命周期记录时，先调用 `telemetry_install_status` 检查当前项目、当前宿主的监控插件安装状态。Bootstrap 会从 Codex、Claude Code 或 Qoder 的插件环境自动识别宿主；只有调用方明确知道宿主时才传 `host`，不得猜测。未安装时读取 [项目级监控插件安装提示](./references/skill-data-consent.md)，只询问是否下载安装监控插件。只有用户明确回复“同意安装监控插件”后，才调用 `install_telemetry`，参数 `accepted` 必须为 `true`；拒绝、取消、无回复时继续提供 qdmp-skill 的正常能力，不安装任何监控组件。
+首次在当前工作目录使用本 Skill 时（包括空目录），在业务选项之前单独、醒目地提示“强烈建议开启运行监控”，说明它能为失败排查、工具调用定位和开发过程回溯提供运行记录；不开启则缺少这条自动采集的诊断依据，可能需要用户另行提供日志。不要仅用“可选监控未启用，不影响开发”一句带过，也不要承诺自动修复、完整记录每条消息或保证开发成功。具体推荐文案、告知和状态处理见 [监控指引](./references/skill-data-consent.md)。已有有效授权或明确拒绝时不重复询问；没有状态证据时不得猜测。强烈建议不等于强制：拒绝、引导工具不可用或监控失败均不阻塞本 Skill 原有业务。
 
-qdmp-skill 的安装授权不等于数据采集授权。安装成功后停止当前监控激活流程，根据返回的 `restart_host` 提示用户完全重启对应宿主并在当前项目中新建任务。若 `activation` 为 `tracked_domain_work_after_restart`，新任务中调用 `/agent-runtime-telemetry:tracked-domain-work`；若为 `qdmp_telemetry_tools_after_restart`（Qoder 桌面版无插件 CLI 的回退模式），新任务中再次调用 qdmp-skill，读取安装回执 `local_source` 下的 `docs/legal/skill-data-consent.md` 并完整展示授权说明。两种模式都必须等待用户明确回复“同意采集”或“不同意”。只有取得“同意采集”后，才能调用 telemetry MCP 的 `grant_consent` 和 `register_project`；`register_project` 成功后 Collector 才能启动采集和上报。
+本 Skill 只提供提示和调用指引，不内置监控脚本或 Bootstrap MCP，不实现安装、授权、平台适配、日志采集或上传。这些能力及其协议由 agent-runtime-telemetry 独立维护。首次授权后的普通对话与重启恢复由该插件的原生 Hook 和后台服务处理，不要求再次调用 qdmp-skill。
 
-授权只适用于系统识别出的当前项目。项目根目录按 QDMP 项目根目录、Git 仓库根目录或用户启用采集时注册的文件夹确定，子目录沿用该项目授权，其他项目必须重新询问。当前项目的授权控制入口为：
-
-- “同意安装监控插件”：仅调用 qdmp bootstrap 的 `install_telemetry`，不授予数据采集权限。
-- telemetry 安装后的“同意采集”：优先由 `/agent-runtime-telemetry:tracked-domain-work` 展示 telemetry 包内的法律文案；Qoder 桌面回退模式由 qdmp-skill 从安装回执的 `local_source` 读取同一份文案。随后调用遥测 MCP 的 `grant_consent`，成功后调用 `register_project`。
-- “关闭数据采集”：调用 `revoke_consent`，撤回事件成功上报前保持撤回流程，之后停止当前项目的采集。
-- “开启数据采集”：展示完整说明并再次取得“同意采集”，不得把历史同意状态当作新的明确授权。
-- “查看数据采集状态”：调用 `consent_status`，只返回当前项目状态。
-- “删除已收集的数据”：记录用户申请并转人工处理，不向用户承诺已删除，联系 `openqiandao@echo.tech`。
-
-即使用户要求 Agent 访问项目外内容，仍须遵守当前项目采集边界；工具调用参数和结果可能进入当前项目运行记录，文案中的敏感信息提示必须一并展示。
+冷启动先完整展示 Skill 随附的 telemetry 发布告知资料、固定下载来源/版本、当前目录及数据说明；用户明确确认后才下载、校验并执行外部 onboarding。核对中央入口返回的动作与已告知范围一致后自动继续，不重复询问相同业务授权。范围变化则重新确认；宿主执行审批不能绕过。具体步骤见监控指引，不能将工具成功或无上下文的“同意”视为授权。
 
 ## 规范依赖
 
@@ -73,11 +59,19 @@ qdmp-skill 的安装授权不等于数据采集授权。安装成功后停止当
 
 ## 启动步骤（每次 skill 触发时必须先执行）
 
+### 启动前置：当前目录的监控推荐与授权指引
+
+每次触发先读取 [监控指引](./references/skill-data-consent.md)，检查当前实际工作目录的状态，再进入下面的登录路由和环境检查。仅输入 `@qdmp-skill`、空目录、没有小程序项目或尚未登录，也执行此步骤；不需要先创建项目或提供 appId。
+
+首次提示不以状态检查成功为前提：目录范围待确认、入口不可用或安装失败时，回复中仍先单独展示“强烈建议开启运行监控”及排障价值，再说明真实状态和具体下一步，不能只写“监控尚未启用，不影响开发”后转入业务选项。已有当前目录有效授权或明确拒绝证据时不重复推荐。目录差异按监控指引核实，不自动扩大授权，也不把正常项目根目录识别一律判成错误。
+
+“可选”指用户可拒绝监控，不代表可以省略状态检查和首次提示。只有当前目录已有有效授权或明确拒绝的状态证据时才跳过重复询问；其他目录的授权、全局已安装插件或缺少 MCP 工具均不能代替此证据。需要授权时完整展示入口返回的告知与选项，仅监控安装/激活等待用户选择；没有回复、暂不决定或要求继续业务时，不启用监控、不视为明确拒绝，并按原业务流程继续。不能先用业务登录问题代替监控授权，也不能把监控选择变成开发、账号查询或登录的必答前置。入口或清单不可用时明确说明“监控引导尚不可用”及原因，再继续原业务；不静默跳过，不替用户同意，不启动监控。
+
 **登录优先路由**：用户要求登录、查询当前账号，或命令提示需要登录时，先读 [Agent 对话登录](./knowledge/agent-login.md)。查询当前账号应先执行 `qdmp getMe --env <env>`，只有明确需要登录时才发起登录，不把网络或应用配置错误当成未登录。此类任务不需要项目选择、创建项目或 PRD 检查；收到登录入口后先在对话展示，不要等待用户登录完成才回复。
 
 ### 第零步：环境依赖检查
 
-在执行任何操作前，必须先确认开发环境就绪：
+完成上述监控指引处理后，在执行开发业务操作前，必须先确认开发环境就绪：
 
 ```bash
 # 检查 qdmp-cli 是否可用

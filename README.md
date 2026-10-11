@@ -33,9 +33,20 @@ skills/
 
 ### 项目监控插件的安装边界
 
-`qdmp` 只负责询问用户是否下载安装独立的 `agent-runtime-telemetry` 插件，并在用户明确回复“同意安装监控插件”后调用安装器。该回复只授权安装，不授权采集。Bootstrap 会自动识别 Codex、Claude Code 或 Qoder，优先使用对应插件 CLI；只有 Qoder CLI 不可用时才通过 Qoder 桌面版写入 telemetry MCP。安装完成后需要重启返回结果指定的宿主并新建任务；完整法律文案、项目级数据授权、Collector、监控、本地 WAL 和上传均由独立插件负责。
+QDMP 仅提供可选监控的提示和调用指引，不内置监控安装器、Bootstrap MCP 或上报脚本，也不改变原有开发、登录、部署流程。安装、目录授权、更新、三宿主适配、拒绝结果上报及持续采集均由独立的 `agent-runtime-telemetry` 维护。完整展示中央入口的推荐动作和数据说明后，回复“同意”即可由 Agent 连续执行，无需手动下载或输入命令；必要的扫码身份确认和宿主安全确认仍需用户完成。
 
-生产安装默认从 `telemetry-distribution.json` 指定的公开 HTTPS 制品地址下载固定版本，校验内置 SHA-256 后安全解压到用户目录，再通过本地 Marketplace 安装；用户不需要 GitLab 账号。私有 GitLab 仓库地址只保留为显式开发覆盖，生产配置不得引用 `qdmp-monitor-qa` 或其他测试 Marketplace。公开制品必须与 GitLab 发布流水线生成的 `.sha256` 完全一致。
+[Skill 内分发清单](skills/qdmp-skill/references/telemetry-distribution.json) 保存固定发布入口、SHA-256 和 telemetry 生成的 `pre_download_notice`（完整告知与法律原文，绑定两个制品哈希和版本）。冷启动先展示本地告知并取得明确确认，再下载/校验/执行独立 onboarding；实际动作超出告知时停止重新确认。拒绝下载或宿主拦截时不下载工具、不上报拒绝事件，也不影响业务。业务授权不能替代宿主执行审批。`onboarding: null` 或本地告知缺失表示入口不可用，不能先联网补文案。详见 [监控指引](skills/qdmp-skill/references/skill-data-consent.md)。
+
+`skills/qdmp-skill/references/telemetry-distribution.json` 是本仓库唯一的分发清单，发布维护和安装后运行都使用这一份，不再保留仓库根副本。早期根清单服务于现已移除的 QDMP Bootstrap；迁移到 Skill 内是为了支持独立安装 Skill，不是为了维护两份配置。运行时只按实际 Skill 安装路径读取，不读取用户工作目录。
+
+待 telemetry 新版本实际发布后，将该次发布产出的完整 `dist/telemetry-distribution.json` 原样更新到上述唯一文件；版本、两个制品 URL/SHA-256 与发布告知一起更新，不手工拼接文案或修改哈希。该发布产物属于 telemetry 构建输出，不是 QDMP 的第二份维护源。更新后执行：
+
+```bash
+node scripts/check-telemetry-distribution.mjs
+node --test test/telemetry-distribution.test.mjs
+```
+
+将唯一清单一并提交；单独安装 Skill 时复制完整 `skills/qdmp-skill/`，不能只复制 `SKILL.md`。校验脚本只用于维护者的发布检查，不随 Skill 执行，不生成副本、不下载或启用 telemetry。检查会拒绝缺失的清单、不可用 onboarding、版本/哈希/告知不一致和无效下载配置；不联网确认制品存在，也不证明远端内容可信，发布方仍需确认实际制品及校验值。上述命令是发布前检查，尚无 CI 自动接入。
 
 ### Claude Code
 
@@ -119,7 +130,7 @@ qoderclicn plugin marketplace add EchoTechFE/qdmp-skill
 qoderclicn plugin install qdmp@qdmp-marketplace
 ```
 
-如果用户只安装了 Qoder 桌面版而没有 `qoderclicn`，qdmp 的监控 Bootstrap 会使用桌面应用内置命令注册 telemetry MCP；重启 Qoder 后再由 telemetry MCP 完成项目授权和 Hooks 初始化。
+如果用户只安装了 Qoder 桌面版而没有 `qoderclicn`，由独立 telemetry 引导工具检测桌面安装入口并注册 MCP、初始化 Hooks；需要宿主信任或重启时，完成后恢复同一任务，不要求再次授权或调用 qdmp-skill。
 
 **3. 使用**
 

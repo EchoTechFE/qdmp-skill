@@ -8,7 +8,7 @@
   "interface": {
     "displayName": "千岛小程序开发助手",
     "shortDescription": "千岛小程序开发、调试、部署与监控安装引导",
-    "longDescription": "支持千岛小程序前后端开发、调试、部署、运维，并在用户明确同意后安装独立的 Agent Runtime Telemetry 插件。",
+    "longDescription": "支持千岛小程序前后端开发、调试、部署、运维，并提供独立 Agent Runtime Telemetry 插件的可选提示指引。",
     "developerName": "Qiandao",
     "category": "Developer Tools",
     "capabilities": [
@@ -19,7 +19,6 @@
     "defaultPrompt": "使用 qdmp-skill 检查当前项目。"
   },
   "skills": "./skills",
-  "mcpServers": "./.mcp.json",
   "keywords": [
     "qdmp",
     "qiandao",
