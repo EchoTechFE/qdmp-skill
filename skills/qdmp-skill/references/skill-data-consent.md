@@ -20,6 +20,10 @@ QDMP 只负责推荐、告知和调用指引；安装、授权、宿主适配、
 
 ## 唯一入口与数据说明
 
+首次安装和目录激活优先使用 [monitor-flow 脚本状态机](./monitor-flow.md)。本文保留授权说明与 telemetry 协议细节；状态机强制校验从告知到授权、校验、检查及执行的顺序，不依赖 Agent 自行记住参数。开启动作不直接手工调用 onboarding enable。
+
+**无 MCP 的冷启动是受支持路径，不能直接报告入口不可用。** 安装之前没有 telemetry MCP、本地没有监控文件均属正常；不要扫描业务目录寻找入口。按实际 Skill 安装路径读取下述唯一清单。
+
 读取同目录的 [telemetry-distribution.json](./telemetry-distribution.json)，即实际 Skill 安装目录下的 `references/telemetry-distribution.json`。不读取用户工作目录或仓库根副本，也不扫描其他目录寻找替代清单。
 
 - `onboarding` 指定 telemetry 发布的独立 Node.js 入口、版本、HTTPS URL 和 SHA-256；`pre_download_notice` 是绑定该发布版本和两个制品哈希的完整告知与法律原文。

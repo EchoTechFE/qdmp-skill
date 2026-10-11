@@ -50,6 +50,12 @@ node --test test/telemetry-distribution.test.mjs
 
 ### Claude Code
 
+无 telemetry MCP 的首次使用由随 Skill 安装的 `scripts/monitor-flow.mjs` 强制执行告知、授权绑定、下载校验、实时状态复查和合法转换；安装仍委托固定 telemetry 发布入口。完整方案见 [状态机指引](skills/qdmp-skill/references/monitor-flow.md)。
+
+```bash
+node --test test/telemetry-distribution.test.mjs test/monitor-flow.test.mjs
+```
+
 **1. 添加插件市场**
 
 ```bash

@@ -1,22 +1,22 @@
 {
-  "version": "0.2.10",
-  "artifact_url": "https://github.com/EchoTechFE/qdmp-skill/releases/download/agent-runtime-telemetry-v0.2.10/agent-runtime-telemetry-0.2.10.tar.gz",
-  "artifact_sha256": "e492e0ec9b58c1408ba0aaa554571e43ea1b25928f799d7c5082f99f0bf2db5a",
-  "archive_root": "agent-runtime-telemetry-0.2.10",
+  "version": "0.2.13",
+  "artifact_url": "https://github.com/EchoTechFE/qdmp-skill/releases/download/agent-runtime-telemetry-0.2.13/agent-runtime-telemetry-0.2.13.tar.gz",
+  "artifact_sha256": "24165004f5fbdcaf071775374d6668a073865679eda5ec5e0a9a2b9ac692156c",
+  "archive_root": "agent-runtime-telemetry-0.2.13",
   "repository_source": "",
   "repository_ref": "",
   "marketplace_name": "agent-runtime-telemetry-marketplace",
   "plugin_name": "agent-runtime-telemetry",
   "onboarding": {
-    "version": "0.2.10",
-    "url": "https://github.com/EchoTechFE/qdmp-skill/releases/download/agent-runtime-telemetry-v0.2.10/agent-runtime-telemetry-onboarding-0.2.10.mjs",
-    "sha256": "b505808788ce7ef09f1509708261ddd2ac8d5ff6100e912a5e9c534a8841b6cb"
+    "version": "0.2.13",
+    "url": "https://github.com/EchoTechFE/qdmp-skill/releases/download/agent-runtime-telemetry-0.2.13/agent-runtime-telemetry-onboarding-0.2.13.mjs",
+    "sha256": "d2a4d9df74a02da0188cfd0935142e97b5c69cb3212f880fe99f265d156f48e7"
   },
   "pre_download_notice": {
     "schema_version": 1,
-    "version": "0.2.10",
-    "artifact_sha256": "e492e0ec9b58c1408ba0aaa554571e43ea1b25928f799d7c5082f99f0bf2db5a",
-    "onboarding_sha256": "b505808788ce7ef09f1509708261ddd2ac8d5ff6100e912a5e9c534a8841b6cb",
+    "version": "0.2.13",
+    "artifact_sha256": "24165004f5fbdcaf071775374d6668a073865679eda5ec5e0a9a2b9ac692156c",
+    "onboarding_sha256": "d2a4d9df74a02da0188cfd0935142e97b5c69cb3212f880fe99f265d156f48e7",
     "upload_endpoint": "https://c.qiandao.cn/collect",
     "permitted_action": "install_if_missing_or_reuse_same_version",
     "consent_template": "# 当前工作目录监控：按实际动作授权\n\n当前可执行选项（由宿主安装状态、固定分发版本及当前目录状态确定）：\n\n{authorization_choices}\n\n{confirmation_prompt}\n\n授权目录为 **{project_root}**。仅在选择包含“开启监控和正式上报”的选项时，为该目录授予以下两项权限：\n\n1. 持续监控当前工作目录及其项目子目录的 Agent 运行记录，运行和维护已有采集后台。授权会保留，重启后恢复同一任务、后续不再调用 qdmp-skill 的普通对话也在范围内。其他项目和嵌套独立项目不自动授权。\n2. 将该项目授权生效后产生的记录用于运行分析、故障排查和产品改进。**当前版本使用正式采集接口 `https://c.qiandao.cn/collect`。**内置 dev 地址配置归一到正式接口，其他自定义接口不变。不补采授权前的历史对话。\n\n只有选择“安装”或“更新”的选项时才允许执行对应的插件变更。“仅授权当前目录”复用已安装且兼容的版本，不下载安装包、不执行宿主插件安装或版本更新；登记和激活目录时仍可维护已有 Hook 及采集后台。“仅更新”不授予新目录的数据权限、不改变现有目录授权。插件及后台可能在多个已授权项目间共享，更新会影响这些项目使用的运行时，但不会扩大采集目录或数据范围。版本或权限范围变化后必须重新确认相应动作。\n\n记录包括项目/Git 标识、设备与用户关联标识、宿主/Skill 版本、会话与工具运行状态、用户输入、工具参数和结果、文件变更摘要、记忆文件摘要。输入及工具结果可能包含代码、业务信息和你要求访问的项目外内容，请勿输入密码、密钥或其他不应上报的敏感数据；自动脱敏不能保证识别所有敏感信息。不采集隐藏思维链。登录时复用 QDMP 生产扫码登录，只保存非敏感登录校验信息，不读取或上报登录 token。\n\n记录默认在本机加密缓存，网络恢复后重试上传。数据接收方为回响科技，服务部署在中国境内，数据按《Skill 使用数据说明》保留一年。可随时说“关闭数据采集”停止当前项目新增采集并处理撤回上报；重新开启需要新授权。已上传数据的删除申请请联系 `openqiandao@echo.tech`，Agent 不会承诺已自动删除。\n\n选择结果说明（`monitor-install-decision-v1`，必须在用户选择前展示）：如果选择“暂不开启”或拒绝安装，Agent Runtime Telemetry 独立引导工具会直接向正式接口单次发送最小化的拒绝结果，用于统计安装引导效果。内容仅含随机事件编号、拒绝事件类型、说明版本、宿主类型、操作系统类型、目录是否为空和日期，以及接口所需发送时间。不发送账号、设备编号、会话编号、目录路径、Git 信息、对话内容或文件内容，不安装监控插件、不要求登录、不启动持续监控。HTTP 服务仍能看到网络来源 IP，因此不承诺网络层完全匿名。本地仅保存去重及拒绝状态，不在工作目录创建项目文件。失败不会阻塞业务，也不启动后台重试。\n\n请明确选择上方适用的授权选项，或“暂不开启”“暂不开启，也不要上报选择结果”。最后一项仅本地保存拒绝状态，不发送网络请求；未提前展示此说明的历史拒绝也不补报。上述拒绝事件仅适用于首次安装引导，拒绝更新或拒绝新增目录监控不发送安装拒绝事件，也不撤回已有授权。拒绝不影响 qdmp-skill 正常业务。原来的“仅同意安装”不包含采集与正式上报，不会自动迁移。\n\n安装后仍可能需要你在宿主中审查并信任 Hook，然后完全重启宿主并恢复同一任务。这是宿主安全要求，不是第二次业务授权。Hook 尚未加载或信任期间不能保证采集；不会因此扫描你的历史会话。界面将分别报告后台激活、真实 Hook 观察和生产日志回查状态。\n",

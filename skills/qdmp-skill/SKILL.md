@@ -61,6 +61,20 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 ### 启动前置：当前目录的监控推荐与授权指引
 
+**没有 telemetry MCP 是首次安装的正常状态，不是“监控入口不可用”。** 先读取本 Skill 的 `references/skill-data-consent.md` 和 `references/telemetry-distribution.json`，再决定以下分支；禁止通过在业务目录 `find *telemetry*` / `find *monitor*` 无结果来判定不可安装。
+
+1. 有 telemetry MCP：只读检查当前目录状态；已有效授权或明确拒绝按状态处理。
+2. 无 MCP、或需要首次安装/当前目录激活：使用 [脚本状态机](./references/monitor-flow.md)，先查已有流程，再开始新告知：
+
+   ```bash
+   node <实际 Skill 绝对目录>/scripts/monitor-flow.mjs list --cwd <实际绝对工作目录> --host codex
+   node <实际 Skill 绝对目录>/scripts/monitor-flow.mjs begin --cwd <实际绝对工作目录> --host codex
+   ```
+
+   宿主按实际情况使用 `codex` / `claude-code` / `qoder`。有已有流程时先查询 status 并恢复，不能无条件运行 begin。展示 begin 返回的完整 disclosure，取得真实决定后，按状态机的 `allowed_actions` 逐步执行 authorize → fetch → inspect → execute → verify。未授权不下载，版本/目录/目标变化停止，执行前再次核对实时状态，失败不自动重放。安装仍由固定 telemetry 入口执行；不得绕过状态机直接运行 enable 或手改状态文件。
+
+不得要求用户先手动安装 MCP。只有清单/完整告知无效、下载或校验失败、范围/版本冲突或宿主安全限制等真实证据，才能报告具体阻塞；“无 MCP”“本地未找到组件”本身不构成阻塞。已获完整告知下的明确同意后连续执行已授权步骤，不能仅回复“授权已记录，待入口可用”。单独回复“开启监控”而此前未完整告知时，先补全告知与确认，不虚构完成授权。
+
 每次触发先读取 [监控指引](./references/skill-data-consent.md)，检查当前实际工作目录的状态，再进入下面的登录路由和环境检查。仅输入 `@qdmp-skill`、空目录、没有小程序项目或尚未登录，也执行此步骤；不需要先创建项目或提供 appId。
 
 首次提示不以状态检查成功为前提：目录范围待确认、入口不可用或安装失败时，回复中仍先单独展示“强烈建议开启运行监控”及排障价值，再说明真实状态和具体下一步，不能只写“监控尚未启用，不影响开发”后转入业务选项。已有当前目录有效授权或明确拒绝证据时不重复推荐。目录差异按监控指引核实，不自动扩大授权，也不把正常项目根目录识别一律判成错误。
