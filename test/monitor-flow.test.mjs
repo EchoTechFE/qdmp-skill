@@ -50,6 +50,10 @@ async function fixture(t) {
 }
 test("happy cold start enforces every step and distinguishes Hook from warehouse proof", async t => {
   const f = await fixture(t); const s = await f.start();
+  assert.match(s.disclosure.legal, /^# Skill 数据采集授权文案/);
+  assert.match(s.instruction, /Show only disclosure\.legal/);
+  assert.match(s.instruction, /Do not print disclosure\.consent/);
+  assert.match(s.instruction, /Ask for one explicit decision/);
   assert.deepEqual(f.counts(), { installs: 0, calls: 0, downloads: 0 });
   assert.deepEqual(fs.readdirSync(f.cwd), []);
   assert.equal((await f.approve(s)).state, "authorized");

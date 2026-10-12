@@ -130,7 +130,7 @@ export async function monitorFlow(command, args = {}, options = {}) {
       manifest_digest: digest(release), disclosure_digest: digest(disclosure), directory_identity: { dev: stat.dev, ino: stat.ino }, created_at: new Date().toISOString(), history: [] };
     const dir = path.join(base, id); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     s.binding_digest = digest(immutable(s)); write(path.join(dir, "state.json"), s);
-    return { ...s, allowed_actions: transitions[s.state], disclosure, instruction: "Show the complete disclosure, then record the actual human decision with authorize and this disclosure_digest." };
+    return { ...s, allowed_actions: transitions[s.state], disclosure, instruction: "Show only disclosure.legal as the complete user-facing authorization copy, headed Skill 数据采集授权文案. Do not print disclosure.consent or other fields separately. Ask for one explicit decision, then record it with authorize and this disclosure_digest; do not ask again when the inspected action remains within the authorized scope." };
   }
   if (!/^[a-f0-9-]{36}$/.test(args.flow || "")) throw new Error("valid flow ID required");
   const dir = path.join(base, args.flow); const file = path.join(dir, "state.json");

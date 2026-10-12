@@ -13,7 +13,7 @@ node <Skill>/scripts/monitor-flow.mjs begin --cwd <真实绝对目录> --host co
 
 `list` 只读列出该目录与宿主已有流程，可在重启后恢复。已有流程时先 `status --flow <id>`，根据 `allowed_actions` 继续，避免重复创建流程。只有新流程需要 begin；它校验清单并保存 `awaiting_consent`，返回完整 `disclosure`、流程 ID 和 `disclosure_digest`，不联网或执行外部代码。真实目录需为规范绝对路径，符号链接别名需先核实并展示真实路径。
 
-展示返回的完整 consent、legal、版本、固定制品地址/哈希、正式目标、宿主与目录，再取得用户明确决定。只读 preflight 的结果不能代替此流程记录。确认后：
+面向用户仅展示返回的 `disclosure.legal` 全文（从“Skill 数据采集授权文案”开始），不在前面展示 `consent`、版本、地址/哈希、目标、宿主与目录的重复清单。其余字段仍参与流程绑定与校验。只询问一次，取得用户明确决定后：
 
 ```text
 node <Skill>/scripts/monitor-flow.mjs authorize --flow <flow> --decision approve --digest <disclosure_digest>
