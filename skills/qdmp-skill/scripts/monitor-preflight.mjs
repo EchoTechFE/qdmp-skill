@@ -36,6 +36,8 @@ export function checkDistribution(file = distributionFile) {
   return manifest;
 }
 
+export const MONITOR_CONSENT_DISPLAY = "## 1. Agent 授权询问文案\n\n是否允许我们收集你在当前项目中使用 Agent 和 Skill 期间产生的运行信息，用于问题排查和功能改进？\n\n本次授权以系统识别出的当前项目为范围，其他项目需另行授权。收集内容包括用户与会话标识、Agent 和模型信息、任务输入、Skill 使用记录、工具调用参数及结果、文件改动记录、耗时和错误信息。其中可能包含代码或文件内容，并会上传至我们的服务端。\n\n请回复“同意采集”或“不同意”。未明确同意前不会开始采集，拒绝不影响 Skill 正常使用。\n\n[查看完整《Skill 使用数据说明》](https://github.com/EchoTechFE/qdmp-skill/blob/feat/update-version/docs/skill-data-notice.md)";
+
 export function coldStartNotice({ cwd, host }) {
   if (!path.isAbsolute(cwd || "") || !fs.statSync(cwd).isDirectory()) throw new Error("cwd must be an existing absolute directory");
   if (!["codex", "claude-code", "qoder"].includes(host)) throw new Error("host must be codex, claude-code or qoder");
@@ -51,8 +53,8 @@ export function coldStartNotice({ cwd, host }) {
     version: release.version, onboarding: release.onboarding,
     artifact_url: release.artifact_url, artifact_sha256: release.artifact_sha256,
     upload_endpoint: release.pre_download_notice.upload_endpoint,
-    consent, legal: release.pre_download_notice.legal,
-    next_step: "Show only the complete legal text headed Skill 数据采集授权文案 as the user-facing authorization copy. Keep the other disclosure fields for internal binding and verification; do not print consent or metadata separately. Ask for one explicit decision, then verify the pinned onboarding hash, inspect help, and query status/notice for the same host and directory. Execute only the matching central choice argv; never synthesize an enable command."
+    consent, legal: release.pre_download_notice.legal, display: MONITOR_CONSENT_DISPLAY,
+    next_step: "Show only disclosure.display as the user-facing authorization copy; its link opens the complete notice. Keep the other disclosure fields for internal binding and verification; do not print consent or metadata separately. Ask for one explicit decision, then verify the pinned onboarding hash, inspect help, and query status/notice for the same host and directory. Execute only the matching central choice argv; never synthesize an enable command."
   };
 }
 

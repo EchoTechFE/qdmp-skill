@@ -13,7 +13,7 @@ node <Skill>/scripts/monitor-flow.mjs begin --cwd <真实绝对目录> --host co
 
 `list` 只读列出该目录与宿主已有流程，可在重启后恢复。已有流程时先 `status --flow <id>`，根据 `allowed_actions` 继续，避免重复创建流程。只有新流程需要 begin；它校验清单并保存 `awaiting_consent`，返回完整 `disclosure`、流程 ID 和 `disclosure_digest`，不联网或执行外部代码。真实目录需为规范绝对路径，符号链接别名需先核实并展示真实路径。
 
-面向用户仅展示返回的 `disclosure.legal` 全文（从“Skill 数据采集授权文案”开始），不在前面展示 `consent`、版本、地址/哈希、目标、宿主与目录的重复清单。其余字段仍参与流程绑定与校验。只询问一次，取得用户明确决定后：
+面向用户仅展示返回的 `disclosure.display`（第 1 节短文案和完整说明链接），不在前面展示 `consent`、版本、地址/哈希、目标、宿主与目录的重复清单。其余字段仍参与流程绑定与校验。只询问一次，取得用户明确决定后：
 
 ```text
 node <Skill>/scripts/monitor-flow.mjs authorize --flow <flow> --decision approve --digest <disclosure_digest>
@@ -43,10 +43,14 @@ node <Skill>/scripts/monitor-flow.mjs verify --flow <flow>
 | needs_reconfirmation | 无变更动作 | 实时版本/状态不符，核实后新告知 |
 | declined | 无变更动作 | 本次拒绝，不下载或上传选择结果 |
 
+空目录或缺少 appId 时，授权状态仍按真实目录保存在用户目录。`choice_ready` 可暂停在登录或项目配置完成前；此时尚未激活采集，不重复询问。继续时先查询 status，再执行 execute；不要将项目配置报错误判为用户未授权。
+
 所有流程状态均可用 `status --flow <id>` 只读查看。主状态、immutable binding 摘要、显式决定、告知摘要、清单内容摘要、真实目录及其文件系统身份、宿主、中央选项与检查摘要、历史转换均保存在用户目录 `~/.qdmp-skill/monitor-flows/<id>/state.json`，文件权限 0600，目录 0700。工作目录不生成状态文件。
 
 清单或目录身份变化、下载哈希错误、中央目录/版本/法律/上传目标不符直接报错，未执行安装。调用并发由流程独占锁拦截；崩溃遗留锁不得自动移除，先确认原进程已结束。执行前先写 executing，失败写 failed；不能靠重试重复安装。检查真实状态、完成必要用户交互后 verify，确有新动作需求时新建告知和授权流程。
 
 脚本强制执行其入口内的流程约束，不是宿主安全沙箱。authorize 记录的是 Agent 提交的真实用户决定，无法独立证明用户已阅读告知；不得伪造决定、编辑状态文件、直接调用外部入口或改脚本来绕过校验。宿主执行审批仍独立生效。
+
+Codex 重启不会自动证明插件 Hook 已受信任。`verification_pending` 返回的 `instruction` 必须向用户展示；在当前宿主检查并信任待审查的 Hook，再发送普通 prompt 与工具调用后重复 verify。CLI 可用 `/hooks`；Desktop 若无审查入口，用户可在 CLI 的 `/hooks` 审查同一插件定义后重启 Desktop，但仍须用 Desktop 的真实 prompt/tool 事件验证，不能以 CLI 审查结果冒充 Desktop 采集证据。仅有安装、注册或 HTTP 上报时，不得声称运行日志已完整采集。
 
 collecting 由已校验运行时的实时 project-status 判断，不由 Agent 手写状态。HTTP、Kafka、Hue 验证保持独立；状态机不会接受一个“落库成功”布尔参数就标记验收完成，也不代查生产数据。

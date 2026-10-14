@@ -130,7 +130,7 @@ export async function monitorFlow(command, args = {}, options = {}) {
       manifest_digest: digest(release), disclosure_digest: digest(disclosure), directory_identity: { dev: stat.dev, ino: stat.ino }, created_at: new Date().toISOString(), history: [] };
     const dir = path.join(base, id); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     s.binding_digest = digest(immutable(s)); write(path.join(dir, "state.json"), s);
-    return { ...s, allowed_actions: transitions[s.state], disclosure, instruction: "Show only disclosure.legal as the complete user-facing authorization copy, headed Skill 数据采集授权文案. Do not print disclosure.consent or other fields separately. Ask for one explicit decision, then record it with authorize and this disclosure_digest; do not ask again when the inspected action remains within the authorized scope." };
+    return { ...s, allowed_actions: transitions[s.state], disclosure, instruction: "Show only disclosure.display as the user-facing authorization copy, including its full-notice link. Do not print disclosure.consent or other fields separately. Ask for one explicit decision, then record it with authorize and this disclosure_digest; do not ask again when the inspected action remains within the authorized scope." };
   }
   if (!/^[a-f0-9-]{36}$/.test(args.flow || "")) throw new Error("valid flow ID required");
   const dir = path.join(base, args.flow); const file = path.join(dir, "state.json");
@@ -172,7 +172,7 @@ export async function monitorFlow(command, args = {}, options = {}) {
       if (notice.status?.project?.granted === true && notice.status?.plugin_state === "installed" && notice.status?.installed_version === release.version && notice.status?.compatible) {
         return next("verification_pending", { verification: notice.status, warehouse: "not_verified", instruction: "Existing authorization detected; verify without repeating activation." });
       }
-      try { const choice = safeChoice(notice, s, release); return next("choice_ready", { choice, notice, inventory_digest: fingerprint(notice) }); }
+      try { const choice = safeChoice(notice, s, release); return next("choice_ready", { choice, notice, inventory_digest: fingerprint(notice), instruction: "The authorization is saved for this exact directory. Missing qdmp.json or appId does not invalidate it. If QDMP login is unfinished, leave this flow at choice_ready, continue project creation, then resume from status and execute after login; no second monitoring consent is needed." }); }
       catch (error) { return next("needs_reconfirmation", { reason: error.message }); }
     }
     if (command === "execute") {
@@ -185,14 +185,17 @@ export async function monitorFlow(command, args = {}, options = {}) {
         const argv = [...choice.argv];
         if (!argv.includes("--artifact-url")) argv.push("--artifact-url", release.artifact_url);
         const result = run(entry, argv, s, options);
-        return next("activation_reported", { execution_result: result, instruction: "Installation response is not Hook or warehouse proof; verify the live runtime after login/trust/restart." });
+        return next("activation_reported", { execution_result: result, instruction: s.host === "codex" ? "Codex installation and registration do not authorize plugin Hooks. Tell the user to inspect and trust the agent-runtime-telemetry Hook if pending, then verify native prompt and tool events in the same Codex surface. A restart or uploaded registration event is not proof of capture." : "Installation response is not Hook or warehouse proof; verify the live runtime after login/trust/restart." });
       } catch (error) { return next("failed", { reason: error.message, instruction: "Inspect live state before a new flow; never auto-replay an ambiguous mutation." }); }
     }
     if (command === "verify") {
       const result = run(entry, ["status", ...queryArgs(s)], s, options);
       if (result.project_root !== s.directory || result.host !== s.host || result.installed_version !== release.version || !result.compatible) throw new Error("live runtime scope/version mismatch");
       const collecting = result.project?.granted === true && result.project?.state === "collecting";
-      return next(collecting ? "collecting" : "verification_pending", { verification: result, warehouse: "not_verified" });
+      return next(collecting ? "collecting" : "verification_pending", { verification: result, warehouse: "not_verified",
+        instruction: collecting ? "Native prompt and tool events were observed. Production warehouse readback remains separate." : s.host === "codex"
+          ? "Codex Hook capture is not verified. In the current Codex host, inspect the agent-runtime-telemetry plugin Hook and review/trust it if pending. Codex CLI provides /hooks. If Desktop has no Hook review control, ask the user to review this exact plugin Hook with /hooks in Codex CLI and restart Desktop. Do not infer Desktop trust from the CLI review alone: send a normal prompt in Desktop, run a tool, and verify again. Do not report uploaded registration events as verified usage capture."
+          : "Native prompt and tool events are still pending. Complete host Hook trust/reload if required, send a normal prompt and run a tool, then verify again." });
     }
     throw new Error("unsupported flow command");
   } finally { fs.closeSync(fd); fs.unlinkSync(lock); }

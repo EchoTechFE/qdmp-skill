@@ -51,7 +51,10 @@ async function fixture(t) {
 test("happy cold start enforces every step and distinguishes Hook from warehouse proof", async t => {
   const f = await fixture(t); const s = await f.start();
   assert.match(s.disclosure.legal, /^# Skill 数据采集授权文案/);
-  assert.match(s.instruction, /Show only disclosure\.legal/);
+  assert.match(s.disclosure.display, /## 1\. Agent 授权询问文案/);
+  assert.match(s.disclosure.display, /https:\/\/github.com\/EchoTechFE\/qdmp-skill/);
+  assert.doesNotMatch(s.disclosure.display, /## 2\. 使用数据说明/);
+  assert.match(s.instruction, /Show only disclosure\.display/);
   assert.match(s.instruction, /Do not print disclosure\.consent/);
   assert.match(s.instruction, /Ask for one explicit decision/);
   assert.deepEqual(f.counts(), { installs: 0, calls: 0, downloads: 0 });
@@ -59,12 +62,25 @@ test("happy cold start enforces every step and distinguishes Hook from warehouse
   assert.equal((await f.approve(s)).state, "authorized");
   assert.equal((await f.action(s, "fetch")).state, "entry_verified");
   assert.equal((await f.action(s, "inspect")).state, "choice_ready");
-  assert.equal((await f.action(s, "execute")).state, "activation_reported");
-  assert.equal((await f.action(s, "verify")).state, "verification_pending");
+  const activated = await f.action(s, "execute");
+  assert.equal(activated.state, "activation_reported");
+  assert.match(activated.instruction, /do not authorize plugin Hooks/);
+  const pending = await f.action(s, "verify");
+  assert.equal(pending.state, "verification_pending");
+  assert.match(pending.instruction, /inspect the agent-runtime-telemetry plugin Hook/);
   f.setHook("collecting"); const done = await f.action(s, "verify");
   assert.equal(done.state, "collecting"); assert.equal(done.warehouse, "not_verified");
   assert.equal(f.counts().installs, 1);
   await assert.rejects(f.action(s, "execute"), /invalid transition/);
+});
+test("empty or incomplete project keeps directory authorization until activation", async t => {
+  const f = await fixture(t); const s = await f.ready();
+  assert.deepEqual(fs.readdirSync(f.cwd), []);
+  assert.equal((await f.action(s, "status")).state, "choice_ready");
+  fs.writeFileSync(path.join(f.cwd, "qdmp-config.json"), JSON.stringify({ name: "unfinished" }));
+  assert.equal((await f.action(s, "status")).directory, f.cwd);
+  assert.equal((await f.action(s, "execute")).state, "activation_reported");
+  assert.equal(f.counts().installs, 1);
 });
 test("out-of-order fetch/execute and unbound assent cannot invoke network or installer", async t => {
   const f = await fixture(t); const s = await f.start();
