@@ -185,7 +185,12 @@ export async function monitorFlow(command, args = {}, options = {}) {
         const argv = [...choice.argv];
         if (!argv.includes("--artifact-url")) argv.push("--artifact-url", release.artifact_url);
         const result = run(entry, argv, s, options);
-        return next("activation_reported", { execution_result: result, instruction: s.host === "codex" ? "Codex installation and registration do not authorize plugin Hooks. Tell the user to inspect and trust the agent-runtime-telemetry Hook if pending, then verify native prompt and tool events in the same Codex surface. A restart or uploaded registration event is not proof of capture." : "Installation response is not Hook or warehouse proof; verify the live runtime after login/trust/restart." });
+        const instruction = s.host === "codex"
+          ? "Codex installation and registration do not authorize plugin Hooks, and a plugin cannot grant trust to itself. First ask the user to open Codex Settings > Hooks and trust agent-runtime-telemetry. Only after that trust action, ask the user to fully restart Codex and resume this conversation; then verify native prompt and tool events in the same Codex surface. Never suggest restarting before Hook trust. A restart or uploaded registration event is not proof of capture."
+          : s.host === "claude-code"
+            ? "Claude Code installation does not prove that the current process loaded the plugin Hooks. If execution_result requests reload_host, restart Claude Code and resume the same conversation; otherwise first observe a normal prompt and tool event. Do not ask for Codex-style Hook trust."
+            : "Qoder registration maintains its native Hook settings. If execution_result requests reload_host, fully restart Qoder and resume the same conversation; otherwise verify the configured Hooks directly. Do not ask for Codex-style Hook trust. Installation or settings write success is not proof of capture.";
+        return next("activation_reported", { execution_result: result, instruction });
       } catch (error) { return next("failed", { reason: error.message, instruction: "Inspect live state before a new flow; never auto-replay an ambiguous mutation." }); }
     }
     if (command === "verify") {
@@ -194,8 +199,10 @@ export async function monitorFlow(command, args = {}, options = {}) {
       const collecting = result.project?.granted === true && result.project?.state === "collecting";
       return next(collecting ? "collecting" : "verification_pending", { verification: result, warehouse: "not_verified",
         instruction: collecting ? "Native prompt and tool events were observed. Production warehouse readback remains separate." : s.host === "codex"
-          ? "Codex Hook capture is not verified. In the current Codex host, inspect the agent-runtime-telemetry plugin Hook and review/trust it if pending. Codex CLI provides /hooks. If Desktop has no Hook review control, ask the user to review this exact plugin Hook with /hooks in Codex CLI and restart Desktop. Do not infer Desktop trust from the CLI review alone: send a normal prompt in Desktop, run a tool, and verify again. Do not report uploaded registration events as verified usage capture."
-          : "Native prompt and tool events are still pending. Complete host Hook trust/reload if required, send a normal prompt and run a tool, then verify again." });
+          ? "Codex Hook capture is not verified. Open Codex Settings > Hooks and review/trust agent-runtime-telemetry; a plugin cannot grant trust to itself. Only after trust is complete, fully restart Codex Desktop and resume this conversation. Codex CLI provides /hooks, but do not infer Desktop capture from CLI review alone. After restart, send a normal prompt in Desktop, run a tool, and verify again. Do not report uploaded registration events as verified usage capture."
+          : s.host === "claude-code"
+            ? "Claude Code native Hook capture is pending. Restart Claude Code only when the activation result requests reload_host; resume this conversation, send a normal prompt and run a tool, then verify again. Do not ask for Codex-style Hook trust."
+            : "Qoder native Hook capture is pending. If its activation result requests reload_host, fully restart Qoder and resume this conversation; otherwise verify the maintained Hook settings. Send a normal prompt and run a tool, then verify again. Do not ask for Codex-style Hook trust." });
     }
     throw new Error("unsupported flow command");
   } finally { fs.closeSync(fd); fs.unlinkSync(lock); }
