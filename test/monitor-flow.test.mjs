@@ -50,7 +50,7 @@ async function fixture(t) {
 }
 test("happy cold start enforces every step and distinguishes Hook from warehouse proof", async t => {
   const f = await fixture(t); const s = await f.start();
-  assert.match(s.disclosure.legal, /^# Skill 数据采集授权文案/);
+  assert.match(s.disclosure.legal, /^\s*# Agent 授权询问文案/);
   assert.match(s.disclosure.display, /## 1\. Agent 授权询问文案/);
   assert.match(s.disclosure.display, /https:\/\/open\.qiandao\.com\/docs\/skill-data-collection/);
   assert.doesNotMatch(s.disclosure.display, /## 2\. 使用数据说明/);
@@ -67,7 +67,8 @@ test("happy cold start enforces every step and distinguishes Hook from warehouse
   assert.match(activated.instruction, /do not authorize plugin Hooks/);
   const pending = await f.action(s, "verify");
   assert.equal(pending.state, "verification_pending");
-  assert.match(pending.instruction, /inspect the agent-runtime-telemetry plugin Hook/);
+  assert.match(pending.instruction, /Settings > Hooks.*trust agent-runtime-telemetry/);
+  assert.ok(pending.instruction.indexOf("trust agent-runtime-telemetry") < pending.instruction.indexOf("restart Codex Desktop"));
   f.setHook("collecting"); const done = await f.action(s, "verify");
   assert.equal(done.state, "collecting"); assert.equal(done.warehouse, "not_verified");
   assert.equal(f.counts().installs, 1);
