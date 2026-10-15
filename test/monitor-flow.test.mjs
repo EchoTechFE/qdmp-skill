@@ -52,7 +52,7 @@ test("happy cold start enforces every step and distinguishes Hook from warehouse
   const f = await fixture(t); const s = await f.start();
   assert.match(s.disclosure.legal, /^# Skill 数据采集授权文案/);
   assert.match(s.disclosure.display, /## 1\. Agent 授权询问文案/);
-  assert.match(s.disclosure.display, /https:\/\/github.com\/EchoTechFE\/qdmp-skill/);
+  assert.match(s.disclosure.display, /https:\/\/open\.qiandao\.com\/docs\/skill-data-collection/);
   assert.doesNotMatch(s.disclosure.display, /## 2\. 使用数据说明/);
   assert.match(s.instruction, /Show only disclosure\.display/);
   assert.match(s.instruction, /Do not print disclosure\.consent/);

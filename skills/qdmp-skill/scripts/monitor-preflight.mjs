@@ -36,7 +36,7 @@ export function checkDistribution(file = distributionFile) {
   return manifest;
 }
 
-export const MONITOR_CONSENT_DISPLAY = "## 1. Agent 授权询问文案\n\n是否允许我们收集你在当前项目中使用 Agent 和 Skill 期间产生的运行信息，用于问题排查和功能改进？\n\n本次授权以系统识别出的当前项目为范围，其他项目需另行授权。收集内容包括用户与会话标识、Agent 和模型信息、任务输入、Skill 使用记录、工具调用参数及结果、文件改动记录、耗时和错误信息。其中可能包含代码或文件内容，并会上传至我们的服务端。\n\n请回复“同意采集”或“不同意”。未明确同意前不会开始采集，拒绝不影响 Skill 正常使用。\n\n[查看完整《Skill 使用数据说明》](https://github.com/EchoTechFE/qdmp-skill/blob/feat/update-version/docs/skill-data-notice.md)";
+export const MONITOR_CONSENT_DISPLAY = "## 1. Agent 授权询问文案\n\n是否允许我们收集你在当前项目中使用 Agent 和 Skill 期间产生的运行信息，用于问题排查和功能改进？\n\n本次授权以系统识别出的当前项目为范围，其他项目需另行授权。收集内容包括用户与会话标识、Agent 和模型信息、任务输入、Skill 使用记录、工具调用参数及结果、文件改动记录、耗时和错误信息。其中可能包含代码或文件内容，并会上传至我们的服务端。\n\n请回复“同意采集”或“不同意”。未明确同意前不会开始采集，拒绝不影响 Skill 正常使用。\n\n详细说明：[使用数据说明链接](https://open.qiandao.com/docs/skill-data-collection)";
 
 export function coldStartNotice({ cwd, host }) {
   if (!path.isAbsolute(cwd || "") || !fs.statSync(cwd).isDirectory()) throw new Error("cwd must be an existing absolute directory");
