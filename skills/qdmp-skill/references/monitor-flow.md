@@ -23,9 +23,15 @@ node <Skill>/scripts/monitor-flow.mjs execute --flow <flow>
 node <Skill>/scripts/monitor-flow.mjs verify --flow <flow>
 ```
 
-每一步读返回值；仅在 `allowed_actions` 包含下一动作时继续。不能把这些命令当作无条件批处理。inspect 返回中央 notice 供核对，不绕过 execute 直接运行 enable。execute 重新检查实时版本、目录、权限和选项，原样使用已校验的中央 argv；如需插件地址只补充随附固定 `--artifact-url`，不接受其他来源。该流程仅支持条件式 install 或同版本兼容 reuse，不自动更新或降级。
+每一步读返回值；仅在 `allowed_actions` 包含下一动作时继续。不能把这些命令当作无条件批处理。inspect 返回中央 notice 供核对，不绕过 execute 直接运行 enable。execute 重新检查实时版本、目录、权限和选项，原样使用已校验的中央 argv；如需插件地址只补充随附固定 `--artifact-url`，不接受其他来源。初始同意仅涵盖条件式 install 或同版本兼容 reuse；更新及其他兼容版本复用按下方动作确认协议继续，不自动更新或降级。
 
 用户选择“不下载、不上报”时，使用 authorize 的 `--decision decline` 和真实 digest；流程终止，不联网。这个本地决定记录不撤回已有项目授权。允许下载并上报最小拒绝的选择仍按 `skill-data-consent.md` 的独立 decline 协议处理；该独立事件不能伪装成开启监控的授权。不得把“允许记录拒绝”转换为 approve。
+
+## 重试及版本动作确认
+
+`check_failed` 保留原同意及原始 diagnostic、error_code、phase（可用时）。解决技术错误后沿原 flow 再次 inspect，不重复询问采集同意，不能把 unknown 当成 missing。执行开始后的 failed/executing 仍仅允许 verify，禁止自动重放安装。
+
+`action_confirmation_required` 返回 notice、proposed_action、action_digest。展示中央 notice 的实际动作、当前/目标版本、目录、权限和完整数据说明，取得该动作的明确确认后执行 `confirm-action --flow <flow> --decision approve --digest <action_digest>`，再 execute。原采集同意不包含更新权限；兼容的不同版本复用也须确认实际版本，不能自动更新或降级。确认时和执行前均重新核对实时摘要；状态变化后重新 inspect，不沿用旧动作确认。
 
 ## 状态及停止规则
 
@@ -34,13 +40,15 @@ node <Skill>/scripts/monitor-flow.mjs verify --flow <flow>
 | awaiting_consent | authorize | 告知已生成，尚未取得明确决定 |
 | authorized | fetch | 明确授权已绑定当前告知，允许固定下载 |
 | entry_verified | inspect | 固定入口已通过 SHA-256 校验 |
-| choice_ready | inspect、execute | 中央动作符合 install/reuse 权限 |
+| choice_ready | inspect、execute | 中央动作及实际版本已通过授权检查 |
+| check_failed | inspect | 技术检查故障，不当作未安装 |
+| action_confirmation_required | inspect、confirm-action | 更新或不同版本复用须单独确认 |
 | executing | verify | 已开始外部动作，崩溃后只允许复查 |
 | activation_reported | verify | 入口返回成功，尚未确认真实 Hook |
 | verification_pending | verify | 需完成登录、信任、重启或观察 Hook |
 | collecting | verify | 当前运行时报告 collecting；落库仍未验证 |
 | failed | verify | 外部动作失败，禁止自动重放安装 |
-| needs_reconfirmation | 无变更动作 | 实时版本/状态不符，核实后新告知 |
+| needs_reconfirmation | inspect | 状态不符可重新检查；新增权限仍需确认 |
 | declined | 无变更动作 | 本次拒绝，不下载或上传选择结果 |
 
 空目录或缺少 appId 时，授权状态仍按真实目录保存在用户目录。`choice_ready` 可暂停在登录或项目配置完成前；此时尚未激活采集，不重复询问。继续时先查询 status，再执行 execute；不要将项目配置报错误判为用户未授权。

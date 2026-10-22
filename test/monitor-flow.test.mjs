@@ -7,7 +7,67 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 const skill = fileURLToPath(new URL("../skills/qdmp-skill/", import.meta.url));
 const hash = x => crypto.createHash("sha256").update(x).digest("hex");
-async function fixture(t) {
+
+for (const host of ["codex", "claude-code", "qoder"]) {
+  test(`${host}: cold install, native verification and no mutation replay`, async t => {
+    const f = await fixture(t, host); const s = await f.ready();
+    assert.equal((await f.action(s, "execute")).state, "activation_reported");
+    assert.equal((await f.action(s, "verify")).state, "verification_pending");
+    f.setHook("collecting"); const result = await f.action(s, "verify");
+    assert.equal(result.state, "collecting"); assert.equal(result.warehouse, "not_verified");
+    assert.match(result.instruction, /No restart required/);
+    await assert.rejects(f.action(s, "execute"), /invalid transition/);
+    assert.equal(f.counts().installs, 1);
+  });
+  test(`${host}: compatible different-version reuse is confirmed and never updated`, async t => {
+    const f = await fixture(t, host); f.setMode("installed");
+    f.mutate(n => {
+      n.status.installed_version = "0.2.15";
+      n.choices[0].expected_version = "0.2.15";
+      n.choices[0].argv[n.choices[0].argv.indexOf("--expected-version") + 1] = "0.2.15";
+      return n;
+    });
+    const s = await f.start(); await f.approve(s); await f.action(s, "fetch");
+    const proposal = await f.action(s, "inspect");
+    assert.equal(proposal.state, "action_confirmation_required"); assert.equal(proposal.proposed_action, "reuse");
+    await f.action(s, "confirm-action", { decision: "approve", digest: proposal.action_digest });
+    assert.equal((await f.action(s, "execute")).state, "activation_reported");
+    assert.equal((await f.action(s, "status")).choice.action, "reuse");
+  });
+  test(`${host}: inventory timeout preserves consent and retries without mutation`, async t => {
+    const f = await fixture(t, host); f.setMode("unknown");
+    f.mutate(n => ({ ...n, status: { ...n.status, diagnostic: "ETIMEDOUT", error_code: "ETIMEDOUT", phase: "installation_inventory" } }));
+    const s = await f.start(); await f.approve(s); await f.action(s, "fetch");
+    const failed = await f.action(s, "inspect");
+    assert.equal(failed.state, "check_failed"); assert.equal(failed.diagnostic, "ETIMEDOUT");
+    assert.equal(failed.decision, "approve"); assert.equal(f.counts().installs, 0);
+    f.setMode("installed"); f.mutate(n => n);
+    assert.equal((await f.action(s, "inspect")).state, "choice_ready");
+    const activated = await f.action(s, "execute");
+    assert.equal(activated.state, "activation_reported");
+    assert.match(activated.instruction, host === "codex" ? /trust/ : /restart/);
+    if (host !== "codex") assert.doesNotMatch(activated.instruction, /Settings > Hooks/);
+  });
+  test(`${host}: older runtime update requires separate bound approval`, async t => {
+    const f = await fixture(t, host); f.setMode("installed");
+    f.mutate(n => {
+      const choice = { action: "update_and_enable", target_version: f.manifest.version, expected_version: "0.2.5",
+        authorization_version: "update-monitor-production-v1", permissions: ["update", "monitor_current_workspace", "production_upload"],
+        argv: ["enable", "--cwd", f.cwd, "--host", host, "--exact-workspace", "--accept-monitoring", "--authorization-version", "update-monitor-production-v1", "--expected-version", "0.2.5", "--target-version", f.manifest.version] };
+      return { ...n, status: { ...n.status, installed_version: "0.2.5", compatible: false, version_status: "update_available" }, choices: [choice] };
+    });
+    const s = await f.start(); await f.approve(s); await f.action(s, "fetch");
+    const proposal = await f.action(s, "inspect");
+    assert.equal(proposal.state, "action_confirmation_required");
+    await assert.rejects(f.action(s, "execute"), /invalid transition/);
+    await assert.rejects(f.action(s, "confirm-action", { decision: "approve", digest: "wrong" }), /matching action/);
+    assert.equal(f.counts().installs, 0);
+    assert.equal((await f.action(s, "confirm-action", { decision: "approve", digest: proposal.action_digest })).state, "choice_ready");
+    assert.equal((await f.action(s, "execute")).state, "activation_reported");
+    assert.equal(f.counts().installs, 1);
+  });
+}
+async function fixture(t, host = "codex") {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "qdmp-flow-")));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const installed = path.join(root, "skill"); fs.cpSync(skill, installed, { recursive: true });
@@ -25,9 +85,9 @@ async function fixture(t) {
       expected_version: mode === "missing" ? null : manifest.version,
       authorization_version: mode === "missing" ? "install-monitor-production-v1" : "monitor-production-v1",
       permissions: [...(mode === "missing" ? ["install"] : []), "monitor_current_workspace", "production_upload"] };
-    choice.argv = ["enable", "--cwd", cwd, "--host", "codex", "--accept-monitoring", "--exact-workspace", "--authorization-version", choice.authorization_version,
+    choice.argv = ["enable", "--cwd", cwd, "--host", host, "--accept-monitoring", "--exact-workspace", "--authorization-version", choice.authorization_version,
       ...(mode === "missing" ? [] : ["--expected-version", manifest.version])];
-    return mutate({ project_root: cwd, host: "codex", exact_workspace: true,
+    return mutate({ project_root: cwd, host, exact_workspace: true,
       upload_endpoint: manifest.pre_download_notice.upload_endpoint, legal: manifest.pre_download_notice.legal,
       distribution: manifest, status: { plugin_state: mode, installed_version: choice.expected_version,
         recommended_version: manifest.version, compatible: mode === "installed", project: { granted }, installation: { root: mode === "missing" ? null : "/verified/runtime" } },
@@ -37,11 +97,11 @@ async function fixture(t) {
     calls++;
     if (argv[0] === "help") return { usage: "--exact-workspace" };
     if (argv[0] === "notice") return notice();
-    if (argv[0] === "enable") { installs++; mode = "installed"; granted = true; return { state: "hooks_pending" }; }
-    if (argv[0] === "status") return { project_root: cwd, host: "codex", installed_version: manifest.version, compatible: true, project: { granted, state: hook } };
+    if (["enable", "update"].includes(argv[0])) { installs++; mode = "installed"; granted = true; return { status: { state: "hooks_pending" }, next_action: host === "codex" ? "review_host_hooks" : "reload_host", restart_required: host !== "codex" }; }
+    if (argv[0] === "status") return { project_root: cwd, host, installed_version: manifest.version, compatible: true, project: { granted, state: hook, next_action: host === "codex" ? "review_host_hooks" : "verify_host_hooks" } };
     throw new Error("unexpected subprocess");
   } };
-  const start = () => api.monitorFlow("begin", { cwd, host: "codex" }, options);
+  const start = () => api.monitorFlow("begin", { cwd, host }, options);
   const action = (s, cmd, args = {}) => api.monitorFlow(cmd, { flow: s.id, ...args }, options);
   const approve = s => action(s, "authorize", { decision: "approve", digest: s.disclosure_digest });
   const ready = async () => { const s = await start(); await approve(s); await action(s, "fetch"); await action(s, "inspect"); return s; };
@@ -64,10 +124,11 @@ test("happy cold start enforces every step and distinguishes Hook from warehouse
   assert.equal((await f.action(s, "inspect")).state, "choice_ready");
   const activated = await f.action(s, "execute");
   assert.equal(activated.state, "activation_reported");
-  assert.match(activated.instruction, /do not authorize plugin Hooks/);
+  assert.match(activated.instruction, /cannot grant trust to itself/);
   const pending = await f.action(s, "verify");
   assert.equal(pending.state, "verification_pending");
-  assert.match(pending.instruction, /Settings > Hooks.*trust agent-runtime-telemetry/);
+  assert.match(pending.instruction, /trust agent-runtime-telemetry/);
+  assert.match(pending.instruction, /Settings > Hooks/);
   assert.ok(pending.instruction.indexOf("trust agent-runtime-telemetry") < pending.instruction.indexOf("restart Codex Desktop"));
   f.setHook("collecting"); const done = await f.action(s, "verify");
   assert.equal(done.state, "collecting"); assert.equal(done.warehouse, "not_verified");
@@ -145,7 +206,7 @@ test("same-version compatible reuse is allowed; unknown state is not missing", a
   assert.equal((await f.action(s, "status")).choice.action, "reuse");
   assert.equal((await f.action(s, "execute")).state, "activation_reported");
   f.setMode("unknown"); const another = await f.start(); await f.approve(another); await f.action(another, "fetch");
-  assert.equal((await f.action(another, "inspect")).state, "needs_reconfirmation");
+  assert.equal((await f.action(another, "inspect")).state, "check_failed");
 });
 test("ambiguous mutation failure cannot be replayed; status/verification remain available", async t => {
   const f = await fixture(t); const s = await f.ready(); const original = f.options.run;
