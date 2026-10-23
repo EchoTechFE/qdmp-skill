@@ -144,6 +144,23 @@ test("empty or incomplete project keeps directory authorization until activation
   assert.equal((await f.action(s, "execute")).state, "activation_reported");
   assert.equal(f.counts().installs, 1);
 });
+test("list/status mark an old pinned flow non-resumable without changing consent or entry", async t => {
+  const f = await fixture(t); const s = await f.ready();
+  const dir = path.join(f.options.homeDir, ".qdmp-skill/monitor-flows", s.id);
+  const state = fs.readFileSync(path.join(dir, "state.json"), "utf8");
+  const entry = fs.readFileSync(path.join(dir, "onboarding.mjs"), "utf8");
+  // A semantically insignificant manifest change still invalidates its exact binding.
+  fs.writeFileSync(f.manifestFile, JSON.stringify({ ...f.manifest, release_note: "new manifest" }));
+  const status = await f.action(s, "status");
+  assert.equal(status.compatibility.current, false); assert.equal(status.compatibility.reason, "pinned_manifest_changed");
+  assert.equal(status.decision, "approve"); assert.deepEqual(status.allowed_actions, []);
+  const list = await f.api.monitorFlow("list", { cwd: f.cwd, host: "codex" }, f.options);
+  assert.equal(list.flows[0].compatibility.current, false); assert.deepEqual(list.flows[0].allowed_actions, []);
+  await assert.rejects(f.action(s, "execute"), /release or disclosure changed/);
+  assert.equal(fs.readFileSync(path.join(dir, "state.json"), "utf8"), state);
+  assert.equal(fs.readFileSync(path.join(dir, "onboarding.mjs"), "utf8"), entry);
+  assert.equal(f.counts().installs, 0);
+});
 test("out-of-order fetch/execute and unbound assent cannot invoke network or installer", async t => {
   const f = await fixture(t); const s = await f.start();
   await assert.rejects(f.action(s, "fetch"), /invalid transition/);
@@ -176,6 +193,20 @@ test("hash mismatch blocks external execution before and after verified download
   fs.writeFileSync(path.join(f.options.homeDir, ".qdmp-skill/monitor-flows", s.id, "onboarding.mjs"), "tampered");
   await assert.rejects(f.action(s, "inspect"), /checksum/);
   assert.equal(f.counts().calls, 0);
+});
+test("a committed download recovers if its state transition was interrupted", async t => {
+  const f = await fixture(t); const s = await f.start(); await f.approve(s);
+  const dir = path.join(f.options.homeDir, ".qdmp-skill/monitor-flows", s.id), rename = fs.renameSync;
+  let injected = false;
+  fs.renameSync = (from, to) => {
+    if (to === path.join(dir, "state.json") && !injected) { injected = true; throw new Error("state commit interrupted"); }
+    return rename(from, to);
+  };
+  try { await assert.rejects(f.action(s, "fetch"), /interrupted/); } finally { fs.renameSync = rename; }
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "state.json"))).state, "authorized");
+  assert.equal((await f.action(s, "fetch")).state, "entry_verified");
+  assert.equal(f.counts().downloads, 1); assert.equal(f.counts().installs, 0);
+  assert.equal((await f.action(s, "status")).decision, "approve");
 });
 test("live inventory changes between choice and execution stop mutation", async t => {
   const f = await fixture(t); const s = await f.ready(); f.setMode("installed");

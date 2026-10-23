@@ -7,6 +7,7 @@ import https from "node:https";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { checkDistribution, coldStartNotice } from "./monitor-preflight.mjs";
+import { flowCompatibility } from "./ensure-current.mjs";
 
 const digest = value => crypto.createHash("sha256").update(typeof value === "string" || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest("hex");
 const transitions = {
@@ -127,9 +128,12 @@ export async function monitorFlow(command, args = {}, options = {}) {
     if (!path.isAbsolute(args.cwd || "") || !["codex", "claude-code", "qoder"].includes(args.host)) throw new Error("absolute directory and supported host required");
     const directory = fs.realpathSync(args.cwd);
     if (!fs.existsSync(base)) return { flows: [] };
+    const release = checkDistribution();
     const flows = fs.readdirSync(base).filter(id => /^[a-f0-9-]{36}$/.test(id)).map(id => JSON.parse(fs.readFileSync(path.join(base, id, "state.json"), "utf8")))
       .filter(s => s.directory === directory && s.host === args.host)
-      .map(s => ({ id: s.id, state: s.state, directory: s.directory, host: s.host, created_at: s.created_at, allowed_actions: transitions[s.state] || [] }));
+      .map(s => { const compatibility = flowCompatibility(s, release, path.join(base, s.id));
+        return { id: s.id, state: s.state, directory: s.directory, host: s.host, created_at: s.created_at,
+          compatibility, allowed_actions: compatibility.current ? transitions[s.state] || [] : [] }; });
     return { flows };
   }
   if (command === "begin") {
@@ -151,7 +155,10 @@ export async function monitorFlow(command, args = {}, options = {}) {
   try {
     const s = JSON.parse(fs.readFileSync(file, "utf8"));
     if (s.id !== args.flow || s.schema !== 1 || s.binding_digest !== digest(immutable(s))) throw new Error("flow binding corrupted");
-    if (command === "status") return { ...s, allowed_actions: transitions[s.state] || [] };
+    if (command === "status") {
+      const compatibility = flowCompatibility(s, checkDistribution(), dir);
+      return { ...s, compatibility, allowed_actions: compatibility.current ? transitions[s.state] || [] : [] };
+    }
     if (!transitions[s.state]?.includes(command)) throw new Error(`invalid transition: ${s.state} -> ${command}`);
     const release = bindingCheck(s);
     if (!["authorize", "verify"].includes(command) && (s.decision !== "approve" || !s.authorized_at)) throw new Error("no recorded explicit authorization");
@@ -165,9 +172,17 @@ export async function monitorFlow(command, args = {}, options = {}) {
       return next(args.decision === "approve" ? "authorized" : "declined", { decision: args.decision, authorized_at: args.decision === "approve" ? new Date().toISOString() : null });
     }
     if (command === "fetch") {
+      const stored = path.join(dir, "onboarding.mjs");
+      if (fs.existsSync(stored)) {
+        entryCheck(dir, release);
+        return next("entry_verified", { instruction: "Recovered the already downloaded, checksum-verified entry; original authorization is unchanged." });
+      }
       const content = await (options.download ?? downloadPinned)(release.onboarding.url);
       if (!content.length || content.length > 20 * 1024 * 1024 || digest(content) !== release.onboarding.sha256) throw new Error("onboarding checksum/size mismatch; execution blocked");
-      fs.writeFileSync(path.join(dir, "onboarding.mjs"), content, { mode: 0o600, flag: "wx" });
+      const temporary = path.join(dir, `onboarding.${crypto.randomUUID()}.tmp`);
+      const entryFd = fs.openSync(temporary, "wx", 0o600);
+      try { fs.writeFileSync(entryFd, content); fs.fsyncSync(entryFd); } finally { fs.closeSync(entryFd); }
+      fs.renameSync(temporary, stored);
       return next("entry_verified");
     }
     const entry = entryCheck(dir, release);

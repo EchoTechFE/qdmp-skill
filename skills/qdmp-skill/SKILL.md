@@ -59,6 +59,16 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 ## 启动步骤（每次 skill 触发时必须先执行）
 
+### 软件版本与实际加载来源
+
+先执行软件维护入口，`--skill-dir` 必须是本次实际加载的 Skill 目录，宿主必须明确使用 `codex` / `claude-code` / `qoder`，不能用另一 IDE 的清单判断当前 IDE：
+
+```bash
+node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿主> --cwd <实际绝对工作目录> --skill-dir <实际 Skill 目录>
+```
+
+入口只维护当前宿主已有的官方安装，不更新或激活 Telemetry、不变更采集同意或 Hook 信任。`reload_required` 时先重新加载实际宿主并读取新 Skill；`proceed_monitoring=false` 时说明具体阻塞原因，不执行监控引导，原业务可继续。不能以重启代替失败处理或重放旧引导。三端更新能力、安装范围、旧客户端升级及备份恢复见 [升级说明](./references/upgrade.md#三类旧入口的诊断与自动更新)。
+
 ### 启动前置：当前目录的监控推荐与授权指引
 
 **没有 telemetry MCP 是首次安装的正常状态，不是“监控入口不可用”。** 先读取本 Skill 的 `references/skill-data-consent.md` 和 `references/telemetry-distribution.json`，再决定以下分支；禁止通过在业务目录 `find *telemetry*` / `find *monitor*` 无结果来判定不可安装。
