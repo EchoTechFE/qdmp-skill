@@ -100,22 +100,27 @@ Authorization: Bearer <accessToken>
 
 下文 **Library** 示例采用与线上一致的 **`Authorization: Bearer`**；**User / Mark** 示例同时给出 **`access-token` + `x-echo-qdmp-version`**（与 Swagger 一致）。
 
-## OSS 图片上传流程
+<a id="oss-图片上传流程"></a>
 
-OSS 上传以千岛 OpenAPI 的额度查询和上传准备为入口，再由应用后端安全地将文件中转到 OSS：
+## OSS 图片与视频上传流程（POST）
+
+以下按 2026-10-23 的千岛 OSS POST 接入契约整理。沿用应用后端中转，客户端文件传输复用目标项目已有能力，不绑定特定 SDK 方法，也不新增独立的 SDK 直传测试入口。
 
 ```text
-小程序 ── GET /oss/v1/quota 、POST /oss/v1/upload/prepare ──> 应用后端 ──> 千岛 OpenAPI
-小程序 ── qd.uploadFile multipart ──> 应用自建 relay ── PUT 原始文件字节 ──> OSS
+小程序 ── quota / prepare / result ──> 应用后端代理 ──> 千岛 OpenAPI
+小程序 ── multipart（本地文件 + 中转元数据） ──> 应用自建 relay
+应用 relay ── POST multipart（签名表单 + file） ──> OSS
+OSS ── 平台回调、审核、发布 ──> result 返回 status / cdnUrl
 ```
 
-1. 调用 `GET /oss/v1/quota` 查询存储额度，保留平台返回的总量、剩余、已用、预留和状态。
-2. 选择本地图片，获取实际 MIME 和字节数。不要将本地临时路径当作网络 URL，也不要在 prepare 后改变文件字节。
-3. 调用 `POST /oss/v1/upload/prepare`，发送 `{ type: 'openmp', contentType, size }`；`size` 是十进制字节数字符串。使用实际返回的 `uploadUrl`、`uploadHeaders`、`assetId` 和 `expireAt`。
-4. 用 `qd.uploadFile` 将本地文件以 multipart 发送到应用自建的 `POST /oss/v1/upload/relay`。由 SDK 生成 multipart boundary；不要将 multipart 直接发送到 OSS 签名 URL。
-5. relay 校验 OSS 主机、对象路径、assetId、有效期、文件大小/类型和签名头，再用 PUT 上传原始文件字节。不将客户端 token/cookie 转发到 OSS，不跟随重定向。
-6. 只有原生回调成功、外层 HTTP 为 2xx、relay `code` 为 0、OSS HTTP 为 2xx 且不是 203，并且没有上游 `error/truncated` 时，才判定上传成功。HTTP 203 或超时时不自动重传。
-7. 保留各层原始请求与响应，安全解析 OSS `data` 中的最终 `url` 用于图片展示；不用签名上传地址或本地缩略图冒充上传结果。
+1. 调用 `GET /oss/v1/quota` 查询容量，保留平台返回的总量、剩余、已用、预留和状态。
+2. 选择本地图片或视频，获取真实 MIME 和字节数；确定最终文件后再 prepare，之后上传同一份字节。
+3. 调用 `POST /oss/v1/upload/prepare`，发送 `{ type: 'openmp', contentType, size, source: 'miniapp' }`，校验并保留本次返回的凭据与 `assetId`。
+4. 将文件和中转元数据发送到应用自建 relay；后端校验后，向 `uploadUrl` 发送 POST multipart：先写全部原始 `uploadFormData`，最后写唯一的 `file`。
+5. 分别记录客户端、应用和 OSS 响应。传输成功只表示文件传输阶段完成，不能据此显示“已发布”。
+6. 使用 `assetId` 调用 `GET /oss/v1/upload/result` 查询审核与发布状态；仅查询业务 `code` 为 0、`status` 为 `COMMITTED` 且 `cdnUrl` 有效时，展示已发布的图片或视频。
+
+quota、prepare、result 的应用、鉴权和环境须一致，复用项目配置；如使用 `X-Echoing-Env`，三个接口保持相同取值，不能默认使用测试环境。平台代理按接口授权要求使用用户或应用凭证。需要用户隔离时验证真实身份与应用/资产归属，不能仅以 token 非空代替鉴权。
 
 ### 查询存储额度
 
@@ -125,106 +130,158 @@ OSS 上传以千岛 OpenAPI 的额度查询和上传准备为入口，再由应�
 | ---- | ---- |
 | `quotaBytes` | 总额度，字节字符串 |
 | `availableBytes` | 当前剩余额度，字节字符串 |
-| `usedBytes` | 已使用额度，字节字符串 |
+| `usedBytes` | 已正式发布占用额度，字节字符串 |
 | `reservedBytes` | 已预留额度，字节字符串 |
-| `status` | 存储状态；`ACTIVE` 可显示“可用”，其他值如实保留 |
-| `warningLevel` | 预警级别；`NORMAL` 可显示“正常”，未知值不得当作正常 |
+| `status` | 存储状态：`ACTIVE` / `FROZEN`；未知值如实保留 |
+| `unit` | `BYTE` |
+| `warningLevel` | 预警级别：`NORMAL` / `WARNING` / `CRITICAL`；未知值不得当作正常 |
 
 保留原始字符串用于诊断；展示容量时先校验再换算。不要通过总量减已用量代替平台返回的 `availableBytes`，缺失或非法值显示未知，大整数不得静默丢失精度。
 
 ### 准备上传
 
-`POST /oss/v1/upload/prepare` 的图片场景请求体：
+`POST /oss/v1/upload/prepare`，使用 `Content-Type: application/json`。图片请求示例：
 
 ```json
 {
   "type": "openmp",
   "contentType": "image/jpeg",
-  "size": "9241"
+  "size": "9241",
+  "source": "miniapp"
 }
 ```
 
-- `type: openmp` 是当前已确认的取值，不推断其他枚举。
-- `contentType` 必须对应待上传文件的实际 MIME。
-- `size` 是实际文件字节数的十进制字符串，不是文件路径、Base64 或 multipart 总长度。
-- prepare 后必须上传同一份文件字节；压缩、裁剪或重新选图后重新 prepare。
+- 小程序场景使用 `type: openmp` 和 `source: miniapp`，不推断其他枚举。
+- `contentType` 必须对应实际文件，视频示例为 `video/mp4`、`video/quicktime`。
+- `size` 是实际文件字节数的十进制字符串，不是文件路径、Base64 或 multipart 总长度；示例值不能作为默认大小。选择结果缺少大小时，使用运行环境的文件信息能力获取。
+- 保留 `echofile://`、`echoFile://` 等本地路径原值；后端必须接收文件字节，不能直接读取手机临时路径。
+- 图片选择原图、视频不压缩；如业务需要压缩、裁剪、重编码，应在 prepare 前完成。prepare 后文件发生变化则重新 prepare，不能放宽签名约束掩盖大小不符。
 
-成功时读取 `data.uploadUrl`、`data.uploadHeaders`、`data.assetId` 和 `data.expireAt`。`expireAt` 是 Unix 秒；签名 URL 和请求头必须使用本次真实返回值，不自行生成、解码、重排或拼接。
+成功响应中的 `data`：
+
+| 字段 | 用法 |
+| ---- | ---- |
+| `uploadUrl` | 本次 OSS POST 地址；当前为可信桶的根路径 `/`，对象位置在表单 `key` 中，不将 `key` 拼到 URL 后 |
+| `uploadHeaders` | 当前 POST 契约为 `{}`；multipart 请求头由中转编码器生成 |
+| `uploadFormData` | 必须为非空字符串键值对象，全部原样保留 |
+| `assetId` | 本次资产标识，用于归属校验与 result 查询 |
+| `expireAt` | Unix 秒；与前端毫秒时间比较时先换算 |
+
+`uploadFormData` 的 V4 响应字段示例包括 `policy`、`x-oss-signature-version`（`OSS4-HMAC-SHA256`）、`x-oss-credential`、`x-oss-date`、`x-oss-signature`、`key`、`x-oss-content-type`、`callback`、`x:ticket`、`x-oss-forbid-overwrite`。实际键值以本次 prepare 为准，这不是要求客户端生成这些字段。
+
+policy、签名、callback、ticket 等均是不透明值，不改名、不改大小写、不重新编码或签名；如需解码 policy 做校验，仅使用副本。表单缺失、无效或凭据过期时停止并提示重新准备，不能从历史请求补值或由旧 PUT URL 推导 POST 表单。
 
 ### 调用应用 Relay
 
-`POST /oss/v1/upload/relay` 是应用自行实现的接口，不是千岛平台 OpenAPI。前端调用形状：
+`POST /oss/v1/upload/relay` 是应用自行实现的接口示例，不是千岛平台 OpenAPI。复用目标项目已有上传器，发送以下 multipart 内容；应用可调整中转路径与元数据命名，但前后端必须一致：
+
+| 字段 | 传输内容 |
+| ---- | ---- |
+| `file` | 唯一文件，包含原始文件字节、实际文件名和 MIME，不是本地路径字符串 |
+| `uploadUrl` | `prepared.uploadUrl` |
+| `uploadHeaders` | `JSON.stringify(prepared.uploadHeaders)` |
+| `uploadFormData` | `JSON.stringify(prepared.uploadFormData)` |
+| `assetId` | 本次 prepare 返回的资产标识 |
+| `expireAt` | 本次 prepare 返回的 Unix 秒级失效时间字符串 |
+| `size` | 实际文件字节数的十进制字符串 |
+
+这一跳为 6 个文本字段和唯一的 `file`。由上传器生成 multipart `Content-Type` 与 boundary，不能把文件 MIME 当成整个请求的 `Content-Type`。用户凭证只按应用鉴权约定发往应用后端；`uploadHeaders`、`uploadFormData` 作为中转元数据发送，不放入前端请求头。
+
+请求超时默认 `120000 ms`；外层等待至少覆盖它并预留回调时间。兼容回调和 Promise 的实现只结算一次，保留真实错误，不伪造返回字段。后端接收与上游请求分阶段设置超时（参考值各 `120000 ms`），不能承诺整条链路必定两分钟内完成。
+
+### Relay 向 OSS 发送 POST
+
+1. 校验真实身份与凭据归属；只接收约定的文件和元数据，拒绝未知、重复或过长字段。
+2. 只允许配置白名单中的 HTTPS OSS 主机和桶根路径，拒绝任意域名、端口、URL 用户信息和 fragment，不根据客户端输入扩大白名单。
+3. 校验表单 `key` 属于当前应用允许的 staging 前缀、appId、assetId 和文件后缀；不拼接或改写返回的 `key`。校验 `size` 与真实文件长度一致，并核对 MIME、扩展名、文件头、有效期与上传限制。
+4. 解析 `uploadFormData` 为非空字符串映射，拒绝 `file` 覆盖、重复字段、换行注入和应用凭证等无关字段。校验 policy、凭据、签名版本和有效期时不修改原值；格式校验不能代替 OSS 的签名真实性校验，callback 原样透传也不等于已验证回调地址归属。
+5. 向 `uploadUrl` 发送 **POST multipart/form-data**：先逐项写入全部原始 `uploadFormData` 字段，再写唯一的 `file`，文件必须最后。文件段包含真实字节、文件名和 MIME。不能把表单映射作为 OSS JSON 请求体或请求头，也不能将 callback、`x:ticket` 搬到旧 PUT 回调头。
+6. 由编码器生成 boundary、CRLF、multipart `Content-Type` 和完整表单的 `Content-Length`。不向 OSS 发送应用 access-token、Authorization、Cookie 或中转元数据，不跟随重定向。
+7. 保留 OSS statusCode、完整 headers、原始 body 和网络错误；限制响应大小，截断须标记 `error/truncated`，不能当作完整成功。
+
+**两个大小口径不同**：prepare 的 `size` 和 policy 的 `content-length-range` 约束文件字节；OSS HTTP `Content-Length` 是整个 multipart（含边界、表单字段和文件）的长度。例如 policy 为 `[466285, 466285]` 时，文件必须恰好 466285 字节，表单开销不加入 prepare.size。
+
+参考适配范围为 JPG/JPEG、PNG、WebP、GIF、HEIC/HEIF 和 MP4/MOV，单文件 20 MiB（20971520 字节）、上游响应 1 MiB 仅为应用配置示例，不是平台统一上限。按目标项目支持范围与资源限制配置，不因平台 schema 还列出音频或其他格式就自动增加入口。
+
+新流程只使用 POST。维护旧版本兼容时隔离旧凭据分支，缺失或损坏的 POST 凭据不能回退 PUT。
+
+### 分层响应与传输判断
+
+页面分别保留客户端上传原始响应、relay 业务响应和 OSS 响应；按所用上传器的真实返回结构解包，不用解析结果覆盖原始记录。应用 relay 响应可采用以下形状：
 
 ```js
-qd.uploadFile({
-  url: `${backendBase}/oss/v1/upload/relay`,
-  filePath: selectedImage.filePath,
-  name: 'file',
-  header: {
-    accept: 'application/json',
-    'access-token': accessToken
-  },
-  formData: {
-    uploadUrl: prepared.uploadUrl,
-    uploadHeaders: JSON.stringify(prepared.uploadHeaders),
-    assetId: String(prepared.assetId),
-    expireAt: String(prepared.expireAt),
-    size: String(selectedImage.size)
-  },
-  timeout: 120000,
-  success(response) {
-    record({ callback: 'success', response })
-  },
-  fail(response) {
-    record({ callback: 'fail', response })
-  }
-})
-```
-
-`Content-Type` 和 multipart boundary 由 SDK 生成，不要在前端手写。`uploadHeaders` 属于 relay → OSS 的请求头，应放入 `formData` 传给 relay，不要全部放入前端 → relay 的 header。
-
-Relay 至少需要满足以下边界：
-
-- 只接收字段名为 `file` 的单文件，以及 `uploadUrl/uploadHeaders/assetId/expireAt/size` 五个表单字段；拒绝未知、重复或过长字段。当前应用适配层单图上限为 20 MiB，不将其表述为平台统一上限。
-- 只允许配置白名单中的 HTTPS OSS 主机，拒绝任意域名、端口、URL 用户信息和 fragment；对象路径必须匹配当前应用的前缀、appId 和 assetId。
-- 校验签名参数唯一性、签名版本、有效期、`expireAt`、凭据格式和签名请求头；最终签名真实性仍由 OSS 验证。
-- 校验 `size` 与实际文件长度一致，并检查扩展名、`Content-Type`、multipart MIME 和文件头。当前适配范围为 jpg/jpeg/png/webp/gif/heic/heif。
-- 向 OSS 发送 `PUT + 原始文件字节`，不是 JSON、Base64 或 multipart；`Content-Length` 使用真实字节数。
-- 不向 OSS 转发客户端 token/cookie，不跟随重定向，并限制接收超时、上游超时和响应大小。
-
-### 分层响应与成功判断
-
-页面需要分别保留 `qd.uploadFile` 原始响应、relay 业务响应和 OSS 响应，不得用解析结果覆盖原始记录：
-
-```js
-function parseBody(value) {
-  if (typeof value !== 'string') return value
-  try {
-    return JSON.parse(value)
-  } catch {
-    return value
+{
+  code: 0, // 传输成功，不是“已发布”
+  message: '文件传输完成，请查询审核与发布结果',
+  data: {
+    assetId,
+    request: {
+      method: 'POST',
+      url: prepared.uploadUrl,
+      header: multipartHeaders,
+      size: actualFileByteLength,
+      formData: prepared.uploadFormData
+    },
+    response: {
+      statusCode: ossStatusCode,
+      header: ossResponseHeaders,
+      data: ossRawBody
+      // 网络错误或截断时可能还有 error、truncated
+    }
   }
 }
-
-const relay = parseBody(rawUpload.response.data)
-const ossResponse = relay?.data?.response
-const ossBody = parseBody(ossResponse?.data)
-const imageUrl = ossBody && typeof ossBody === 'object' ? ossBody.url : ''
 ```
 
-错误 body 可能是 XML 或普通文本，解析失败不得导致页面白屏。成功条件必须同时成立：
+这里 `request.size` 仍为文件字节数，`request.header` 的 Content-Length 则为完整表单长度。解析顺序为客户端收到的应用响应 → relay 业务对象 → `relay.data.response` → OSS 原始 body；各层 data 可能是 JSON 字符串，错误 body 也可能为 XML 或文本，解析需捕获异常。
 
-- 原生 callback 为 `success`。
-- `qd.uploadFile` 外层 HTTP 状态为 2xx。
+传输成功条件必须同时成立：
+
+- 客户端文件传输实际成功（按所用上传器的回调或最终结果判断）。
+- 应用外层 HTTP 状态为 2xx。
 - relay 业务 `code` 为 0。
 - OSS HTTP 状态为 2xx 且不是 203。
 - 上游响应不存在 `error` 或 `truncated`。
 
-OSS HTTP 203 表示平台回调失败，文件可能已写入；超时也可能发生在 OSS 已写入后。遇到这两类结果时保留 assetId、requestId、`x-oss-request-id` 和请求时间，不自动重复 PUT。当前契约未提供资产状态查询或补回调接口，不得自行编造。
+OSS 非 2xx、203 或网络错误时，relay 返回明确业务失败并保留上游响应；应用 HTTP 200 不能覆盖该失败。鉴权和参数问题沿用应用错误规范，自建 relay 的业务码不是平台统一错误码。
 
-成功且 OSS body 中存在有效 HTTP(S) `url` 时，在完整响应下方展示图片；不要使用签名 `uploadUrl` 或本地缩略图冒充上传结果。新一轮上传清理旧图片；图片加载失败单独提示，不修改已经确认的上传结论。
+OSS HTTP 203 表示文件已上传但平台回调失败；超时或响应不完整时也不能确定 OSS 是否已接收。保留 assetId、requestId、`x-oss-request-id` 和请求时间，查询 result，不自动重传。HTTP 400 本身不能确定具体原因，应保留并检查 OSS XML 中的 Code、Message、RequestId。
 
-调试页可按任务要求保留完整请求与响应，但公开文档和常规持久日志不得记录 appSecret、长期存储凭据、历史 token 或签名 URL。
+### 查询审核与发布结果
+
+使用本次 prepare 返回的 `assetId`，在同一应用和环境中调用 `GET /oss/v1/upload/result?assetId=…`，query 值按需 URL 编码。成功响应示例：
+
+```json
+{
+  "code": 0,
+  "message": "",
+  "data": {
+    "status": "COMMITTED",
+    "cdnUrl": "https://cdn.example/asset.jpg"
+  },
+  "requestId": "EXAMPLE_REQUEST_ID"
+}
+```
+
+| `status` | 展示与操作 |
+| -------- | ---------- |
+| `RESERVED` | 等待上传回调完成，不能当作已发布 |
+| `REVIEWING` | 审核中，可稍后刷新 |
+| `PUBLISHING` | 发布中，可稍后刷新 |
+| `COMMITTED` | 已发布；校验 `cdnUrl` 后展示媒体 |
+| `REJECTED` | 审核拒绝，不能显示成功 |
+| `CANCELLED` | 上传取消或失败，不能显示成功 |
+| `EXPIRED` | 上传预占到期，需要重新准备 |
+| 未知或缺失 | 保留原值并提示状态未知，不能默认成功 |
+
+`result.code` 为 0 只表示查询成功。只有同时满足 `status === 'COMMITTED'` 且 `cdnUrl` 为有效 HTTP(S) 地址时，才展示“已发布”和 CDN 媒体；COMMITTED 但 URL 缺失或无效时提示响应不完整。查询失败不能当作发布成功。
+
+上传完成、203、超时或响应不完整后查询一次，后续提供手动刷新。产品需要自动刷新时使用有界间隔与有限次数，在终态、页面离开或取消时停止；不无限轮询，不自动重新 prepare 或上传文件。
+
+展示仅使用 result 的 `cdnUrl`，不用旧上传回调的 `url`、签名 `uploadUrl`、`key` 拼接地址或本地预览冒充发布结果。新操作清空旧发布结果，异步响应核对当前 assetId，避免上一文件覆盖当前文件。媒体加载或播放失败单独提示，不改写服务端状态。
+
+调试详情按产品需要展示，原始响应与解析结果分开保存；不强制给正式功能新增复制响应等测试控件。公开示例只使用占位凭据，常规日志脱敏，不记录 appSecret、用户 token、ticket、有效签名或长期凭据。
+
+接入验证重点：签名字段逐项不变、`file` 最后、真实文件字节不变、两个大小口径正确、超时覆盖完整请求、失败/203/未知状态不误报已发布、仅以 result 的 `cdnUrl` 展示。自动化检查不等于三端真机验证通过。
 
 ---
 
@@ -1280,6 +1337,7 @@ curl 'https://openapi.qiandao.com/c2c-openapi/v1/gamePriceModule' \
 | 图片文字识别 | POST | `/ocr/v1/recognize`  |
 | 查询 OSS 额度 | GET | `/oss/v1/quota` |
 | 准备 OSS 上传 | POST | `/oss/v1/upload/prepare` |
+| 查询 OSS 审核与发布结果 | GET | `/oss/v1/upload/result` |
 | C2C 连通检查 | GET | `/c2c-openapi/v1/ping` |
 | 合作游戏价格曲线 | POST | `/c2c-openapi/v1/gamePriceLine` |
 | 合作游戏价格模块 | POST | `/c2c-openapi/v1/gamePriceModule` |
