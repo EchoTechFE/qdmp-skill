@@ -11,9 +11,9 @@ import { checkDistribution, coldStartNotice } from "./monitor-preflight.mjs";
 const digest = value => crypto.createHash("sha256").update(typeof value === "string" || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest("hex");
 const transitions = {
   awaiting_consent: ["authorize"], authorized: ["fetch"], entry_verified: ["inspect"],
-  choice_ready: ["inspect", "execute"], activation_reported: ["verify"],
+  choice_ready: ["inspect", "execute"], check_failed: ["inspect"], action_confirmation_required: ["inspect", "confirm-action"], activation_reported: ["verify"],
   verification_pending: ["verify"], collecting: ["verify"],
-  declined: [], needs_reconfirmation: [], failed: ["verify"], executing: ["verify"]
+  declined: [], needs_reconfirmation: ["inspect"], failed: ["verify"], executing: ["verify"]
 };
 const immutable = s => ({ schema: s.schema, id: s.id, directory: s.directory, host: s.host,
   manifest_digest: s.manifest_digest, disclosure_digest: s.disclosure_digest, directory_identity: s.directory_identity });
@@ -37,7 +37,7 @@ function entryCheck(dir, release) {
 }
 function run(entry, argv, s, options) {
   if (options.run) return options.run(entry, argv, s);
-  const result = spawnSync(process.execPath, [entry, ...argv], { cwd: s.directory, encoding: "utf8", windowsHide: true, timeout: 120000, maxBuffer: 4 * 1024 * 1024 });
+  const result = spawnSync(process.execPath, [entry, ...argv], { cwd: s.directory, encoding: "utf8", windowsHide: true, timeout: ["enable", "update"].includes(argv[0]) ? 600000 : 180000, maxBuffer: 4 * 1024 * 1024 });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(String(result.stderr || result.stdout || `exit ${result.status}`).slice(0, 3000));
   return JSON.parse(result.stdout);
@@ -80,18 +80,19 @@ function verifyNotice(notice, s, release) {
   if (notice.distribution?.version !== release.version || notice.distribution?.artifact_sha256 !== release.artifact_sha256
     || notice.status?.recommended_version !== release.version) throw new Error("pinned version or artifact mismatch");
 }
-function safeChoice(notice, s, release) {
-  const choice = notice.choices?.find(c => c.action === "install") || notice.choices?.find(c => c.action === "reuse");
+function safeChoice(notice, s, release, selected = null) {
+  const choice = selected ? notice.choices?.find(c => c.action === selected) : notice.choices?.find(c => c.action === "install") || notice.choices?.find(c => c.action === "reuse");
   if (!choice) throw new Error("no authorized install/reuse choice; update or unknown state requires new disclosure");
   const installed = notice.status?.installed_version;
   if (choice.action === "install" && notice.status?.plugin_state !== "missing") throw new Error("installation state changed");
-  if (choice.action === "reuse" && (notice.status?.plugin_state !== "installed" || installed !== release.version || !notice.status?.compatible)) throw new Error("reuse requires the same compatible pinned version");
+  if (choice.action === "reuse" && (notice.status?.plugin_state !== "installed" || !notice.status?.compatible)) throw new Error("reuse requires a compatible installed version");
+  if (choice.action.startsWith("update") && (notice.status?.plugin_state !== "installed" || notice.status?.version_status !== "update_available" || choice.expected_version !== installed)) throw new Error("update requires a verified older installation");
   if (choice.target_version !== release.version || (choice.action === "reuse" && choice.expected_version !== installed)) throw new Error("choice version mismatch");
-  const expectedPermissions = choice.action === "install" ? ["install", "monitor_current_workspace", "production_upload"] : ["monitor_current_workspace", "production_upload"];
+  const expectedPermissions = choice.action === "update" ? ["update"] : [...(choice.action === "install" ? ["install"] : choice.action === "update_and_enable" ? ["update"] : []), "monitor_current_workspace", "production_upload"];
   if (JSON.stringify(choice.permissions) !== JSON.stringify(expectedPermissions)) throw new Error("choice permissions mismatch");
   const argv = choice.argv;
-  if (!Array.isArray(argv) || argv[0] !== "enable" || argv.some(x => typeof x !== "string")) throw new Error("invalid central argv");
-  const flags = {}; const boolean = new Set(["--accept-monitoring", "--exact-workspace"]);
+  if (!Array.isArray(argv) || argv[0] !== (choice.action === "update" ? "update" : "enable") || argv.some(x => typeof x !== "string")) throw new Error("invalid central argv");
+  const flags = {}; const boolean = new Set(["--accept-monitoring", "--accept-update", "--exact-workspace"]);
   const values = new Set(["--cwd", "--host", "--authorization-version", "--expected-version", "--target-version", "--artifact-url"]);
   for (let i = 1; i < argv.length; i++) {
     const key = argv[i];
@@ -100,13 +101,23 @@ function safeChoice(notice, s, release) {
     else if (values.has(key) && argv[i + 1] && !argv[i + 1].startsWith("--")) flags[key] = argv[++i];
     else throw new Error("unexpected central option");
   }
-  const protocol = choice.action === "install" ? "install-monitor-production-v1" : "monitor-production-v1";
-  if (flags["--cwd"] !== s.directory || flags["--host"] !== s.host || !flags["--exact-workspace"] || !flags["--accept-monitoring"]
-    || flags["--authorization-version"] !== protocol || choice.authorization_version !== protocol
+  const protocol = choice.action === "update" ? null : choice.action === "update_and_enable" ? "update-monitor-production-v1" : choice.action === "install" ? "install-monitor-production-v1" : "monitor-production-v1";
+  if (flags["--cwd"] !== s.directory || flags["--host"] !== s.host || !flags["--exact-workspace"] || !flags[choice.action === "update" ? "--accept-update" : "--accept-monitoring"]
+    || Boolean(flags[choice.action === "update" ? "--accept-monitoring" : "--accept-update"])
+    || (flags["--authorization-version"] || null) !== protocol || choice.authorization_version !== protocol
     || (flags["--expected-version"] || null) !== (installed || null)
-    || (flags["--target-version"] && flags["--target-version"] !== release.version)
+    || (choice.action.startsWith("update") ? flags["--target-version"] !== release.version : flags["--target-version"] && flags["--target-version"] !== release.version)
     || (flags["--artifact-url"] && flags["--artifact-url"] !== release.artifact_url)) throw new Error("central argv scope/version mismatch");
   return choice;
+}
+
+function hookInstruction(host, result) {
+  const project = result.project || result.status || {};
+  if (result.native_hooks_verified === true || project.state === "collecting") return "Native Hooks verified; production warehouse readback remains separate. No restart required.";
+  const action = result.next_action || project.next_action;
+  if (host === "codex" && action === "review_host_hooks") return "Review and trust agent-runtime-telemetry in Codex Settings > Hooks. A plugin cannot grant trust to itself. Only after trust, fully restart Codex Desktop if requested by the host, resume this conversation and verify normal prompt/tool events in this same surface.";
+  if (result.restart_required === true || action === "reload_host") return `Fully restart ${host}, resume this conversation and verify native prompt/tool events. Do not repeat business consent.`;
+  return `Observe a normal prompt and tool event in ${host}, then verify again. Do not infer capture from registration or restart without host evidence.`;
 }
 
 export async function monitorFlow(command, args = {}, options = {}) {
@@ -168,41 +179,60 @@ export async function monitorFlow(command, args = {}, options = {}) {
       return notice;
     };
     if (command === "inspect") {
-      const notice = inspect();
-      if (notice.status?.project?.granted === true && notice.status?.plugin_state === "installed" && notice.status?.installed_version === release.version && notice.status?.compatible) {
-        return next("verification_pending", { verification: notice.status, warehouse: "not_verified", instruction: "Existing authorization detected; verify without repeating activation." });
+      let notice;
+      try { notice = inspect(); }
+      catch (error) {
+        if (/mismatch|checksum|scope|exact directory support/.test(error.message)) throw error;
+        return next("check_failed", { reason: error.message, instruction: "Read-only inspection failed. Retry inspect after resolving the error; retain existing consent and never install from unknown state." });
       }
-      try { const choice = safeChoice(notice, s, release); return next("choice_ready", { choice, notice, inventory_digest: fingerprint(notice), instruction: "The authorization is saved for this exact directory. Missing qdmp.json or appId does not invalidate it. If QDMP login is unfinished, leave this flow at choice_ready, continue project creation, then resume from status and execute after login; no second monitoring consent is needed." }); }
-      catch (error) { return next("needs_reconfirmation", { reason: error.message }); }
+      if (notice.status?.plugin_state === "unknown") return next("check_failed", { notice, diagnostic: notice.status.diagnostic, error_code: notice.status.error_code, phase: notice.status.phase, instruction: "Installation check failed, not missing or refused. Retry inspect; do not request monitoring consent again." });
+      if (notice.status?.project?.granted === true && notice.status?.plugin_state === "installed" && notice.status?.compatible) {
+        return next("verification_pending", { notice, choice: null, verification: notice.status, warehouse: "not_verified", instruction: "Existing authorization detected; verify without repeating activation." });
+      }
+      try {
+        const choice = safeChoice(notice, s, release);
+        if (choice.action === "reuse" && choice.expected_version !== release.version) return next("action_confirmation_required", { notice, action_digest: digest({ inventory: fingerprint(notice), choice }), proposed_action: "reuse", instruction: "Display the compatible installed version, directory and monitoring permissions, then obtain explicit approval for reusing this different version. No update or downgrade is permitted." });
+        return next("choice_ready", { choice, notice, inventory_digest: fingerprint(notice), instruction: "The authorization is saved for this exact directory. Missing qdmp.json or appId does not invalidate it. If QDMP login is unfinished, leave this flow at choice_ready, continue project creation, then resume from status and execute after login; no second monitoring consent is needed." });
+      }
+      catch (error) {
+        const update = notice.choices?.find(c => c.action === "update_and_enable") || notice.choices?.find(c => c.action === "update");
+        if (update) {
+          try { safeChoice(notice, s, release, update.action); }
+          catch (invalid) { return next("needs_reconfirmation", { reason: invalid.message, notice }); }
+          return next("action_confirmation_required", { notice, action_digest: digest({ inventory: fingerprint(notice), choice: update }), proposed_action: update.action,
+            instruction: "Display notice.consent, legal and the proposed action with current/target versions and permissions. Obtain explicit update approval, then confirm-action using the returned action_digest. Prior monitoring consent does not authorize an update." });
+        }
+        return next("needs_reconfirmation", { reason: error.message, diagnostic: notice.status?.diagnostic, notice });
+      }
+    }
+    if (command === "confirm-action") {
+      if (args.decision !== "approve" || args.digest !== s.action_digest) throw new Error("explicit update approval and matching action digest required");
+      const notice = inspect(); const choice = safeChoice(notice, s, release, s.proposed_action);
+      if (digest({ inventory: fingerprint(notice), choice }) !== s.action_digest) return next("needs_reconfirmation", { reason: "update action changed; inspect and disclose again" });
+      return next("choice_ready", { notice, choice, inventory_digest: fingerprint(notice), action_approved_at: new Date().toISOString() });
     }
     if (command === "execute") {
-      const notice = inspect();
+      let notice;
+      try { notice = inspect(); } catch (error) { return next("check_failed", { reason: error.message }); }
+      if (notice.status?.plugin_state === "unknown") return next("check_failed", { diagnostic: notice.status.diagnostic, notice });
       if (fingerprint(notice) !== s.inventory_digest) return next("needs_reconfirmation", { reason: "live installation/authorization/options changed" });
-      const choice = safeChoice(notice, s, release);
+      const choice = safeChoice(notice, s, release, s.choice?.action);
+      if ((choice.action.startsWith("update") || choice.action === "reuse" && choice.expected_version !== release.version) && (!s.action_approved_at || digest({ inventory: fingerprint(notice), choice }) !== s.action_digest)) throw new Error("action authorization missing or changed");
       // Persist before mutation: a crash or failed command must never auto-replay.
       next("executing");
       try {
         const argv = [...choice.argv];
         if (!argv.includes("--artifact-url")) argv.push("--artifact-url", release.artifact_url);
         const result = run(entry, argv, s, options);
-        const instruction = s.host === "codex"
-          ? "Codex installation and registration do not authorize plugin Hooks, and a plugin cannot grant trust to itself. First ask the user to open Codex Settings > Hooks and trust agent-runtime-telemetry. Only after that trust action, ask the user to fully restart Codex and resume this conversation; then verify native prompt and tool events in the same Codex surface. Never suggest restarting before Hook trust. A restart or uploaded registration event is not proof of capture."
-          : s.host === "claude-code"
-            ? "Claude Code installation does not prove that the current process loaded the plugin Hooks. If execution_result requests reload_host, restart Claude Code and resume the same conversation; otherwise first observe a normal prompt and tool event. Do not ask for Codex-style Hook trust."
-            : "Qoder registration maintains its native Hook settings. If execution_result requests reload_host, fully restart Qoder and resume the same conversation; otherwise verify the configured Hooks directly. Do not ask for Codex-style Hook trust. Installation or settings write success is not proof of capture.";
-        return next("activation_reported", { execution_result: result, instruction });
+        return next("activation_reported", { execution_result: result, instruction: hookInstruction(s.host, result) });
       } catch (error) { return next("failed", { reason: error.message, instruction: "Inspect live state before a new flow; never auto-replay an ambiguous mutation." }); }
     }
     if (command === "verify") {
       const result = run(entry, ["status", ...queryArgs(s)], s, options);
-      if (result.project_root !== s.directory || result.host !== s.host || result.installed_version !== release.version || !result.compatible) throw new Error("live runtime scope/version mismatch");
+      const expected = s.choice?.action === "reuse" ? s.choice.expected_version : s.notice?.status?.installed_version && !s.choice ? s.notice.status.installed_version : release.version;
+      if (result.project_root !== s.directory || result.host !== s.host || result.installed_version !== expected || !result.compatible) throw new Error("live runtime scope/version mismatch");
       const collecting = result.project?.granted === true && result.project?.state === "collecting";
-      return next(collecting ? "collecting" : "verification_pending", { verification: result, warehouse: "not_verified",
-        instruction: collecting ? "Native prompt and tool events were observed. Production warehouse readback remains separate." : s.host === "codex"
-          ? "Codex Hook capture is not verified. Open Codex Settings > Hooks and review/trust agent-runtime-telemetry; a plugin cannot grant trust to itself. Only after trust is complete, fully restart Codex Desktop and resume this conversation. Codex CLI provides /hooks, but do not infer Desktop capture from CLI review alone. After restart, send a normal prompt in Desktop, run a tool, and verify again. Do not report uploaded registration events as verified usage capture."
-          : s.host === "claude-code"
-            ? "Claude Code native Hook capture is pending. Restart Claude Code only when the activation result requests reload_host; resume this conversation, send a normal prompt and run a tool, then verify again. Do not ask for Codex-style Hook trust."
-            : "Qoder native Hook capture is pending. If its activation result requests reload_host, fully restart Qoder and resume this conversation; otherwise verify the maintained Hook settings. Send a normal prompt and run a tool, then verify again. Do not ask for Codex-style Hook trust." });
+      return next(collecting ? "collecting" : "verification_pending", { verification: result, warehouse: "not_verified", instruction: hookInstruction(s.host, result) });
     }
     throw new Error("unsupported flow command");
   } finally { fs.closeSync(fd); fs.unlinkSync(lock); }
@@ -211,7 +241,7 @@ export async function monitorFlow(command, args = {}, options = {}) {
 export async function runFlow(argv, options = {}) {
   const [command, ...tokens] = argv;
   const accepted = ["begin", "list"].includes(command) ? new Set(["--cwd", "--host"])
-    : command === "authorize" ? new Set(["--flow", "--decision", "--digest"]) : new Set(["--flow"]);
+    : ["authorize", "confirm-action"].includes(command) ? new Set(["--flow", "--decision", "--digest"]) : new Set(["--flow"]);
   const args = {};
   for (let i = 0; i < tokens.length; i++) {
     const flag = tokens[i]; const value = tokens[++i];
