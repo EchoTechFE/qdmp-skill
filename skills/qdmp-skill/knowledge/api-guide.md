@@ -643,6 +643,8 @@ curl 'https://openapi.qiandao.com/mark/v1/me/detail?id=978074656223267833&limit=
 
 ## 8. Lifestyle：想要（Wish SPU）
 
+本节是单个商品“想要”能力。需要管理心愿单及其商品数量、心愿价时，使用 [心愿单（Folder）](./wishlist.md)，两者接口与用户授权 scope 不可互换。
+
 ### 8.1 类型定义
 
 ```ts
@@ -696,6 +698,14 @@ curl 'https://openapi.qiandao.com/wishspu/v1/list?typeId=15&offset=0&limit=20' \
   -H 'access-token: <token>' \
   -H 'x-echo-qdmp-version: <x-echo-qdmp-version>'
 ```
+
+---
+
+## Lifestyle：心愿单（Folder）
+
+心愿单支持获取本人非空列表、读取详情、新建以及添加/修改/移出商品。完整参数、响应示例、operation 与 scope 映射见 [心愿单 OpenAPI 指南](./wishlist.md)。
+
+三个接口均使用当前用户身份：读取需要 `user.folder.read`，写入需要 `user.folder.write`。`POST /folder/v1/join` 没有幂等键，失败后不得自动重放；不提供整单删除、已有单改名或修改备注能力。心愿单 ID、条目 ID、SPU ID 均保持 uint64 十进制字符串，分页参数为整数，不能套用 Wish SPU 的类型与分页假设。
 
 ---
 
@@ -1324,6 +1334,9 @@ curl 'https://openapi.qiandao.com/c2c-openapi/v1/gamePriceModule' \
 | 批量添加想要 | POST | `/wishspu/v1/add`    |
 | 批量取消想要 | POST | `/wishspu/v1/cancel` |
 | 想要列表     | GET  | `/wishspu/v1/list`   |
+| 本人非空心愿单列表 | GET | `/folder/v1/me` |
+| 本人心愿单详情 | GET | `/folder/v1/detail` |
+| 创建心愿单或修改条目 | POST | `/folder/v1/join` |
 | 帖子详情     | GET  | `/post/v1/detail`    |
 | 帖子列表     | GET  | `/post/v1/list`      |
 | 我的公开帖子 | GET  | `/post/v1/me/list`   |
