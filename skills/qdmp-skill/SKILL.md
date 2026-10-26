@@ -23,6 +23,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | [bluetooth.md](./knowledge/bluetooth.md)                  | BLE 中心设备：发现、连接、GATT 读写与通知、MTU、断线清理与重连、Android 配对 |
 | [inner-audio.md](./knowledge/inner-audio.md)              | 普通音频：创建、播放、暂停、停止、销毁、实例生命周期与真实调用结果记录 |
 | [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：岛屿详情/加入状态/搜索、合作游戏价格、OSS 图片/视频 POST 上传与发布查询、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
+| [wishlist.md](./knowledge/wishlist.md)                     | 心愿单 OpenAPI：列表、详情、创建与条目修改、数量/心愿价语义、用户授权、分页及写入不重放 |
 | [backend-operations.md](./knowledge/backend-operations.md) | 后端操作详情：通用子流程 + 操作 1-7 的完整步骤                                            |
 | [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署（真机调试与体验版另见开发指南）                                                |
 | [prd-template.md](./knowledge/prd-template.md)             | PRD 模版：好的 PRD 应包含哪些内容 + 可直接使用的模版                                      |
@@ -252,6 +253,8 @@ questions:
 开发类代码生成或 Review 必须先按「规范依赖」调用对应 skill。产品底线、设计系统和 Taro 视觉落地规则不在本节重复维护，避免规范漂移。
 
 涉及帖子评论、回复、评论列表或评论点赞（rcomment）时，必须读取 [api-guide.md](./knowledge/api-guide.md) 的「Lifestyle：评论与回复（Comment / RComment）」；严格区分一级评论列表的 `offset` 分页与回复列表的 `cursor` 分页，并将帖子、评论和回复 ID 保持为 int64 字符串。
+
+涉及心愿单（Folder）列表、详情、创建或条目修改时，读取 [wishlist.md](./knowledge/wishlist.md)；使用 `/folder/v1/*` 与 `user.folder.read`、`user.folder.write`，不要混用单个商品“想要”的 `user.wish.*`。`join` 的数量为绝对覆盖、`num=0` 移出条目，发送后任何失败均不自动重放；完整字段、授权及分页规则见该指南。
 
 涉及千岛 OpenAPI 报错排查或错误处理时，读取 [api-guide.md 的「错误与排查」](./knowledge/api-guide.md#13-错误与排查)，根据业务 `code`、`message` 和 HTTP 状态定位原因；区分应用权限、用户授权、Token 无效或过期、限流与配额耗尽。
 
