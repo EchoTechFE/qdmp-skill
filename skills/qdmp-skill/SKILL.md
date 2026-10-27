@@ -1,6 +1,6 @@
 ---
 name: qdmp-skill
-description: "千岛小程序开发助手（外部版），用于前后端开发、云服务接口调用与排查、云数据库与数据建模、媒体上传存储、部署、真机扫码调试和设置体验版。涉及千岛云服务 404、接口不存在、频繁重试或 WAF 封 IP 时也使用。"
+description: "千岛小程序开发助手（外部版），用于前后端开发、云服务接口调用与排查、云数据库与数据建模、媒体上传存储、全量点位等数据验收、部署、真机扫码调试和设置体验版。涉及千岛云服务 404、接口不存在、频繁重试或 WAF 封 IP 时也使用。"
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
                 mcp__qdmp-gitlab__qdmp_gitlab_list_versions, mcp__qdmp-gitlab__qdmp_gitlab_get_version,
                 mcp__qdmp-gitlab__qdmp_gitlab_diff, mcp__qdmp-gitlab__qdmp_gitlab_publish,
@@ -41,7 +41,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 ## 规范依赖
 
-涉及数据建模、媒体存储、云服务接口调用、联调、故障排查或相关代码 Review 时，必须先读取并遵守 [云服务使用规范](./knowledge/backend-operations.md#云服务使用规范)。该要求同样适用于运维排查，不以进入数据建模或部署流程为前提。
+涉及数据建模、媒体存储、云服务接口调用、联调、故障排查、全量点位 / 图片等数据验收或相关代码 Review 时，必须先读取并遵守 [云服务使用规范](./knowledge/backend-operations.md#云服务使用规范)。该要求同样适用于运维排查，不以进入数据建模或部署流程为前提。
 
 本 skill 负责千岛小程序的项目、开发、调试、部署主流程；产品边界和前端设计规范由独立 skill 维护。开发类任务必须按需调用：
 
