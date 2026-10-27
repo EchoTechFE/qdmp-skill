@@ -1,6 +1,6 @@
 ---
 name: qdmp-skill
-description: "千岛小程序开发助手（外部版），支持前后端开发、部署、真机扫码调试和设置体验版。"
+description: "千岛小程序开发助手（外部版），用于前后端开发、云服务接口调用与排查、云数据库与数据建模、媒体上传存储、全量点位等数据验收、部署、真机扫码调试和设置体验版。涉及千岛云服务 404、接口不存在、频繁重试或 WAF 封 IP 时也使用。"
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
                 mcp__qdmp-gitlab__qdmp_gitlab_list_versions, mcp__qdmp-gitlab__qdmp_gitlab_get_version,
                 mcp__qdmp-gitlab__qdmp_gitlab_diff, mcp__qdmp-gitlab__qdmp_gitlab_publish,
@@ -24,7 +24,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | [inner-audio.md](./knowledge/inner-audio.md)              | 普通音频：创建、播放、暂停、停止、销毁、实例生命周期与真实调用结果记录 |
 | [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：岛屿详情/加入状态/搜索、合作游戏价格、OSS 图片/视频 POST 上传与发布查询、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
 | [wishlist.md](./knowledge/wishlist.md)                     | 心愿单 OpenAPI：列表、详情、创建与条目修改、数量/心愿价语义、用户授权、分页及写入不重放 |
-| [backend-operations.md](./knowledge/backend-operations.md) | 后端操作详情：通用子流程 + 操作 1-7 的完整步骤                                            |
+| [backend-operations.md](./knowledge/backend-operations.md) | 云服务使用规范、媒体存储与无效接口限制、通用子流程及操作 1-7                                            |
 | [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署（真机调试与体验版另见开发指南）                                                |
 | [prd-template.md](./knowledge/prd-template.md)             | PRD 模版：好的 PRD 应包含哪些内容 + 可直接使用的模版                                      |
 | [skill-data-consent.md](./references/skill-data-consent.md) | Skill 运行数据采集授权文案、项目范围和用户控制入口                                      |
@@ -40,6 +40,8 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 冷启动展示状态机返回的 `disclosure.display`，其中包含完整说明链接；`consent` 模板、固定下载来源/版本、当前目录等 `disclosure` 字段用于内部绑定和校验，不再重复展示。用户明确确认后才下载、校验并执行外部 onboarding。核对中央入口返回的动作与已授权范围一致后自动继续，不重复询问相同业务授权。范围变化则重新确认；宿主执行审批不能绕过。具体步骤见监控指引，不能将工具成功或无上下文的“同意”视为授权。
 
 ## 规范依赖
+
+涉及数据建模、媒体存储、云服务接口调用、联调、故障排查、全量点位 / 图片等数据验收或相关代码 Review 时，必须先读取并遵守 [云服务使用规范](./knowledge/backend-operations.md#云服务使用规范)。该要求同样适用于运维排查，不以进入数据建模或部署流程为前提。
 
 本 skill 负责千岛小程序的项目、开发、调试、部署主流程；产品边界和前端设计规范由独立 skill 维护。开发类任务必须按需调用：
 
