@@ -1,0 +1,220 @@
+{
+  "repository": "EchoTechFE/qdmp-skill",
+  "commit": "07ddb831e4808563a4415ccf1d61d658349e2927",
+  "scan": [
+    {
+      "path": ".claude-plugin/marketplace.json",
+      "sha256": "880dd372e99d159478f28b767d18e9cb2ae82d1bd4986a109fe2de5ffd31f078"
+    },
+    {
+      "path": ".claude-plugin/plugin.json",
+      "sha256": "ce246cb376896e15dac4545f8341869bd7f6656ec7a6254bcfec207d553d6e03"
+    },
+    {
+      "path": ".codex-plugin/marketplace.json",
+      "sha256": "005bf412145c76837d9d44819650705b81a145c9e7d78516a45f0eac461f2d23"
+    },
+    {
+      "path": ".codex-plugin/plugin.json",
+      "sha256": "8932685b0ed75dacf9678e8eefdd75d2a0eaf17d185d012aacb37ba06d24c2cf"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "0e30fb95133a80c501f9987fae45bee75660983713d61a6a9fb8e714400db8e7"
+    },
+    {
+      "path": ".qoder-plugin/marketplace.json",
+      "sha256": "b5ace50f3a8f84ddb92d8b29f2aa4703af53fdd6b8ace2a9d0ef3e8751ad0904"
+    },
+    {
+      "path": ".qoder-plugin/plugin.json",
+      "sha256": "0d3ea1fd0ba55491a769fdc4cd9f8bd805afdb5f433a1b2e334bec51e18ca4fc"
+    },
+    {
+      "path": "README.md",
+      "sha256": "794de384155af0906a60591a4b559e2d1ba4caa9f4228f01d00d32834636bb6f"
+    },
+    {
+      "path": "scripts/check-telemetry-distribution.mjs",
+      "sha256": "19fea7e695f893e10bb412f202487edccc7ac89bc2fe5d3c214fb8efe57e0dea"
+    },
+    {
+      "path": "skills/qdmp-design-rules/SKILL.md",
+      "sha256": "0e4774c1c8aedd8a5bca27f5046cd30c533a5dc2ba80806601136abd5fbdc43d"
+    },
+    {
+      "path": "skills/qdmp-design-rules/references/design-spec.md",
+      "sha256": "6a4b8d9cc3a7ab0557709a4e97c2363c8eb2b3034acb00401bd25f2d86fdd9ff"
+    },
+    {
+      "path": "skills/qdmp-design-rules/references/design-workflows.md",
+      "sha256": "ac91ca2f02190b8b3d2dae68ed78d62cc012c42b2ee2c2b8f3f052685d423134"
+    },
+    {
+      "path": "skills/qdmp-design-rules/references/port-guide.md",
+      "sha256": "0bc0db9019013f96139417d8cab9a72dd1801dbcd13bbaf17a9803cb18fdf1dc"
+    },
+    {
+      "path": "skills/qdmp-design-rules/references/skill-release.json",
+      "sha256": "32be44c95368dc1653d499af08168a7dffd7a0049f4e1962b14e416f0004f394"
+    },
+    {
+      "path": "skills/qdmp-design-rules/references/taro-code-spec.md",
+      "sha256": "bca00105bcce04d27bcdc6ff869b1897cd7450a99e3daf9ff3d40383b94543e9"
+    },
+    {
+      "path": "skills/qdmp-entry-route/SKILL.md",
+      "sha256": "26895241e8430d2c4999b2c8013ffdf7d0a98b8e91e9e063114adf025dbccc69"
+    },
+    {
+      "path": "skills/qdmp-entry-route/agents/openai.yaml",
+      "sha256": "91eef4a307e94ee62d1713664408102a6a100713321f65879037cce077263f5c"
+    },
+    {
+      "path": "skills/qdmp-entry-route/references/skill-release.json",
+      "sha256": "32be44c95368dc1653d499af08168a7dffd7a0049f4e1962b14e416f0004f394"
+    },
+    {
+      "path": "skills/qdmp-product-rules/SKILL.md",
+      "sha256": "a5e6bc9751f7e50c506ab85e999d24feb302faee2726d57941418432a1c6f0e4"
+    },
+    {
+      "path": "skills/qdmp-product-rules/references/product-baseline.md",
+      "sha256": "562b17d04698f4fb1e5ac7b25efef439d1e0e662a566f56713b38b39926b1e61"
+    },
+    {
+      "path": "skills/qdmp-product-rules/references/skill-release.json",
+      "sha256": "32be44c95368dc1653d499af08168a7dffd7a0049f4e1962b14e416f0004f394"
+    },
+    {
+      "path": "skills/qdmp-skill/SKILL.md",
+      "sha256": "b0236fefbade3772f30f870187280bc1ed787004e9906e3134f72979a415647e"
+    },
+    {
+      "path": "skills/qdmp-skill/assets/inner-audio.mjs",
+      "sha256": "24a0e0c606912a20cb87125c27ccdedbdcde27bfb0d94990504f00e6fc9c82c0"
+    },
+    {
+      "path": "skills/qdmp-skill/docs/使用指南.md",
+      "sha256": "72b0936598e05d86c021f4cb367138b7d211c32593e9a8b8c121a8240f11ac35"
+    },
+    {
+      "path": "skills/qdmp-skill/knowledge/agent-login.md",
+      "sha256": "9880c4468192dc33f86ec927529d479f912a428f29bce0e24291f85f77d8a786"
+    },
+    {
+      "path": "skills/qdmp-skill/knowledge/api-guide.md",
+      "sha256": "120db6e7c16d79b7905e7fd9aa451987218608ffcc59a008dadc301d71dd54e5"
+    },
+    {
+      "path": "skills/qdmp-skill/knowledge/backend-operations.md",
+      "sha256": "58c2a10c4eff0e0c133aae747c54ccae316df2e11294e7f20abbfc32d097c548"
+    },
+    {
+      "path": "skills/qdmp-skill/knowledge/bluetooth.md",
+      "sha256": "c83b4d200be468d1d9711e8055bae16788daa7913f8b0b189cfa01842b7e2166"
+    },
+    {
+      "path": "skills/qdmp-skill/knowledge/bridge-api-guide.md",
+      "sha256": "7c6d4a91004311e694dbf7d0e175219874342fa457f753b9b0ca3b369a098a33"
+    },
+    {
+      "path": "skills/qdmp-skill/knowledge/development-guide.md",
+      "sha256": "831c9b51ae535b2ded47990645b37569c7961915b9330b088d5e913fb0f4db33"
+    },
+    {
+      "path": "skills/qdmp-skill/knowledge/inner-audio.md",
+      "sha256": "6cb57bafd0d41cfa357a7ff24583fc814e870ff0fd5abb3f4baa630caab51f35"
+    },
+    {
+      "path": "skills/qdmp-skill/knowledge/openapi-permission-flow.md",
+      "sha256": "4949d767a2b97ef4dd40b3cf8f239b1db62ee84ae9fff35ebc1dfb7135945ffc"
+    },
+    {
+      "path": "skills/qdmp-skill/knowledge/prd-template.md",
+      "sha256": "e15cb86aaaf88702d9eb1cf5753c6b2a47cc99e5f67725a09b3c09dc4ba0e387"
+    },
+    {
+      "path": "skills/qdmp-skill/knowledge/project-workflows.md",
+      "sha256": "8495a74d465e73dd40989239ee10be5c18224eff2ce60c2809dcfc92be2d680b"
+    },
+    {
+      "path": "skills/qdmp-skill/knowledge/wishlist.md",
+      "sha256": "5ff66b6813099ec5b33ec6857be7cdfc28a7e4692ffe447b0eb5dd397047b864"
+    },
+    {
+      "path": "skills/qdmp-skill/references/monitor-flow.md",
+      "sha256": "aee4ed7f6b816ce1f002b2b1202f508b3503b0ca9c7ff540a010465d5b4f62f7"
+    },
+    {
+      "path": "skills/qdmp-skill/references/skill-data-consent.md",
+      "sha256": "97526b4a6e16e7623b85699e1d8dd19f130a0d0baf88a0df4872b6c89e5fb7e9"
+    },
+    {
+      "path": "skills/qdmp-skill/references/skill-release.json",
+      "sha256": "32be44c95368dc1653d499af08168a7dffd7a0049f4e1962b14e416f0004f394"
+    },
+    {
+      "path": "skills/qdmp-skill/references/telemetry-distribution.json",
+      "sha256": "4613d255962c8e7ba33f77dcc57f8b0f80ed3be4be684133926d5884600ec074"
+    },
+    {
+      "path": "skills/qdmp-skill/references/upgrade.md",
+      "sha256": "24cbfd6b5b165f6a3da3c36c8d5de4e204eec4a5325952a682a2b51541ac8f96"
+    },
+    {
+      "path": "skills/qdmp-skill/scripts/check-cli.mjs",
+      "sha256": "fd570600ed269c47d0362a57f443e6ebe0c0dbd04f7421371cb044dd309e7884"
+    },
+    {
+      "path": "skills/qdmp-skill/scripts/ensure-current.mjs",
+      "sha256": "f1199bdd54b720f7738bf416e01a0e4be98c279b76e952c6cadcbe3c53ae9314"
+    },
+    {
+      "path": "skills/qdmp-skill/scripts/monitor-flow.mjs",
+      "sha256": "8485523f482cbbb38cd90af9037b1a11baeb9ab74662c7b12f5a7b5efe9a30ff"
+    },
+    {
+      "path": "skills/qdmp-skill/scripts/monitor-preflight.mjs",
+      "sha256": "7d02c978f4ea711285f2b4f15b5d6ecde94db654ab19563dae6aef4ab9898363"
+    },
+    {
+      "path": "skills/qdmp-skill/scripts/recover-update.mjs",
+      "sha256": "67901db298ba963aac9725269a936072580feff425acb6565717428fb55a4068"
+    },
+    {
+      "path": "skills/qdmp-skill/scripts/release-network.mjs",
+      "sha256": "cf2e1590caee8c8542163e6f0a76fd20641c3a479c2b3211030a6d96a5698b6b"
+    },
+    {
+      "path": "test/ensure-current.test.mjs",
+      "sha256": "791097809fff4362faf1b5d0d46d9b791ea875fa0663c676f68351fca9764a8d"
+    },
+    {
+      "path": "test/monitor-flow.test.mjs",
+      "sha256": "d933bf54bd332f2e5f098d333e4b6ca2556ade19b66e09164f70c70a1d7cf62d"
+    },
+    {
+      "path": "test/release-network.test.mjs",
+      "sha256": "0e3f00901c086739090d22a70720d3d9cfda727928870e1caa8036be96764a29"
+    },
+    {
+      "path": "test/telemetry-distribution.test.mjs",
+      "sha256": "1f1fdcb996a399dda506b3b06615c498bb66069b0663fd01f7e697ccb86fed38"
+    }
+  ],
+  "archived": {
+    "skills/qdmp-skill/knowledge/api-guide.md": "120db6e7c16d79b7905e7fd9aa451987218608ffcc59a008dadc301d71dd54e5",
+    "skills/qdmp-skill/knowledge/bridge-api-guide.md": "7c6d4a91004311e694dbf7d0e175219874342fa457f753b9b0ca3b369a098a33",
+    "skills/qdmp-skill/knowledge/bluetooth.md": "c83b4d200be468d1d9711e8055bae16788daa7913f8b0b189cfa01842b7e2166",
+    "skills/qdmp-skill/knowledge/wishlist.md": "5ff66b6813099ec5b33ec6857be7cdfc28a7e4692ffe447b0eb5dd397047b864",
+    "skills/qdmp-skill/knowledge/inner-audio.md": "6cb57bafd0d41cfa357a7ff24583fc814e870ff0fd5abb3f4baa630caab51f35",
+    "skills/qdmp-skill/knowledge/development-guide.md": "831c9b51ae535b2ded47990645b37569c7961915b9330b088d5e913fb0f4db33",
+    "skills/qdmp-skill/knowledge/project-workflows.md": "8495a74d465e73dd40989239ee10be5c18224eff2ce60c2809dcfc92be2d680b",
+    "skills/qdmp-skill/knowledge/openapi-permission-flow.md": "4949d767a2b97ef4dd40b3cf8f239b1db62ee84ae9fff35ebc1dfb7135945ffc",
+    "skills/qdmp-skill/SKILL.md": "b0236fefbade3772f30f870187280bc1ed787004e9906e3134f72979a415647e",
+    "skills/qdmp-skill/knowledge/backend-operations.md": "58c2a10c4eff0e0c133aae747c54ccae316df2e11294e7f20abbfc32d097c548",
+    "skills/qdmp-skill/assets/inner-audio.mjs": "24a0e0c606912a20cb87125c27ccdedbdcde27bfb0d94990504f00e6fc9c82c0",
+    "skills/qdmp-skill/docs/使用指南.md": "72b0936598e05d86c021f4cb367138b7d211c32593e9a8b8c121a8240f11ac35"
+  }
+}

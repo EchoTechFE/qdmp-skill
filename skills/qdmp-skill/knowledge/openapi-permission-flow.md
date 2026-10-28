@@ -4,13 +4,13 @@
 
 ## 1. 识别收集范围
 
-应收集：代码实际请求 `https://openapi.qiandao.com/<service>/<version>/<path>` 的业务接口，或通过官方服务端 SDK 发起的等价调用。
+应收集：代码实际调用且已由 MCP 确认的 HTTP OpenAPI 业务接口，或通过官方服务端 SDK 发起的等价调用。
 
 不收集：
 
 - `qd.*` Bridge API；
 - 小程序项目自己的 `backend/` 接口；
-- `/auth/v1/token`、`/auth/v1/refresh` 等认证基础接口；
+- 凭据交换、刷新等认证基础能力；
 - 只出现在注释、示例、测试夹具或已删除代码中的接口；
 - 尚未落地、仅在方案中设想的接口。
 
@@ -20,20 +20,7 @@
 
 在 `{projectRoot}/.qdmp/openapi-usage.json` 使用固定结构：
 
-```json
-{
-  "schemaVersion": 1,
-  "openapis": [
-    {
-      "method": "GET",
-      "path": "/spu/v1/detail"
-    },
-    {
-      "showCode": "tag.search"
-    }
-  ]
-}
-```
+清单仍使用 `schemaVersion: 1` 与 `openapis` 数组。每项记录代码实际使用且经 MCP 核实的 method/path，或当前平台目录提供的 showCode/apiCode。不要把此格式说明变成静态业务 API 清单。
 
 标识规则：
 
@@ -59,48 +46,9 @@ qdmp-cli openapi apply-url --json
 qdmp-cli openapi apply-url --env dev --json
 ```
 
-CLI 必须复用千岛开放平台现有接口并自行分页：
+CLI 先读取当前应用的实时平台目录，逐项严格解析 resourceId；随后通过 devkit MCP 查询对应 OpenAPI 事实并核实身份，再按实时目录区分需申请、已开通、审核中、无需权限和不可申请。MCP 的冻结登记不能代替当前应用的授权状态。
 
-```text
-GET /qdmp-web/v1/developer/capabilities?app_id=<appId>&type=openapi&offset=<offset>&limit=200
-```
-
-不得为“查找全部 OpenAPI”创建新 BFF 接口。CLI 将清单逐项严格解析为 `resourceId`，并分类：
-
-- `requiredResourceIds`：需要用户手动申请，进入短链；
-- `grantedResourceIds`：已经开通，不重复申请；
-- `pendingResourceIds`：正在审核，不重复申请；
-- `noPermissionRequiredResourceIds`：无需申请；
-- `unavailableResourceIds`：当前不可申请，必须在交付中提示。
-
-未登录时，Agent 对话按 [Agent 对话登录](./agent-login.md) 展示登录链接和 PNG 图片，等待成功后重试生成命令。可交互终端保留三选一登录；无人值守的 CI 需预先设置 `QDMP_TOKEN`，否则退出。不要代填或索取账号密码。
-
-## 4. 16 位 queryKey 契约
-
-当 `requiredResourceIds` 非空时，CLI 调用：
-
-```text
-POST /qdmp-web/v1/developer/apps/<appId>/openapi-application-links
-Content-Type: application/json
-
-{"resourceIds":["1","2","3"]}
-```
-
-BFF 返回 16 位 Base64URL `queryKey`，CLI 生成：
-
-```text
-https://open.qiandao.com/apps/<appId>/capabilities?requiredApis=<queryKey>
-```
-
-固定 16 字符不可能无状态、无损地容纳任意数量的资源 ID，因此这里使用服务端短令牌映射而不是可逆加密：
-
-- Redis 保存 appId、原始有序 resourceIds、创建人、创建/过期时间；
-- Redis key 只使用 queryKey 的 SHA-256 摘要；
-- 生产环境通过 BFF 框架 `application.NewRedis(name)` 复用 Apollo `conn.redis` 配置和 APM 连接池监控；本地测试地址通过 `application.NewRedisWithOption` 覆盖，不直接自行创建客户端；
-- Redis 初始化失败时只降级短链创建/解析接口为 503，不能阻断 qdmp-web 原有接口启动；
-- 默认 7 天过期；
-- 创建与解析都校验当前登录用户对 appId 的访问权；
-- 返回列表必须与提交列表数量、值和顺序完全一致。
+平台目录分页与短链创建沿用 CLI 现有调用，不新增 BFF 接口。需要申请的 ID 按稳定顺序提交，回传数量、值和顺序必须完全一致；无待申请项不创建短链。保留短令牌映射、过期检查、当前用户与 appId 访问校验，以及 Redis 不可用时仅降级短链功能的行为。资源 ID 和令牌均来自实时平台响应，不在 Skill 中生成或内置。
 
 ## 5. 页面行为与安全边界
 

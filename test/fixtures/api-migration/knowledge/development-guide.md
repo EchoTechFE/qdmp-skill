@@ -1,0 +1,802 @@
+# 千岛小程序开发指南
+
+> 本指南用于 2.0（EMP）小程序。文中的 SDK 1.0.0 是能力版本，不是 1.0 小程序运行时；不提供 effuse/SPA 配置或开发路径。
+
+## 项目结构
+
+```
+myApp/
+├── frontend/
+|   ├── src/
+│   │   ├── pages/           # 页面目录
+│   │   ├── components/      # 组件目录
+│   │   ├── composables/     # 组合式函数
+│   │   ├── utils/           # 工具函数
+│   │   ├── assets/          # 静态资源
+│   │   └── app.vue          # 应用入口
+|   ├── package.json
+|   └── qdmp.json            # 小程序配置（appId、loader 等非敏感配置）
+├── backend/                 # 后端服务目录（详见 project-workflows.md）
+└── qdmp-config.json         # 主配置：appId、appSecret、runtime、mongodb（敏感，需加入 .gitignore）
+```
+
+> 后端目录结构和代码模板详见 [project-workflows.md](./project-workflows.md) 的「流程一：创建项目 - Step 4: 初始化后端代码模板」
+
+---
+
+## 小程序全局权限配置
+
+系统级权限属于小程序全局配置，不是运行时 Bridge API。Taro 项目修改 `frontend/src/app.config.js`；构建后会生成 `app.json`。不要直接修改 `dist/app.json`，它会在下次构建时被覆盖。
+
+两个字段职责不同：
+
+| 字段 | 值 | 用途 |
+| ---- | -- | ---- |
+| `permission` | `scope` 到 `{ desc }` 的对象映射 | 声明权限用途；`desc` 必须说明当前业务为何需要该权限 |
+| `requiredPrivateInfos` | 隐私接口名数组 | 声明小程序实际会调用的隐私接口，例如 `getFuzzyLocation` |
+
+```js
+export default defineAppConfig({
+  pages: ['pages/index/index'],
+  window: {
+    navigationBarTitleText: '千岛小程序',
+  },
+  requiredPrivateInfos: ['getFuzzyLocation'],
+  permission: {
+    'scope.userFuzzyLocation': {
+      desc: '用于展示附近的活动',
+    },
+    'scope.writePhotosAlbum': {
+      desc: '用于将生成的海报保存到系统相册',
+    },
+  },
+})
+```
+
+实现步骤：
+
+1. 从需求和实际 API 调用反推所需权限，只声明真实使用的项。
+2. 在 `permission` 中使用合法的 `scope.*` 键，并写清具体业务用途；不要使用“用于完善体验”等泛化描述。
+3. 对需要在全局配置声明的隐私接口，把接口名加入 `requiredPrivateInfos`；这里填写接口名，不填写 `scope.*`。
+4. 保留现有配置并去重，不要为了新增一项权限覆盖整个 `permission` 对象或数组。
+5. 执行项目构建，检查生成的 `dist/app.json` 是否包含预期字段，并确认源码中没有未声明的隐私接口调用或不再使用的权限声明。
+
+全局声明不等于用户已授权。需要运行时授权时，仍应在用户主动触发相关功能后按需调用 `qd.getSetting`、`qd.authorize` 或 `qd.openSetting`；不要在应用启动时集中索取权限。
+
+---
+
+## 屏幕方向配置（SDK 1.0）
+
+屏幕方向是编译期配置，不是 `qd.*` 运行时 Bridge API。SDK 1.0.0 起，Android、iOS、Harmony 支持全局固定横屏、页面固定横屏和页面自动旋转；Web 不在当前能力广场的支持范围内。
+
+### 全局固定横屏
+
+在 `frontend/src/app.config.js` 的 `window` 中设置 `pageOrientation: 'landscape'`，构建后对应 `app.json.window.pageOrientation`：
+
+```js
+export default defineAppConfig({
+  pages: ['pages/index/index'],
+  window: {
+    navigationBarTitleText: '千岛小程序',
+    pageOrientation: 'landscape',
+  },
+})
+```
+
+该配置会影响整个小程序。只有所有页面都应固定横屏时才写入全局 `window`；单页横屏不要为了测试方便改成全局配置。
+
+### 页面级横屏或自动旋转
+
+在目标页面的 `index.config.js` 中配置：
+
+```js
+// pages/game/index.config.js：固定横屏
+export default definePageConfig({
+  navigationBarTitleText: '横屏页面',
+  pageOrientation: 'landscape',
+})
+```
+
+```js
+// pages/viewer/index.config.js：跟随设备方向自动旋转
+export default definePageConfig({
+  navigationBarTitleText: '自动旋转页面',
+  pageOrientation: 'auto',
+})
+```
+
+实现与验收要求：
+
+1. 先判断作用域：全应用固定横屏使用全局配置；仅个别页面使用页面级配置。
+2. 保留配置文件中的导航栏等已有字段，不要覆盖整个配置对象。
+3. 需要在旋转后重排内容时，用 `qd.onWindowResize` 监听窗口变化，并用 `qd.getSystemInfo()` 或 `qd.getWindowInfo()` 读取最新宽高；不要只读取一次启动时尺寸。
+4. 在 Android、iOS、Harmony 真机分别验收进入页面、旋转、返回和导航栏布局；Web 端提供正常可用的自适应布局作为降级。
+
+---
+
+## 截图黑屏（页面隐私模式）
+
+`screenShotForbidden` 是页面级隐私配置，Android、iOS、Harmony、Web 均支持。目标页面启用后，系统截屏产出黑屏图像；返回未启用的页面后，截屏恢复正常。
+
+### Taro 页面配置
+
+在需要保护的页面 `index.config.js` 中添加 `screenShotForbidden: true`，保留原有配置：
+
+```js
+// frontend/src/pages/secret/index.config.js
+export default definePageConfig({
+  navigationBarTitleText: '隐私页面',
+  screenShotForbidden: true,
+})
+```
+
+如果是新增页面，还需在 `frontend/src/app.config.js` 的 `pages` 数组中注册 `pages/secret/index`。已有页面直接修改其页面配置即可。
+
+### app-config.json 配置
+
+直接维护 `app-config.json` 的项目，也可以在 `modules` 中按页面路径配置：
+
+```json
+{
+  "modules": {
+    "pages/secret/index": {
+      "screenShotForbidden": true
+    }
+  }
+}
+```
+
+将 `pages/secret/index` 替换为实际页面路径，并保留其他模块及已有字段。Taro 项目优先修改源码中的页面配置，不要直接修改会被构建覆盖的产物。
+
+### 使用与验证
+
+该能力由页面配置启用，无需调用 `qd.screenShotForbidden()`，也无需注册 `qd.onUserCaptureScreen`；截屏监听仅用于接收事件，不能代替隐私配置。按需要保护的页面逐页配置，不要写入全局 `window` 或权限声明。
+
+构建并运行更新后的小程序，按以下步骤验证：
+
+1. 从普通页面进入隐私页面，使用系统截屏，确认截图为黑屏。
+2. 返回未启用该配置的上一页，再次截屏，确认截图正常。
+3. 再次进入隐私页面截屏，确认仍为黑屏。
+
+能力广场的演示入口为「屏幕 → screenShotForbidden → 运行」，对应 `pages/privacy-demo/index`。
+
+---
+
+## 服务端 API 调用
+
+编写请求封装、轮询或联调脚本前，必须先读 [云服务使用规范](./backend-operations.md#云服务使用规范)。仅调用有文档或目标环境已部署路由依据的接口；404 / 405 / 接口不存在时停止自动重试和轮询，不能由页面刷新、定时器或请求库持续触发。限流、权限错误和 WAF 拦截按原因停止并排查，不把所有失败都当成 Token 过期或可重试错误。
+
+千岛小程序通过 `fetch` + Gateway 获取业务数据（SPU、帖子、交易等），详细接口文档见 [api-guide.md](./api-guide.md)。
+
+---
+
+### 基础配置
+
+```vue
+<script setup>
+const BASE = 'https://openapi.qiandao.com'
+</script>
+```
+
+**关键约定**:
+- 分页: `offset` (默认 0) / `limit` (默认 20)
+- ID 类型: 所有 ID 为 string
+- 图片防盗链: index.html 必须加 `<meta name="referrer" content="no-referrer">`
+- 页面跳转: 使用 `qd.navigateTo` 传递 query 参数时，参数值不得直接拼接中文、空格、`&`、`?`、`=` 等特殊字符；若参数可能包含中文或特殊字符，必须使用 `encodeURIComponent` 编码。
+
+```javascript
+qd.navigateTo({
+  url: `/pages/category/index?key=${cat.key}&name=${encodeURIComponent(cat.name)}`,
+})
+```
+
+禁止写法：
+
+```javascript
+qd.navigateTo({
+  url: `/pages/category/index?key=${cat.key}&name=${cat.name}`,
+})
+```
+
+### Token 管理与自动刷新
+
+开发者在获取 Token 时应同时保存 `refreshToken`，并在 Token 过期前主动刷新。
+
+```javascript
+// utils/tokenManager.js
+const OPENAPI_BASE = 'https://openapi.qiandao.com'
+
+// Token 存储 key
+const TOKEN_KEY = 'qdmp_access_token'
+const REFRESH_TOKEN_KEY = 'qdmp_refresh_token'
+const EXPIRES_AT_KEY = 'qdmp_token_expires_at'
+
+// 提前刷新时间（秒），在过期前 5 分钟刷新
+const REFRESH_THRESHOLD = 300
+
+class TokenManager {
+  static getAccessToken() {
+    return localStorage.getItem(TOKEN_KEY)
+  }
+
+  static getRefreshToken() {
+    return localStorage.getItem(REFRESH_TOKEN_KEY)
+  }
+
+  static getExpiresAt() {
+    const val = localStorage.getItem(EXPIRES_AT_KEY)
+    return val ? parseInt(val, 10) : 0
+  }
+
+  /**
+   * 保存 Token 信息
+   * @param {string} accessToken
+   * @param {string} refreshToken
+   * @param {number} expiresAt - 秒级时间戳
+   */
+  static saveToken(accessToken, refreshToken, expiresAt) {
+    localStorage.setItem(TOKEN_KEY, accessToken)
+    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken)
+    localStorage.setItem(EXPIRES_AT_KEY, String(expiresAt))
+  }
+
+  static clearToken() {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(REFRESH_TOKEN_KEY)
+    localStorage.removeItem(EXPIRES_AT_KEY)
+  }
+
+  /**
+   * 检查 Token 是否需要刷新
+   */
+  static needsRefresh() {
+    const expiresAt = this.getExpiresAt()
+    const now = Math.floor(Date.now() / 1000)
+    return expiresAt - now < REFRESH_THRESHOLD
+  }
+
+  /**
+   * 检查 Token 是否已过期
+   */
+  static isExpired() {
+    const expiresAt = this.getExpiresAt()
+    const now = Math.floor(Date.now() / 1000)
+    return now >= expiresAt
+  }
+
+  /**
+   * 刷新 Token
+   * @returns {Promise<string>} 新的 accessToken
+   * @throws {Error} 刷新失败时抛出错误（错误码 10007/10008）
+   */
+  static async refreshToken() {
+    const refreshToken = this.getRefreshToken()
+    if (!refreshToken) {
+      throw new Error('No refresh token available')
+    }
+
+    const res = await fetch(`${OPENAPI_BASE}/auth/v1/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken })
+    })
+
+    const json = await res.json()
+
+    // 错误码 10007: refreshToken 无效，10008: refreshToken 已过期
+    if (json.code !== 0 && json.code !== '0') {
+      this.clearToken()
+      throw new Error(json.message || `Refresh failed: ${json.code}`)
+    }
+
+    const { accessToken, expiresAt } = json.data
+    // 刷新接口不返回新的 refreshToken，保留原有的
+    this.saveToken(accessToken, refreshToken, expiresAt)
+
+    return accessToken
+  }
+
+  /**
+   * 获取有效的 Token，必要时自动刷新
+   * @returns {Promise<string|null>}
+   */
+  static async getValidToken() {
+    const token = this.getAccessToken()
+    if (!token) return null
+
+    // Token 即将过期，尝试刷新
+    if (this.needsRefresh()) {
+      try {
+        return await this.refreshToken()
+      } catch (e) {
+        console.error('Token refresh failed:', e)
+        // 如果刷新失败但 Token 尚未完全过期，仍可继续使用
+        if (!this.isExpired()) {
+          return token
+        }
+        return null
+      }
+    }
+
+    return token
+  }
+}
+
+export default TokenManager
+```
+
+### 获取 Token（含 Refresh）
+
+```javascript
+// utils/auth.js
+import TokenManager from './tokenManager'
+
+const OPENAPI_BASE = 'https://openapi.qiandao.com'
+
+/**
+ * 使用凭证获取 Token
+ * @param {object} params
+ * @param {string} params.appId
+ * @param {string} params.appSecret
+ * @param {string} params.code - 授权码
+ * @param {string} params.grantType - 'CLIENT_CREDENTIALS' | 'AUTHORIZATION_CODE'
+ */
+export async function getToken({ appId, appSecret, code, grantType }) {
+  const res = await fetch(`${OPENAPI_BASE}/auth/v1/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ appId, appSecret, code, grantType })
+  })
+
+  const json = await res.json()
+
+  if (json.code !== 0 && json.code !== '0') {
+    throw new Error(json.message || `Auth failed: ${json.code}`)
+  }
+
+  const { accessToken, refreshToken, expiresAt, openId } = json.data
+
+  // 保存 Token 和 RefreshToken
+  TokenManager.saveToken(accessToken, refreshToken, expiresAt)
+
+  return { accessToken, refreshToken, expiresAt, openId }
+}
+```
+
+### 封装请求函数
+
+```javascript
+// utils/api.js
+import TokenManager from './tokenManager'
+
+const OPENAPI_BASE = 'https://openapi.qiandao.com'
+
+/**
+ * 带自动刷新的请求函数
+ */
+export async function api(endpoint, options = {}) {
+  const { method = 'GET', body, requireAuth = false } = options
+
+  const headers = { 'Content-Type': 'application/json' }
+
+  // 需要认证时，获取有效 Token
+  if (requireAuth) {
+    const token = await TokenManager.getValidToken()
+    if (!token) {
+      throw new Error('未登录或 Token 已失效，请重新登录')
+    }
+    headers['access-token'] = token
+  }
+
+  const config = { method, headers }
+
+  if (body) {
+    config.body = JSON.stringify(body)
+  }
+
+  let res = await fetch(`${OPENAPI_BASE}${endpoint}`, config)
+  let json = await res.json()
+
+  // 处理 401：尝试刷新后重试一次
+  if (res.status === 401 && requireAuth) {
+    try {
+      const newToken = await TokenManager.refreshToken()
+      headers['access-token'] = newToken
+      res = await fetch(`${OPENAPI_BASE}${endpoint}`, { ...config, headers })
+      json = await res.json()
+    } catch (e) {
+      throw new Error('登录已过期，请重新登录')
+    }
+  }
+
+  if (!json.ok && json.code !== 0 && json.code !== '0') {
+    throw new Error(json.error || json.message || '请求失败')
+  }
+
+  return json.data
+}
+```
+
+### 封装 Composable（含 Token 刷新）
+
+```javascript
+// composables/useApi.js
+import { ref } from 'vue'
+import TokenManager from '@/utils/tokenManager'
+
+const OPENAPI_BASE = 'https://openapi.qiandao.com'
+
+export function useApi() {
+  const loading = ref(false)
+  const error = ref(null)
+
+  /**
+   * 发起请求（支持自动 Token 刷新）
+   * @param {string} endpoint
+   * @param {object} options
+   * @param {string} options.method - HTTP 方法
+   * @param {object} options.body - 请求体
+   * @param {boolean} options.requireAuth - 是否需要认证
+   */
+  async function request(endpoint, options = {}) {
+    const { method = 'GET', body, requireAuth = false } = options
+
+    loading.value = true
+    error.value = null
+
+    try {
+      const headers = { 'Content-Type': 'application/json' }
+
+      if (requireAuth) {
+        const token = await TokenManager.getValidToken()
+        if (!token) {
+          throw new Error('未登录或 Token 已失效')
+        }
+        headers['access-token'] = token
+      }
+
+      const config = { method, headers }
+      if (body) {
+        config.body = JSON.stringify(body)
+      }
+
+      let res = await fetch(`${OPENAPI_BASE}${endpoint}`, config)
+      let json = await res.json()
+
+      // 401 时尝试刷新 Token 后重试
+      if (res.status === 401 && requireAuth) {
+        const newToken = await TokenManager.refreshToken()
+        headers['access-token'] = newToken
+        res = await fetch(`${OPENAPI_BASE}${endpoint}`, { ...config, headers })
+        json = await res.json()
+      }
+
+      const code = json.code
+      if (code !== 0 && code !== '0' && !json.ok) {
+        throw new Error(json.error || json.message || '请求失败')
+      }
+
+      return json.data
+    } catch (e) {
+      error.value = e.message
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // 便捷方法
+  const get = (endpoint, opts = {}) => request(endpoint, { ...opts, method: 'GET' })
+  const post = (endpoint, body, opts = {}) => request(endpoint, { ...opts, method: 'POST', body })
+
+  return { loading, error, request, get, post }
+}
+```
+
+### 业务场景与 API 对应
+
+| 场景     | API                                        | 方法 |
+| -------- | ------------------------------------------ | ---- |
+| 搜索 SPU | `/treasure/v1/search/spu/with/related`     | POST |
+| SPU 详情 | `/treasure/v1/spu/info?spuId={id}`         | GET  |
+| SPU 列表 | `/treasure/spus/search/simple-info`        | POST |
+| 搜索 Tag | `/treasure/v1/search/tags`                 | POST |
+| Tag 详情 | `/flora/v1/tag/simpleInfo?entryId={tagId}` | GET  |
+| 帖子列表 | `/gactus/admin/posts?circleId={islandId}`  | GET  |
+| 岛屿列表 | `/treasure/bifrost/islands`                | POST |
+| 拍卖场次 | `/c2c-web/v1/auctioneer/fields/list`       | POST |
+
+### 使用示例
+
+```vue
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useApi } from '@/composables/useApi'
+
+const { loading, error, get, post } = useApi()
+const spuList = ref([])
+
+async function searchSpu(keyword) {
+  const data = await post('/treasure/v1/search/spu/with/related', {
+    keyword,
+    limit: 10,
+    offset: 0
+  })
+  if (data) {
+    spuList.value = data.list
+  }
+}
+
+async function fetchSpuInfo(spuId) {
+  return await get(`/treasure/v1/spu/info?spuId=${spuId}`)
+}
+
+onMounted(() => searchSpu('dimoo'))
+</script>
+
+<template>
+  <div v-if="loading">加载中...</div>
+  <div v-else-if="error">{{ error }}</div>
+  <div v-else>
+    <div v-for="spu in spuList" :key="spu.id">
+      <img :src="spu.cover" />
+      <span>{{ spu.name }}</span>
+    </div>
+  </div>
+</template>
+```
+
+### 认证流程示例
+
+```vue
+<script setup>
+import { ref, onMounted } from 'vue'
+import { getToken } from '@/utils/auth'
+import TokenManager from '@/utils/tokenManager'
+import { useApi } from '@/composables/useApi'
+
+const { loading, error, get } = useApi()
+const userInfo = ref(null)
+const isLoggedIn = ref(false)
+
+onMounted(async () => {
+  // 检查是否已有有效 Token
+  const token = await TokenManager.getValidToken()
+  if (token) {
+    isLoggedIn.value = true
+    await fetchUserInfo()
+  }
+})
+
+// 登录获取 Token
+async function handleLogin() {
+  try {
+    // 1. 调用 qd.login() 获取授权码
+    const code = await new Promise((resolve, reject) => {
+      qd.login({
+        success: (res) => resolve(res.data.code),
+        fail: (err) => reject(err)
+      })
+    })
+
+    // 2. 用授权码换取 Token
+    // 注意：appId/appSecret 应从环境变量或后端获取，不要硬编码
+    await getToken({
+      appId: import.meta.env.VITE_APP_ID,
+      appSecret: import.meta.env.VITE_APP_SECRET,
+      code,
+      grantType: 'AUTHORIZATION_CODE'
+    })
+
+    isLoggedIn.value = true
+    await fetchUserInfo()
+  } catch (e) {
+    console.error('登录失败:', e)
+  }
+}
+
+// 获取用户信息（需要认证）
+async function fetchUserInfo() {
+  const data = await get('/user/v1/me', {
+    requireAuth: true
+  })
+  if (data) {
+    userInfo.value = data
+  }
+}
+
+// 登出
+function handleLogout() {
+  TokenManager.clearToken()
+  isLoggedIn.value = false
+  userInfo.value = null
+}
+</script>
+
+<template>
+  <div class="auth-demo">
+    <div v-if="!isLoggedIn">
+      <button @click="handleLogin">登录</button>
+    </div>
+    <div v-else>
+      <p>欢迎，{{ userInfo?.nickname }}</p>
+      <button @click="handleLogout">退出</button>
+    </div>
+    <p v-if="error" class="error">{{ error }}</p>
+  </div>
+</template>
+```
+
+> 完整场景化 API 请参考 [api-guide.md](./api-guide.md)
+
+---
+
+## 完整页面示例
+
+结合服务端 API 的完整示例：
+
+```vue
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useApi } from '@/composables/useApi'
+
+const { loading, error, get, post } = useApi()
+const spuInfo = ref(null)
+
+// 初始化
+onMounted(async () => {
+  // 获取业务数据
+  const spuId = new URLSearchParams(location.search).get('spuId')
+  if (spuId) {
+    spuInfo.value = await get(`/treasure/v1/spu/info?spuId=${spuId}`)
+  }
+})
+
+// 分享（Web 原生方式）
+function handleShare() {
+  if (navigator.share) {
+    navigator.share({
+      title: spuInfo.value?.name || '分享',
+      url: location.href
+    })
+  } else {
+    // 降级：复制链接到剪贴板
+    navigator.clipboard.writeText(location.href)
+    alert('链接已复制')
+  }
+}
+</script>
+
+<template>
+  <div class="page">
+    <div v-if="loading">加载中...</div>
+    <div v-else-if="error">{{ error }}</div>
+    <div v-else-if="spuInfo" class="spu-detail">
+      <img :src="spuInfo.cover" class="cover" />
+      <h1>{{ spuInfo.name }}</h1>
+      <p>{{ spuInfo.tagName }} · {{ spuInfo.categoryName }}</p>
+      <button @click="handleShare">分享</button>
+    </div>
+  </div>
+</template>
+```
+
+---
+
+## 调试技巧
+
+### 本地开发
+
+对于后端，可以使用提示词**后端测试环境**更新本地部署的后端服务。
+
+对于前端，执行以下命令：
+
+```bash
+pnpm run dev
+```
+
+在浏览器中打开开发者工具调试。
+
+### 真机调试
+
+要求 CLI **0.1.32 或更高稳定版**，仅支持 EMP。先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`；不足时按升级说明更新。确认本地和平台应用均为 EMP、当前账号具有应用开发权限后，在包含 `qdmp.json` 的前端目录执行（也支持根目录下存在 `frontend/qdmp.json` 的项目）：
+
+```bash
+qdmp debug
+# 已有本次改动的 EMP 编译产物时，可以跳过构建
+qdmp debug --no-build
+# 多网卡时选择手机可访问的本机 IPv4 地址
+qdmp debug --host 192.168.1.20 --port 9000
+```
+
+`--host` 必须替换为本机网卡上手机可访问的 IPv4 地址；默认自动选择。`--port` 范围为 0–65535，默认 0 自动分配端口，以 `ready.port` 为准。
+
+默认执行项目构建和 EMP 编译，启动本地 HTTP 包下载与 WebSocket 日志服务。使用千岛 App 扫码后查看设备连接、设备信息和实时日志；Ctrl+C 停止。此流程不上传平台版本，不设置体验版或发布正式版。首期不支持源码变动自动构建/刷新、断点和单步调试；改动后重新运行命令。
+
+手机必须能够访问运行 CLI 的机器及端口，通常连接同一局域网；不要把 `localhost` 当作手机可访问的电脑地址。Agent 若运行在隔离容器或云端，先确认手机可达；不可达时说明需要在开发者本机运行，不能把容器内部二维码称为可用真机入口。业务接口的域名和环境沿用项目配置，不自动部署后端或替换为浏览器代理 `/api`。
+
+Agent 使用 `qdmp debug --json` 读取 NDJSON；需要对话内展示图片时加 `--qr-output <新的绝对PNG路径>`，确保父目录存在且文件不存在。收到 `ready` 后立即展示 `deepLink` 和实际 `qrImagePath`（或宿主支持的 `qrDataUrl`），保持后台进程运行并读取 `device-connected`、`device-info`、`log`、`device-disconnected`、`error`、`stopped` 事件。不要等待长期进程结束才展示二维码；`ready` 只说明服务就绪，不能当作手机已运行成功。JSON 模式不会交互登录；明确缺少登录态时，按 [Agent 对话登录](./agent-login.md) 执行 `qdmp login --agent --env <prod|dev>`，完成后重试原命令。登录和操作必须使用同一环境；默认 `prod` 读取 `qdmp.json.appId`，显式 `--env dev` 读取 `devAppId`。设置体验版也遵循这一环境与登录规则。
+
+常见失败：无应用开发权限时核对登录账号和平台协作者权限；扫码连接失败时检查 Wi-Fi、所选网卡、端口与防火墙；`--no-build` 提示缺少产物时重新运行 `qdmp debug` 完成构建。重启会产生新的构建快照，使用本次返回的二维码重新扫码。
+
+### 设置体验版
+
+要求 CLI **0.1.32 或更高稳定版**，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`。根据用户指定的是当前代码还是已上传版本选择以下入口，保持应用和环境一致。
+
+#### 上传当前代码并设为体验版
+
+用户明确要求上传体验版时，在前端目录执行。`qdmp upload` 本身不会构建，必须先完成 `qdmp build`；版本描述按 [发布流程 Step 4.1](./project-workflows.md#step-4-部署前端服务) 从本次改动生成，限 200 字：
+
+```bash
+qdmp build
+qdmp upload --experience -d "本次更新说明"
+# Agent / CI 可将上面的上传命令替换为以下形式（不要再上传一次）
+qdmp upload --experience --json -d "本次更新说明"
+```
+
+CLI 自动读取上传接口返回的真实版本号并设为体验版，开发者无需手动输入版本号。普通 `qdmp upload` 不会自动设置体验版；设置体验版不等于提审或正式发布。体验链接和二维码打开平台“当前体验版”，再次切换后会打开新版本，体验权限沿用平台规则。默认使用正式平台的同一个 appId；`--env dev` 选择开发环境 API，不表示“体验版”。
+
+#### 将已上传版本设为体验版
+
+用户已明确选择平台上的版本时，无需重新构建或上传，在同一项目目录执行：
+
+```bash
+qdmp experience --version <实际版本号> --env prod
+# Agent 使用结构化结果时，改用以下形式
+qdmp experience --version <实际版本号> --env prod --json --qr-output <新的绝对PNG路径>
+```
+
+`--version` 必填，使用上传结果的 `versionCode` 或开放平台确认的正整数版本号，不使用 `package.json.version`，也不猜测“最新版本”。没有明确目标版本时先确认。CLI 只允许将 `DEVELOPMENT` 状态版本设为体验版；目标已经是当前体验版且状态为 `REVIEW` 时会直接返回成功，其余状态会报错。
+
+#### 结果展示与失败处理
+
+收到 JSON `type=result` 且 `experienceUpdated=true` 后，展示 `versionCode`、`experienceUrl` 和二维码。需要图片文件可使用 `--qr-output <新的绝对PNG路径>`，父目录须存在，目标文件不能已存在；`upload` 仅在同时传入 `--experience` 时支持该参数。若有 `warning`，但体验版已设置成功，则说明只是二维码生成/保存失败，直接展示体验链接，不要重新上传。
+
+上传成功但设置失败时，保留 `uploaded=true`、`versionCode`，使用 CLI 返回的 `retryCommand` 重试设置，不重新构建上传。`qdmp experience --version <实际版本号>` 仅用于这类重试或用户明确选择已有版本；优先复制返回的命令，不要求用户猜版本号。Agent 重试时可追加 `--json`，保留返回的版本号和环境。若提示“无法确认体验版设置结果”，先在开放平台核对当前体验版，再决定是否重试；不要把未知结果报告为失败后自动重复上传。
+
+### 常见问题
+
+| 问题              | 排查方向                                   |
+| ----------------- | ------------------------------------------ |
+| 页面白屏          | 检查控制台 JS 错误、页面路径是否注册       |
+| 样式不生效        | 检查 CSS 兼容性、样式文件引入              |
+| 接口 403          | 检查图片防盗链 meta 标签                   |
+
+---
+
+## 发布流程
+
+### 发布前检查
+
+- [ ] 功能测试完成
+- [ ] 真机调试通过
+- [ ] 版本号已更新
+- [ ] 代码已提交 Git
+
+### 发布步骤
+
+```bash
+# 1. 打包（必须使用 qdmp build，否则 upload 会失败）
+qdmp build
+
+# 2. 检查登录态
+qdmp getMe
+```
+
+如果未登录或登录失效，CLI 会在支持输入的前台终端提供三种方式：扫码登录、手动登录 URL、账号密码登录。扫码或 URL 登录完成后 CLI 会轮询并保存 Token，随后继续原命令。也可以主动执行：
+
+```bash
+qdmp login
+```
+
+Agent 对话需要登录时，按 [Agent 对话登录](./agent-login.md) 执行 `qdmp login --agent --env <env>`，立即展示返回的链接和 PNG 图片并等待成功。无人值守的 CI 请预先设置 `QDMP_TOKEN`；未设置时 CLI 应输出错误并退出。登录成功后再上传：
+
+```bash
+qdmp-cli upload -d "新增商品筛选并优化加载体验"
+```
+
+账号密码交互登录需由用户直接操作前台终端，不能与构建、上传串联；密码不回显属于正常现象。Agent 使用独立的 `--agent` 登录进程展示链接和图片，不需要用户操作终端，也不在聊天中索取账号或密码。
+
+通过本 skill 发版时，版本描述会根据本次 Git 改动自动总结并传入，无需手动编写。
+
+上传后前往 [千岛开放平台](https://open.qiandao.com) 提交审核。

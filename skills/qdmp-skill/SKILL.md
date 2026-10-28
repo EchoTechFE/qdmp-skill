@@ -7,22 +7,28 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
                 mcp__qdmp-gitlab__qdmp_gitlab_pipeline_status, mcp__qdmp-gitlab__qdmp_gitlab_pipeline_logs,
                 mcp__qdmp-gitlab__qdmp_gitlab_rollback, mcp__qdmp-gitlab__qdmp_gitlab_init_repo,
                 mcp__qdmp-gitlab__qdmp_gitlab_repo_exists, mcp__qdmp-aliyun__qdmp_k8s_deployed_version,
-                mcp__qdmp-aliyun__qdmp_k8s_logs]
+                mcp__qdmp-aliyun__qdmp_k8s_logs,
+                mcp__qdmp-devkit__capability_search, mcp__qdmp-devkit__capability_get,
+                mcp__qdmp-devkit__capability_supports]
 ---
 
 # 千岛小程序开发助手（外部版）
 
 帮助开发者快速创建、开发、调试和部署千岛小程序。
 
+## 业务 API 事实来源
+
+涉及业务 API 发现、调用生成、参数/返回、权限、错误码、分页或平台支持时，先执行 [API 事实查询](./knowledge/api-discovery.md)：读取单个 CDN JSON，再查询 devkit MCP，同一会话复用并分别固定 provider 快照。契约不保存在 Skill 中；未收录或不可达时报告缺口，不使用历史资料补全。项目创建、开发、调试、部署、平台权限申请与现有测试流程继续按以下路由执行。
+
 ## 知识库
 
 | 文档                                                       | 内容                                                                                      |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | [development-guide.md](./knowledge/development-guide.md)   | 开发指南：项目结构、全局权限配置、屏幕方向、截图黑屏、服务端 API、调试发布                  |
-| [bridge-api-guide.md](./knowledge/bridge-api-guide.md)     | Bridge API：用户授权查询与申请、原生能力调用、蓝牙、音频、文件下载、陀螺仪、发帖预填参数、IM 消息订阅、导航栏返回首页按钮、参数与返回值类型 |
+| [bridge-api-guide.md](./knowledge/bridge-api-guide.md)     | Bridge API：用户授权查询与申请、原生能力调用、蓝牙、音频、文件下载、陀螺仪、发帖预填参数、IM 消息订阅、导航栏返回首页按钮、业务顺序与验收 |
 | [bluetooth.md](./knowledge/bluetooth.md)                  | BLE 中心设备：发现、连接、GATT 读写与通知、MTU、断线清理与重连、Android 配对 |
 | [inner-audio.md](./knowledge/inner-audio.md)              | 普通音频：创建、播放、暂停、停止、销毁、实例生命周期与真实调用结果记录 |
-| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：岛屿详情/加入状态/搜索、合作游戏价格、OSS 图片/视频 POST 上传与发布查询、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
+| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：岛屿详情/加入状态/搜索、合作游戏价格、OSS 媒体上传与发布结果核实、帖子评论与回复（rcomment）、错误排查与验收 |
 | [wishlist.md](./knowledge/wishlist.md)                     | 心愿单 OpenAPI：列表、详情、创建与条目修改、数量/心愿价语义、用户授权、分页及写入不重放 |
 | [backend-operations.md](./knowledge/backend-operations.md) | 云服务使用规范、媒体存储与无效接口限制、通用子流程及操作 1-7                                            |
 | [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署（真机调试与体验版另见开发指南）                                                |
@@ -254,13 +260,9 @@ questions:
 
 开发类代码生成或 Review 必须先按「规范依赖」调用对应 skill。产品底线、设计系统和 Taro 视觉落地规则不在本节重复维护，避免规范漂移。
 
-涉及帖子评论、回复、评论列表或评论点赞（rcomment）时，必须读取 [api-guide.md](./knowledge/api-guide.md) 的「Lifestyle：评论与回复（Comment / RComment）」；严格区分一级评论列表的 `offset` 分页与回复列表的 `cursor` 分页，并将帖子、评论和回复 ID 保持为 int64 字符串。
+涉及帖子评论、回复、列表或互动时，读取 [HTTP API 工作流](./knowledge/api-guide.md)，分别核实分页与记录身份；不直接复用旧路由或字段。心愿单读取 [wishlist.md](./knowledge/wishlist.md)，保留与单个商品想要的实体区分及写入不重放。
 
-涉及心愿单（Folder）列表、详情、创建或条目修改时，读取 [wishlist.md](./knowledge/wishlist.md)；使用 `/folder/v1/*` 与 `user.folder.read`、`user.folder.write`，不要混用单个商品“想要”的 `user.wish.*`。`join` 的数量为绝对覆盖、`num=0` 移出条目，发送后任何失败均不自动重放；完整字段、授权及分页规则见该指南。
-
-涉及千岛 OpenAPI 报错排查或错误处理时，读取 [api-guide.md 的「错误与排查」](./knowledge/api-guide.md#13-错误与排查)，根据业务 `code`、`message` 和 HTTP 状态定位原因；区分应用权限、用户授权、Token 无效或过期、限流与配额耗尽。
-
-涉及 OSS 文件上传时，读取 [api-guide.md 的「OSS 图片与视频上传流程（POST）」](./knowledge/api-guide.md#oss-图片与视频上传流程post)；区分平台 `quota/prepare/result` OpenAPI 与应用自建 relay。后端向 OSS 发送签名表单和文件的 POST multipart，`file` 必须最后；仅 `result` 返回 `COMMITTED` 且 `cdnUrl` 有效时展示已发布媒体，无效 POST 凭据不能回退 PUT。
+错误排查和媒体上传读取 [api-guide.md](./knowledge/api-guide.md)；保留认证、权限、配额、传输与发布终态的分层处理，具体接口、编码与错误含义先从 MCP 确认。
 
 ### 前端（`frontend/`）
 
@@ -269,18 +271,10 @@ questions:
 涉及以下能力时，必须读取对应指南后再实现：
 
 - 系统级权限声明：读取 [development-guide.md](./knowledge/development-guide.md) 的「小程序全局权限配置」，修改 `frontend/src/app.config.js`，不要把声明误写成运行时 Bridge 调用。
-- OpenAPI 用户授权（`user.*`）：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md#一授权-auth) 的「授权 (auth)」，使用 `qd.getEchoAuthorize` 查询、`qd.requireEchoAuthorize` 申请；区分原生回调与业务 `10021`，按需参考首次操作引导和单次业务恢复流程。
-- 横屏与自动旋转：读取 [development-guide.md](./knowledge/development-guide.md) 的「屏幕方向配置（SDK 1.0）」；按作用域修改全局 `app.config.js` 或页面 `index.config.js`，不要把 `pageOrientation` 当成运行时 Bridge API。
-- 截图黑屏或页面隐私模式：读取 [development-guide.md](./knowledge/development-guide.md) 的「截图黑屏（页面隐私模式）」；在目标页面配置 `screenShotForbidden: true`，Android、iOS、Harmony、Web 均支持。该字段是页面配置，不是 `qd.*` 方法，也不需要注册截屏监听。
-- 打开帖子发布页：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「`qd.openPost` — 打开帖子发布页」；保留原有 `islandId`、`appId`、`files` 调用方式，按需新增 `title`、`content`、`labels`、`bizData`。其中 `files` 和 `labels` 必须分别进行 JSON 序列化与 UTF-8 Base64 编码，`bizData` 只进行 JSON 序列化、不进行 Base64 编码；保留 `ShowTitle`，用 `path` 和由开发者自定义的 `query` 替代原有的 `DaoLink`。图案详情场景可将 `path` 设为 `pages/view/index`、`query` 设为 `patternId=${normalizedPatternId}`。不要直接传数组或继续生成 `spuIds`、`tagIds`。
-- 取消想要或删除标记：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「`qd.cancelWish` — 取消一条想要记录」和「`qd.cancelMark` — 删除一条 Mark 记录」；传列表或详情返回的记录 ID，不要误传 SPU ID，也不要改用同名 HTTP 接口。
-- IM 订阅消息：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「IM 消息订阅」，使用业务提供的模板 ID，并处理每个模板的订阅结果。
-- 顶部导航栏返回首页按钮：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「导航栏」，确认页面栈场景后调用 `qd.hideHomeButton`；不要把它当成隐藏普通返回箭头的接口。
-- 同步获取系统信息：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「`qd.getSystemInfoSync` — 同步获取系统信息」；直接同步调用并使用返回值，不要传回调、包装成 Promise 或添加 `await`。
-- 下载文件：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「`qd.downloadFile` — 下载文件」；API 名称是小写 `d` 的 `downloadFile`，用 `success` / `fail` 或明确返回的最终结果判断下载是否完成，不要把返回的 `DownloadTask`、`undefined` 或仅表示派发完成的 Promise 当成下载成功。
-- 陀螺仪：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「陀螺仪」；使用同一个监听函数注册和解绑，先监听再启动，并在页面隐藏或卸载时同时调用 `stopGyroscope` 和 `offGyroscopeChange` 清理资源。
-- 蓝牙 / BLE：读取 [bluetooth.md](./knowledge/bluetooth.md)，统一使用 `qd.*` 完成中心设备流程；先监听再扫描或读写，设备、服务和特征 ID 必须来自真实结果，按特征能力选择操作，断线后重建会话状态。
-- 普通音频播放：读取 [inner-audio.md](./knowledge/inner-audio.md)，使用 `qd.createInnerAudioContext()` 和实例的 `play()`、`pause()`、`stop()`、`destroy()`；实例保存在普通变量或闭包中，暂停后沿用同一实例和音源，方法返回与实际播放事件分别记录。
+- OpenAPI 用户授权、发帖预填、想要/标记、IM 订阅、导航栏、同步系统信息、文件下载与陀螺仪：读取 [Bridge 工作流](./knowledge/bridge-api-guide.md)，先获取 MCP 事实再实现；保留用户触发、授权恢复、回调终态与生命周期清理。
+- 横屏、自动旋转及截图黑屏：读取 [development-guide.md](./knowledge/development-guide.md)，保持编译期配置与运行时 API 的区别。
+- 蓝牙 / BLE：读取 [bluetooth.md](./knowledge/bluetooth.md)，保留发现、连接、按特征能力读写、断线重建与清理的顺序。
+- 普通音频：读取 [inner-audio.md](./knowledge/inner-audio.md)，保留创建、播放、暂停、停止、销毁及实例/音源管理；模板仅接受根据 MCP 生成的调用适配层。
 
 涉及页面、组件、样式、`DESIGN.md`、`app.css` token/公共组件类时，必须同时使用 `/qdmp:qdmp-design-rules`：
 
@@ -289,21 +283,7 @@ questions:
 - 无 `DESIGN.md` 且是全新页面/成块 UI 时，先走设计规范中的页面设计和设计系统生成流程。
 - 无 `DESIGN.md` 但已有页面时，照现有页面和 `app.css` 保持一致，不凭空引入新 token。
 
-使用 `qd.navigateTo` 传递 query 参数时，URL 参数值不得直接拼接中文、空格、`&`、`?`、`=` 等特殊字符。若参数可能包含中文或特殊字符，必须使用 `encodeURIComponent` 编码：
-
-```javascript
-qd.navigateTo({
-  url: `/pages/category/index?key=${cat.key}&name=${encodeURIComponent(cat.name)}`,
-})
-```
-
-禁止写法：
-
-```javascript
-qd.navigateTo({
-  url: `/pages/category/index?key=${cat.key}&name=${cat.name}`,
-})
-```
+页面跳转保留现有页面栈逻辑，query 参数值含中文、空格或特殊字符时使用 encodeURIComponent。路由调用签名由 MCP 确认。
 
 ### 后端（`backend/`）
 
@@ -349,9 +329,9 @@ Agent 对话中需要登录或用户要求登录时，先读 [Agent 对话登录
 
 ## OpenAPI 权限申请流程
 
-编码涉及千岛 HTTP OpenAPI 时，从实际代码调用收集接口路径和方法，并通过 qdmp-cli 的 OpenAPI 能力清单查询每个接口唯一的 `id/key`，只记录真实使用的接口。
+编码涉及千岛 HTTP OpenAPI 时，先通过 MCP 核实契约，再从实际代码收集接口路径和方法，并通过 qdmp-cli 查询当前平台目录的唯一资源 ID，只记录真实使用的接口。
 
-待申请的多个 key 按稳定顺序编码为可逆的 `requiredApis` 短字符参数，并使用 `qdmp-cli openapi apply-url --env <env> --json` 生成申请链接。解码后 key 的数量、值和对应关系必须完全一致，参数需进行 URL 编码。
+权限清单、实时授权分类、短链生成及页面行为见 [openapi-permission-flow.md](./knowledge/openapi-permission-flow.md)。CLI 保留现有分页与短链创建逻辑，核对请求与回传资源 ID 的数量、值和顺序，按用户需要生成权限申请链接。
 
 权限页检测到合法 `requiredApis` 后，解析唯一 key，加载对应清单，默认勾选用户尚未拥有且需要申请的接口并主动打开申请能力弹框。没有 `requiredApis` 时保持原有页面行为，不触发额外的全量 OpenAPI/ability 分页请求。
 

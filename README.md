@@ -271,3 +271,12 @@ claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/m
 
 - Node.js 官网：https://nodejs.org
 - 千岛开放平台：https://open.qiandao.com
+
+
+## 业务 API 事实来源
+
+qdmp-skill 的业务 API 契约统一通过 devkit MCP 查询：先读取单个 CDN 发现 JSON，再依据术语、场景和实际 ID 查询对应 provider 的事实。详见 [API 事实查询](skills/qdmp-skill/knowledge/api-discovery.md)。知识库保留业务顺序、状态管理与验收要求，不分发静态路径、字段、错误码和平台支持表；MCP 缺失时明确报告，不从历史资料补全。
+
+无原生 devkit MCP 工具时可使用支持 `qdmp api guide/search/get` 的 CLI。部署、登录、上传、体验版、监控、软件更新及平台权限申请流程沿用原入口，用户权限以平台实时状态为准。
+
+改造基线的全文及扫描摘要保存在 `test/fixtures/api-migration/`，仅用于审计和测试，不属于分发的 skills 目录，也不是当前契约来源。原有测试文件保留；新增音频适配层行为测试验证创建/播放/暂停/停止/销毁、并发、错误与生命周期。执行 `node --test`。
