@@ -18,7 +18,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 ## 业务 API 事实来源
 
-涉及业务 API 发现、调用生成、参数/返回、权限、错误码、分页或平台支持时，先执行 [API 事实查询](./knowledge/api-discovery.md)：读取单个 CDN JSON，再查询 devkit MCP，同一会话复用并分别固定 provider 快照。契约不保存在 Skill 中；未收录或不可达时报告缺口，不使用历史资料补全。项目创建、开发、调试、部署、平台权限申请与现有测试流程继续按以下路由执行。
+涉及业务 API 发现、调用生成、参数/返回、权限、错误码、分页或平台支持时，先执行 [API 事实查询](./knowledge/api-discovery.md)：按需发现宿主中的 devkit MCP 工具，读取单个 CDN JSON 后查询；工具缺失时按匿名接入指引处理，同一会话复用并分别固定 provider 快照。契约不保存在 Skill 中；未收录或不可达时报告缺口，不使用历史资料补全。项目创建、开发、调试、部署、平台权限申请与现有测试流程继续按以下路由执行。
 
 ## 知识库
 

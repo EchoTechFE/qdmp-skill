@@ -1,31 +1,29 @@
 # 业务 API 事实查询
 
-业务 API 的名称、路径、方法、请求头、参数、返回、错误码、权限和平台支持统一从 devkit MCP 获取。Skill 只维护业务流程与验收方法，不保存契约副本。CLI 的登录、上传、调试、体验版及平台权限申请请求保持原有行为。
+API 契约从 devkit MCP 获取；Skill 保留原有业务逻辑和测试。MCP 只读查询无需登录或 Token，不代替业务调用、授权和真实运行验收。
 
-## 查询流程
+## 查询
 
-1. 当前连接/会话首次发现业务 API 时，读取 https://config-cdn.qiandaoapp.com/devkit-mcp/external-config.json 的完整 JSON，同一会话复用。先根据 glossary、context、apis 的场景、别名、provider 和真实 ID 确认候选；该文件是发现资料，不是授权或运行时契约。
-2. 已知准确 ID/名称时直接调用 `capability_get`；不先 search。候选不明确时，调用 `capability_search`，显式选择 `bridge` 或 `openapi`，每次只使用指南中的一个字面检索词；按游标继续必要的分页。搜索是子串匹配，不是语义搜索。
-3. 使用 get 默认 spec 的参数与返回声明确认契约；仅缺少类型闭包时读取 full，仅检查原始依据时请求 evidence。复用已返回的事实，不重复查询。需要新细节时固定该 provider 返回的 snapshotId；不同 provider 分别固定。OpenAPI version 是文档发布修订，不是业务 apiVersion。
-4. 实现前核对目标对象、调用形式、字段位置、编码、分页、ID 表示、认证、用户权限和失败终态。只查询 Bridge 平台支持时直接使用 `capability_supports` 或已有支持摘要。返回对象的方法须在所属实例上调用，不能当作顶层方法。
-5. 按事实生成项目调用适配层，保留原有业务顺序、状态管理、错误处理和测试。配置编译期设置仍按 development-guide 执行；MCP 不执行业务请求，也不替代用户登录、授权或真实运行验收。
+1. 需要 API 事实时才通过宿主发现 qdmp-devkit 工具；支持延迟加载，未显示不等于未安装。
+2. 首次查询先读取 https://config-cdn.qiandaoapp.com/devkit-mcp/external-config.json，同一会话复用，按其中的场景、provider 和 ID 选择接口。
+3. 已知准确 ID/名称用 `capability_get`；不确定时用 `capability_search`，选择 `bridge` 或 `openapi`，按指南中的单个字面词检索并按需分页。只查 Bridge 平台支持用 `capability_supports`。参数以工具声明为准。
+4. 默认读取 spec，细节不足再取 full 或 evidence；复用结果，后续查询分别固定各 provider 的 snapshotId。依据事实生成调用，保留原有流程、错误处理与测试。
 
-## 无原生 MCP 工具时
+## 匿名接入
 
-可使用支持 `api` 子命令的 qdmp-cli 作为相同 MCP 的客户端，无需复制 devkit 仓库：
+工具不可用时，先检查当前宿主的配置、启用和连接状态；已有连接只需启用或刷新，不重复添加。无法读取状态时说明尚不能判断原因，再指引用户检查。
 
-```bash
-qdmp api guide
-qdmp api search '<指南中的单个字面词>' --provider openapi
-qdmp api get '<查询返回的准确ID>' --provider openapi
-qdmp api get '<查询返回的准确ID>' --provider bridge --snapshot '<该provider返回的snapshotId>'
-```
+| 配置项 | 值 |
+| --- | --- |
+| 服务名称 | qdmp-devkit |
+| 传输方式 | Streamable HTTP |
+| URL | https://dev-openapi.qiandao.com/devkit/mcp |
+| 认证方式 | None，不设置 Authorization |
 
-命令输出 JSON。`QDMP_DEVKIT_MCP_URL` 配置服务地址，`QDMP_DEVKIT_EXTERNAL_CONFIG_URL` 可覆盖单个发现指南地址；本机联调允许 localhost HTTP。事实查询不需要 CLI 平台登录。旧 CLI 没有 api 子命令时按升级流程处理，不凭记忆补全 API。
+由宿主管理连接，无需安装本地服务；Skill 不自动修改宿主配置或使用 CLI 兜底。工具恢复后继续原只读查询。
 
-## 缺口处理
+## 失败处理
 
-- CDN 不可达、为空或格式错误：说明发现资料缺口；不能跳过指南生成业务契约。
-- MCP 未连接、查询失败、零匹配、多匹配或契约不完整：报告具体 provider、检索词/ID 和缺失项；继续与该能力无关的工作。不能回退静态文档、测试夹具或臆造接口，不能把无命中解释为平台没有该能力。
-- 指南中的历史差异和未接入能力只提供检索线索；未收录的配套方法、认证交换、上传阶段和权限不能自行补造，也不能用相似能力替换。
-- 冻结事实不证明目标环境已授权、已上线可用或调用成功。Bridge 契约校验是有限检查；OpenAPI 目前仅查询事实，不承诺统一校验或执行。
+- 连接或查询报错：报告真实原因，不一律要求安装，不索取 Token，不无限重试。发现指南不可用时说明资料缺口。
+- 无匹配、多候选或契约不完整：结合指南继续必要检索或澄清业务目标；不能推断平台没有能力，也不能从历史文档、测试夹具或相似接口补造契约。
+- 只暂停依赖缺失事实的工作。原有 CLI 权限申请不增加 MCP 前置校验，业务写入不因连接恢复而自动重放。
