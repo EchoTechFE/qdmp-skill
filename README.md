@@ -164,6 +164,18 @@ qoderclicn plugin install qdmp@qdmp-marketplace
 
 `/qdmp:qdmp-skill` 的开发类任务依赖另外两个规范 skill：先过 `/qdmp:qdmp-product-rules`，涉及前端 UI/Taro 时再过 `/qdmp:qdmp-design-rules`。产品规范和设计规范分开维护，避免把产品审核判断混入视觉/代码落地规则。
 
+主技能按能力加载技术指南，不固定接入方的界面或展示方式：
+
+| 能力 | 技术指南 |
+| --- | --- |
+| OpenAPI 用户授权映射 | [HTTP method + path → scope](skills/qdmp-skill/knowledge/openapi-user-authorization.md) |
+| 心愿单及用户授权 | [接口、授权、分页与单次写入示例](skills/qdmp-skill/knowledge/wishlist.md) |
+| OSS 图片/视频上传 | [POST 直传/中转、OpenAPI 与存储容量权限、凭据风险](skills/qdmp-skill/knowledge/oss-upload.md) |
+| 手机号授权 | [平台申请、App 6.68.0+、原生按钮及后端兑换](skills/qdmp-skill/knowledge/phone-authorization.md) |
+| WebView 网站接入 | [在开放平台「域名管理」配置网页域名白名单](skills/qdmp-skill/knowledge/development-guide.md#webview-域名白名单) |
+
+参考代码使用通用占位配置，不附带真实应用凭据、签名、用户资料或原项目名称。指南与资源随完整 `skills/qdmp-skill/` 一起分发。
+
 ### 维护者本地调试
 
 如果你正在维护本仓库，并希望从本地工作区调试，可以在仓库根目录执行：

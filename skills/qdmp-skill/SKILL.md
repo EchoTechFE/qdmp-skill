@@ -1,6 +1,6 @@
 ---
 name: qdmp-skill
-description: "千岛小程序开发助手（外部版），用于前后端开发、云服务接口调用与排查、云数据库与数据建模、媒体上传存储、全量点位等数据验收、部署、真机扫码调试和设置体验版。涉及千岛云服务 404、接口不存在、频繁重试或 WAF 封 IP 时也使用。"
+description: "千岛小程序开发助手（外部版），用于前后端开发、云服务接口调用与排查、云数据库与数据建模、心愿单、OSS 图片/视频 POST 上传、手机号授权、WebView 域名配置、数据验收、部署、真机扫码调试和设置体验版。涉及千岛云服务 404、接口不存在、频繁重试或 WAF 封 IP 时也使用。"
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
                 mcp__qdmp-gitlab__qdmp_gitlab_list_versions, mcp__qdmp-gitlab__qdmp_gitlab_get_version,
                 mcp__qdmp-gitlab__qdmp_gitlab_diff, mcp__qdmp-gitlab__qdmp_gitlab_publish,
@@ -20,10 +20,13 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | [development-guide.md](./knowledge/development-guide.md)   | 开发指南：项目结构、全局权限配置、屏幕方向、截图黑屏、服务端 API、调试发布                  |
 | [bridge-api-guide.md](./knowledge/bridge-api-guide.md)     | Bridge API：用户授权查询与申请、原生能力调用、蓝牙、音频、文件下载、陀螺仪、发帖预填参数、IM 消息订阅、导航栏返回首页按钮、参数与返回值类型 |
+| [openapi-user-authorization.md](./knowledge/openapi-user-authorization.md) | HTTP method + path → 用户授权 scope 映射，含 JSON |
 | [bluetooth.md](./knowledge/bluetooth.md)                  | BLE 中心设备：发现、连接、GATT 读写与通知、MTU、断线清理与重连、Android 配对 |
 | [inner-audio.md](./knowledge/inner-audio.md)              | 普通音频：创建、播放、暂停、停止、销毁、实例生命周期与真实调用结果记录 |
 | [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：岛屿详情/加入状态/搜索、合作游戏价格、OSS 图片/视频 POST 上传与发布查询、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
 | [wishlist.md](./knowledge/wishlist.md)                     | 心愿单 OpenAPI：列表、详情、创建与条目修改、数量/心愿价语义、用户授权、分页及写入不重放 |
+| [oss-upload.md](./knowledge/oss-upload.md)                 | OSS：OpenAPI 与存储容量权限、POST 直传/后端中转、两分钟超时、审核发布查询及凭据风险 |
+| [phone-authorization.md](./knowledge/phone-authorization.md) | 手机号授权：平台 OpenAPI 申请、App 6.68.0+、原生 button、一次性 code 与后端应用令牌兑换 |
 | [backend-operations.md](./knowledge/backend-operations.md) | 云服务使用规范、媒体存储与无效接口限制、通用子流程及操作 1-7                                            |
 | [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署（真机调试与体验版另见开发指南）                                                |
 | [prd-template.md](./knowledge/prd-template.md)             | PRD 模版：好的 PRD 应包含哪些内容 + 可直接使用的模版                                      |
@@ -260,7 +263,13 @@ questions:
 
 涉及千岛 OpenAPI 报错排查或错误处理时，读取 [api-guide.md 的「错误与排查」](./knowledge/api-guide.md#13-错误与排查)，根据业务 `code`、`message` 和 HTTP 状态定位原因；区分应用权限、用户授权、Token 无效或过期、限流与配额耗尽。
 
-涉及 OSS 文件上传时，读取 [api-guide.md 的「OSS 图片与视频上传流程（POST）」](./knowledge/api-guide.md#oss-图片与视频上传流程post)；区分平台 `quota/prepare/result` OpenAPI 与应用自建 relay。后端向 OSS 发送签名表单和文件的 POST multipart，`file` 必须最后；仅 `result` 返回 `COMMITTED` 且 `cdnUrl` 有效时展示已发布媒体，无效 POST 凭据不能回退 PUT。
+千岛 HTTP OpenAPI 对应的用户授权 scope 见 [method/path 映射](./knowledge/openapi-user-authorization.md) 或 [JSON 数据](./references/openapi-user-scopes.json)。
+
+涉及 OSS 文件上传时，读取 [oss-upload.md](./knowledge/oss-upload.md)；除了申请实际使用的 `quota/prepare/result` OpenAPI，还须在平台「能力权限」开通 OSS 存储容量。沿用用户选择的 POST 直传或应用后端中转，说明临时凭据可被抓包复用的风险，进一步优化由用户决定。multipart 中 `file` 必须最后；仅 `result` 返回 `COMMITTED` 且 `cdnUrl` 有效时认定发布成功，无效 POST 凭据不能回退 PUT。
+
+涉及手机号授权时，读取 [phone-authorization.md](./knowledge/phone-authorization.md)；平台须开通“授权码兑换手机号”OpenAPI，千岛 App 须为 6.68.0+。使用原生 `button open-type="getPhoneNumber"` 与 `getphonenumber` 事件，code 交给自己的后端，以应用 `CLIENT_CREDENTIALS` 令牌的 `Access-Token` 调用兑换，不混用登录码或用户 token。
+
+可复用的接入说明和参考代码只保留技术契约，不把某个示例项目的布局、固定文案或展示方式变成统一要求。示例使用占位值，不携带真实项目名称、应用 ID、密钥、token、Cookie、授权码、完整签名或用户资料；运行配置从目标项目安全读取。
 
 ### 前端（`frontend/`）
 
@@ -269,7 +278,8 @@ questions:
 涉及以下能力时，必须读取对应指南后再实现：
 
 - 系统级权限声明：读取 [development-guide.md](./knowledge/development-guide.md) 的「小程序全局权限配置」，修改 `frontend/src/app.config.js`，不要把声明误写成运行时 Bridge 调用。
-- OpenAPI 用户授权（`user.*`）：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md#一授权-auth) 的「授权 (auth)」，使用 `qd.getEchoAuthorize` 查询、`qd.requireEchoAuthorize` 申请；区分原生回调与业务 `10021`，按需参考首次操作引导和单次业务恢复流程。
+- WebView / `web-view`：读取 [WebView 域名白名单](./knowledge/development-guide.md#webview-域名白名单)，先在千岛开放平台目标小程序的「域名管理」配置允许访问的网页域名。代码或 `app.config.js` 不能替代平台白名单，也不能把普通请求域名配置当作 WebView 已获准。
+- OpenAPI 用户授权（`user.*`）：先从 [method/path 映射](./knowledge/openapi-user-authorization.md) 确定 scope，再读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md#一授权-auth) 的「授权 (auth)」，使用 `qd.getEchoAuthorize` 查询、`qd.requireEchoAuthorize` 申请；区分原生回调与业务 `10021`，按需参考首次操作引导和单次业务恢复流程。
 - 横屏与自动旋转：读取 [development-guide.md](./knowledge/development-guide.md) 的「屏幕方向配置（SDK 1.0）」；按作用域修改全局 `app.config.js` 或页面 `index.config.js`，不要把 `pageOrientation` 当成运行时 Bridge API。
 - 截图黑屏或页面隐私模式：读取 [development-guide.md](./knowledge/development-guide.md) 的「截图黑屏（页面隐私模式）」；在目标页面配置 `screenShotForbidden: true`，Android、iOS、Harmony、Web 均支持。该字段是页面配置，不是 `qd.*` 方法，也不需要注册截屏监听。
 - 打开帖子发布页：读取 [bridge-api-guide.md](./knowledge/bridge-api-guide.md) 的「`qd.openPost` — 打开帖子发布页」；保留原有 `islandId`、`appId`、`files` 调用方式，按需新增 `title`、`content`、`labels`、`bizData`。其中 `files` 和 `labels` 必须分别进行 JSON 序列化与 UTF-8 Base64 编码，`bizData` 只进行 JSON 序列化、不进行 Base64 编码；保留 `ShowTitle`，用 `path` 和由开发者自定义的 `query` 替代原有的 `DaoLink`。图案详情场景可将 `path` 设为 `pages/view/index`、`query` 设为 `patternId=${normalizedPatternId}`。不要直接传数组或继续生成 `spuIds`、`tagIds`。

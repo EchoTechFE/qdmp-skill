@@ -1,0 +1,272 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "method": "POST",
+      "path": "/c2c-openapi/v1/gamePriceLine",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "POST",
+      "path": "/c2c-openapi/v1/gameTradingHistory",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "POST",
+      "path": "/comment/v1/create",
+      "scope": "user.post.write",
+      "status": "required"
+    },
+    {
+      "method": "POST",
+      "path": "/comment/v1/like",
+      "scope": "user.post.write",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/comment/v1/replies",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "POST",
+      "path": "/comment/v1/reply",
+      "scope": "user.post.write",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/echo-openapi-experience-groupon/v1/groupon/cities",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "POST",
+      "path": "/echo-openapi-experience-groupon/v1/groupon/list",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/folder/v1/detail",
+      "scope": "user.folder.read",
+      "status": "required"
+    },
+    {
+      "method": "POST",
+      "path": "/folder/v1/join",
+      "scope": "user.folder.write",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/folder/v1/me",
+      "scope": "user.folder.read",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/island/v1/detail",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/island/v1/isJoined",
+      "scope": "user.island.read",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/island/v1/joined",
+      "scope": "user.island.read",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/island/v1/search",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "POST",
+      "path": "/mark/v1/add",
+      "scope": "user.mark.write",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/mark/v1/me/detail",
+      "scope": "user.mark.read",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/mark/v1/me/list",
+      "scope": "user.mark.read",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/mark/v1/me/search",
+      "scope": "user.mark.read",
+      "status": "required"
+    },
+    {
+      "method": "POST",
+      "path": "/ocr/v1/recognize",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/oss/v1/quota",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "POST",
+      "path": "/oss/v1/upload/prepare",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/oss/v1/upload/result",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/post/v1/List",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/post/v1/comments",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/post/v1/detail",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "POST",
+      "path": "/post/v1/dislike",
+      "scope": "user.post.write",
+      "status": "required"
+    },
+    {
+      "method": "POST",
+      "path": "/post/v1/favorite",
+      "scope": "user.post.write",
+      "status": "required"
+    },
+    {
+      "method": "POST",
+      "path": "/post/v1/like",
+      "scope": "user.post.write",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/post/v1/me/List",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/spu/v1/detail",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/spu/v1/search",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/tag/v1/detail",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "POST",
+      "path": "/tag/v1/follow",
+      "scope": "user.tag.write",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/tag/v1/following",
+      "scope": "user.tag.read",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/tag/v1/search",
+      "scope": null,
+      "status": "not_required"
+    },
+    {
+      "method": "GET",
+      "path": "/user/v1/me",
+      "scope": "user.profile.read",
+      "status": "required"
+    },
+    {
+      "method": "POST",
+      "path": "/user/v1/phone/exchange",
+      "scope": null,
+      "status": "native_phone_code"
+    },
+    {
+      "method": "POST",
+      "path": "/wishspu/v1/add",
+      "scope": "user.wish.write",
+      "status": "required"
+    },
+    {
+      "method": "GET",
+      "path": "/wishspu/v1/list",
+      "scope": "user.wish.read",
+      "status": "required"
+    }
+  ],
+  "moduleScopes": {
+    "island": [
+      "user.island.read"
+    ],
+    "tag": [
+      "user.tag.read",
+      "user.tag.write"
+    ],
+    "mark": [
+      "user.mark.read",
+      "user.mark.write"
+    ],
+    "wishspu": [
+      "user.wish.read",
+      "user.wish.write"
+    ],
+    "folder": [
+      "user.folder.read",
+      "user.folder.write"
+    ],
+    "user": [
+      "user.profile.read"
+    ],
+    "post": [
+      "user.post.write"
+    ]
+  }
+}

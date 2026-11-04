@@ -2,6 +2,14 @@
 
 本流程适用于 Agent 新增、修改或删除千岛 HTTP OpenAPI 调用时。目标是让代码实际使用的接口与用户手动申请的权限保持一致。
 
+各接口的用户授权 scope 见 [用户授权映射](./openapi-user-authorization.md)。
+
+本流程收集的是 **HTTP OpenAPI 权限**，不覆盖其他平台配置：
+
+- OSS 除实际使用的 `quota/prepare/result` 接口权限外，还须在目标小程序的**「能力权限」开通 OSS 存储容量/大小额度**。接口申请链接和 quota 查询都不能代替容量开通；不将容量能力编造成 HTTP 接口或静态 resourceId。见 [OSS 接入前置](./oss-upload.md#接入前置openapi-与存储容量分别开通)。
+- WebView 须在平台**「域名管理」配置网页域名白名单**，不是申请一个 HTTP OpenAPI 即可放行。见 [WebView 域名白名单](./development-guide.md#webview-域名白名单)。
+- 手机号兑换要收集 `POST /user/v1/phone/exchange`；用户点击原生授权按钮不替代该接口的应用开通状态。见 [手机号授权](./phone-authorization.md)。
+
 ## 1. 识别收集范围
 
 应收集：代码实际请求 `https://openapi.qiandao.com/<service>/<version>/<path>` 的业务接口，或通过官方服务端 SDK 发起的等价调用。
