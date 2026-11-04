@@ -37,6 +37,10 @@ Swagger 中 Auth 的 `securityDefinitions` 为 `access_token` Header；**换票�
 
 **POST** `/auth/v1/token`
 
+**用户 `openId` 唯一获取来源：本接口 `grantType: "AUTHORIZATION_CODE"` 成功响应中的 `data.openId`。禁止通过 `user.me`（`GET /user/v1/me`）获取或兜底 `openId`，禁止将其 `data.id` 转换为 `openId`。** `CLIENT_CREDENTIALS` 是应用令牌流程，不能用来建立用户身份。
+
+前端使用 `qd.login` 获取本次登录 code，只将 `{ code }` 发给自己的后端。后端从服务器配置读取 `appId/appSecret`，固定 `AUTHORIZATION_CODE` 调用平台换票，不从客户端接收应用密钥。`appSecret` 不得进入前端环境变量、源码、构建包或响应；完整参考见 [开发指南](./development-guide.md#用户登录换票与-openid)。
+
 **请求体** `authTokenRequest`（按 `grantType` 填写对应必需字段）：
 
 | 字段        | 说明                                                       |
@@ -50,9 +54,11 @@ Swagger 中 Auth 的 `securityDefinitions` 为 `access_token` Header；**换票�
 
 **响应** `authTokenResponse`：`code`、`message`、`requestId`；成功时 `data` 含 `accessToken`、`expiresAt`（**秒级时间戳**）、`refreshToken`、`openId`。
 
+用户登录换票须同时验证 HTTP 成功、业务 `code=0` 和非空字符串 `data.openId` 后再保存用户会话。缺少 `openId` 时按响应不完整处理，不能补调 `user.me` 或从其他接口补齐。只有旧 Token 而没有换票 `openId` 的会话应重新登录获取新 code 换票；刷新 Token 沿用原换票身份，退出或切号时清理旧身份。
+
 **业务错误码**：应用凭证、授权码与授权类型相关错误见 [13. 错误与排查](#13-错误与排查) 中的 `10001`–`10004`；授权码有效期为 5 分钟。
 
-**curl 最小示例**（将占位符换成你自己的凭证，**勿提交真实值**）：
+**服务端 curl 最小示例**（占位凭据仅在服务端配置，**勿提交真实值，也不要移入前端**）：
 
 ```bash
 curl 'https://openapi.qiandao.com/auth/v1/token' \
@@ -326,6 +332,8 @@ curl --get 'https://openapi.qiandao.com/island/v1/search' \
 ## 5. User：当前用户
 
 **GET** `/user/v1/me`，无 Query。
+
+此接口只获取用户资料，**不允许用它获取 `openId`**。`data.id` 不是 `openId`，即使响应出现同名字段，也不能用来建立、补齐或覆盖登录身份。用户 `openId` 一律取自 [`/auth/v1/token`](#21-获取-token) 的 `AUTHORIZATION_CODE` 成功响应。
 
 **响应** `userGetCurrentUserResponse`：`code`（**0** 成功）、`message`、`requestId`；`data` → `userUserInfo`（`id`、`nickname`、`avatar` 必填；`identityTags`、`interestTags` 为标签分组等）。
 
@@ -1111,9 +1119,9 @@ curl 'https://openapi.qiandao.com/c2c-openapi/v1/gamePriceModule' \
 
 ## 12. 与小程序开发的衔接
 
-1. **凭证来源**：开放平台 `appId` / `appSecret` 与项目 **`qdmp-config.json`** 中字段对应关系以平台说明为准；不要在代码里硬编码密钥，可用环境变量或后端托管换票。
-2. **用户态 Token**：前端通过 `/auth/v1/token` 接口获取 `accessToken`，用于请求业务 API。
-3. **本地联调**：development-guide 中的 `BASE` 若指向自建后端，可由后端代理 `openapi.qiandao.com`，避免在前端暴露密钥。
+1. **凭证来源**：开放平台 `appId` / `appSecret` 由后端安全配置提供，`appSecret` 不写入前端环境变量或构建产物。
+2. **用户态 Token 与 openId**：前端仅将 `qd.login` code 发往自己的后端；后端调用平台 `/auth/v1/token`，以 `AUTHORIZATION_CODE` 成功响应建立会话。用户 `openId` 必须读取 `data.openId`，禁止从 `user.me` 获取或兜底。
+3. **本地联调**：前端登录基址指向自己的后端，平台应用凭据只由后端注入；沿用 [认证流程示例](./development-guide.md#认证流程示例)。
 4. **图片**：列表页建议保留 `referrer` 策略说明（见 development-guide），避免防盗链导致裂图。
 
 ---

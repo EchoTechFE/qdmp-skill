@@ -169,6 +169,7 @@ qoderclicn plugin install qdmp@qdmp-marketplace
 | 能力 | 技术指南 |
 | --- | --- |
 | OpenAPI 用户授权映射 | [HTTP method + path → scope](skills/qdmp-skill/knowledge/openapi-user-authorization.md) |
+| 用户登录与 openId | [后端换票及 `/auth/v1/token` 唯一身份来源](skills/qdmp-skill/knowledge/api-guide.md#21-获取-token) |
 | 心愿单及用户授权 | [接口、授权、分页与单次写入示例](skills/qdmp-skill/knowledge/wishlist.md) |
 | OSS 图片/视频上传 | [POST 直传/中转、OpenAPI 与存储容量权限、凭据风险](skills/qdmp-skill/knowledge/oss-upload.md) |
 | 手机号授权 | [平台申请、App 6.68.0+、原生按钮及后端兑换](skills/qdmp-skill/knowledge/phone-authorization.md) |

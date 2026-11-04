@@ -22,8 +22,10 @@ type BridgeCompleteCallback = (res: unknown) => void
 
 ```js
 const res = await qd.login()
-console.log(res.code) // 临时登录凭证，用于换取 session
+// 将本次登录 code 发往自己的后端换票；不要记录授权码。
 ```
+
+`qd.login` 返回临时登录凭证，不直接提供用户 `openId`。后端保管 `appId/appSecret`，以 `AUTHORIZATION_CODE` 调用 `/auth/v1/token`，从成功响应的 `data.openId` 获取用户身份。**禁止从 `user.me`（`GET /user/v1/me`）获取或兜底 `openId`，也不能以其 `id` 替代。** 参考 [换票契约](./api-guide.md#21-获取-token) 和 [认证示例](./development-guide.md#认证流程示例)。
 
 设备权限的全局声明配置见 [development-guide.md](./development-guide.md) 的「小程序全局权限配置」。全局声明只描述能力用途；运行时仍应在用户主动触发功能后按需请求授权。下面的 `user.*` 用户授权用于 OpenAPI，不属于普通设备权限，也不代表登录或应用已开通相应 OpenAPI。
 

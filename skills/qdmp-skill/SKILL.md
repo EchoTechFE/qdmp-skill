@@ -257,6 +257,8 @@ questions:
 
 开发类代码生成或 Review 必须先按「规范依赖」调用对应 skill。产品底线、设计系统和 Taro 视觉落地规则不在本节重复维护，避免规范漂移。
 
+用户 `openId` **必须从 `/auth/v1/token` 的 `AUTHORIZATION_CODE` 成功响应 `data.openId` 获取**。禁止从 `user.me`（`GET /user/v1/me`）获取、转换或兜底 `openId`，也不得用其 `id` 替代。登录 code 只交给自身后端换票；`appSecret` 只保存在后端，不放入前端环境变量、构建产物或响应。登录/用户模型实现前读取 [用户 openId 与换票](./knowledge/api-guide.md#21-获取-token)。
+
 涉及帖子评论、回复、评论列表或评论点赞（rcomment）时，必须读取 [api-guide.md](./knowledge/api-guide.md) 的「Lifestyle：评论与回复（Comment / RComment）」；严格区分一级评论列表的 `offset` 分页与回复列表的 `cursor` 分页，并将帖子、评论和回复 ID 保持为 int64 字符串。
 
 涉及心愿单（Folder）列表、详情、创建或条目修改时，读取 [wishlist.md](./knowledge/wishlist.md)；使用 `/folder/v1/*` 与 `user.folder.read`、`user.folder.write`，不要混用单个商品“想要”的 `user.wish.*`。`join` 的数量为绝对覆盖、`num=0` 移出条目，发送后任何失败均不自动重放；完整字段、授权及分页规则见该指南。
