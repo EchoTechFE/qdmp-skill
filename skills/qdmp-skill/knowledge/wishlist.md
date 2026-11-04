@@ -1,6 +1,6 @@
 # Lifestyle：心愿单（Folder）
 
-本页依据提供的 `qdmp-wishlist` 资料整理：接口契约快照为 2026-10-21，授权映射于 2026-10-23 确认。接入时核对目标应用当前正式配置，后续变化以新契约为准。JSON 中的 `"1001"`、`"2001"`、`"3001"` 只是示例，运行时使用真实接口返回的 ID。响应示例不是一次新的线上调用结果。
+本页合并 `qdmp-wishlist` 的技术接入资料：接口契约快照为 2026-10-21，授权映射于 2026-10-23 确认。接入时核对目标应用当前正式配置，后续变化以新契约为准。JSON 中的 `"1001"`、`"2001"`、`"3001"` 和 `EXAMPLE_REQUEST_ID` 都是示例，不是线上调用结果。代码使用目标项目自己的配置、鉴权和会话封装，不包含真实应用、账号或凭据。页面布局、号码/金额格式、文案和调试内容的展示由业务决定，本页只约定接口及调用行为。
 
 ## 接口与权限映射
 
@@ -29,7 +29,7 @@
 | 入参 | 类型 | 规则 |
 | --- | --- | --- |
 | offset | integer | 必填，0～4294967295；第一页 0 |
-| limit | integer | 必填，1～100；产品侧建议预填 20，服务端没有默认值 |
+| limit | integer | 必填，1～100；下方示例使用 20，服务端没有默认值 |
 
 请求：`GET /folder/v1/me?offset=0&limit=20`
 
@@ -172,17 +172,17 @@
 
 - `join` 不提供幂等键。重复新建会产生不同心愿单；超时或系统异常可能已经写入。禁止自动重试，包括自动刷新 token、授权后重放和后台网络重试器。
 - 一个请求内的重复 SPU 按原始顺序处理：新建最后一条生效；已有单最后一个 `num` 非空的条目生效，非法心愿价仍会被拒绝。封装层不能悄悄重排或去重；产品表单可以明确阻止用户重复选择。
-- 新建空单合法，但不会在 `/me` 出现；新建响应丢失时可能无法找回 ID。正式页面推荐至少选择一件商品，这是产品选择，不是接口必填条件。
+- 新建空单合法，但不会在 `/me` 出现；新建响应丢失时可能无法找回 ID。是否允许创建空单由业务决定，不能把非空限制写成接口要求。
 - 移出最后一件商品后，心愿单不再显示在 `/me`，不等于删除了心愿单本身。
 - 这组接口没有“删除心愿单”“重命名已有心愿单”“修改已有心愿单备注”的能力，不生成虚假入口。
 
 ## 分页与错误
 
-两类读取的 `totalCount` 均封顶 999，仅用于展示；没有 `hasMore`、`nextOffset`，总数、短页均不能保证末页。界面建议：成功后 offset 按本次请求的 limit 前进；按 ID 合并去重；失败重试同一页；短页仍允许继续；空页暂停自动触底请求，同时保留手动继续/刷新，不能宣称已遍历全部。列表刷新或排序变化时重新从 0 加载。
+两类读取的 `totalCount` 均封顶 999，不能作为精确分页终点；没有 `hasMore`、`nextOffset`，总数、短页均不能保证末页。接入策略：成功后 offset 按本次请求的 limit 前进；按 ID 合并去重；失败重试同一页；短页仍允许继续；空页暂停自动连续请求，由业务决定后续刷新或继续方式，不能据此认定已遍历全部。列表刷新或排序变化时重新从 0 加载。
 
 | 业务 code | 含义与处理 |
 | --- | --- |
-| 0 | 成功，检查 data 结构后更新界面 |
+| 0 | 成功，检查 data 结构后更新业务状态 |
 | 20000 | 用户不存在，按项目登录契约处理 |
 | 41001 | 参数错误，保留服务端信息 |
 | 42001 | 资源不存在或不属于本人，不区分两者 |
@@ -199,7 +199,7 @@ ID 最大值为 `18446744073709551615`。不要通过 JS Number 解析 ID；超�
 - 已授权不重复申请；`rejected`、已授权但关闭或总开关关闭时不自动申请。缺项、重复、非法状态均为无法判断，不能猜为未授权。同会话刷新、分页、详情和保存复用已尝试初始化记录；它不是永久授权缓存。
 - `qd.getEchoAuthorize` 只传 `{ scopes }`；`qd.requireEchoAuthorize` 等待真实 success/fail 回调，同步返回 `true`、`undefined` 不算成功。等待设超时，回调和符合终态契约的 Promise 只结算一次。
 - 首次初始化查询异常、拒绝、取消或超时后保留记录，仍可请求真实业务，由服务端判定权限；离页或换账号导致的取消则停止旧请求。共享任务还有有效调用者时可继续，全部失效时停止后续动作，取消不能永久标记初始化已完成。
-- 宿主 App `>= 6.64.1` 才支持该授权弹窗；低版本复用项目升级提示，未知版本结合能力检测。设置入口为宿主右上角菜单 → 设置，不使用设备权限的 `authorize` / `openSetting` 替代。
+- 宿主 App `>= 6.64.1` 才支持该授权弹窗，不能用小程序包版本替代；低版本不依赖该弹窗，未知版本结合能力检测。设置入口为宿主右上角菜单 → 设置，不使用设备权限的 `authorize` / `openSetting` 替代。
 
 ### GET 业务 10021 恢复
 
@@ -216,8 +216,68 @@ ID 最大值为 `18446744073709551615`。不要通过 JS Number 解析 ID；超�
 - 沿用现有请求封装和后端代理，按 method + path 加入允许列表。检查 HTTP 客户端拦截器、Token 刷新、授权恢复、代理和任务队列均不重放 `join`；仅传入一个未被请求层读取的禁重试选项无效。
 - 保存时防重复点击，校验并深拷贝点击时的参数，保留省略/null/0 的差别。等待登录或授权前固定已有账号，会话变更、离页、刷新替换旧查询后停止后续请求并忽略迟到结果；旧草稿不能自动写入新账号。
 - 商品选择复用 [SPU 搜索](./api-guide.md#42-get-spuv1search)；图文通过 [SPU 详情](./api-guide.md#41-get-spuv1detail) 的 `GET /spu/v1/detail?id=...` 补齐，单独核对并申请实际使用的商品接口权限。
-- 详情资料先验证返回 SPU ID 与请求一致，再展示真实名称、图片等字段。资料缓存与原始 folder 响应分开，合并重复请求、限制并发、离页停止排队。资料失败时保留数量、心愿价和条目操作，展示中性占位，不编造商品信息。
+- 如业务需要 SPU 名称、图片等资料，先验证返回 SPU ID 与请求一致，再用于该条目。资料缓存与原始 folder 响应分开，合并重复请求、限制并发、离页停止排队。资料失败不丢失原始条目、数量或心愿价，不编造商品信息。
 - 列表、详情分页独立维护 offset、loading 和请求代次。保存后按真实服务端排序回读；添加已存在商品前核对当前数量，避免把绝对数量误当增量覆盖。已有单改名、修改备注、整单删除没有对应能力。
+
+## 通用参考代码
+
+以下代码用于说明适配边界，不是新增 SDK 方法或可直接运行的完整请求层。所有函数、状态和错误处理接入目标项目；不携带域名、应用 ID、用户数据或凭据，也不规定页面展示。
+
+模块配置可加入现有公共授权表：
+
+```js
+export const folderModule = {
+  key: 'folder',
+  scopes: ['user.folder.read', 'user.folder.write'],
+  endpoints: {
+    'GET /folder/v1/me': 'user.folder.read',
+    'GET /folder/v1/detail': 'user.folder.read',
+    'POST /folder/v1/join': 'user.folder.write',
+  },
+};
+```
+
+`endpoints` 只用于可信业务响应的权限映射，不是开放任意路径的代理配置。GET 用整数 `offset/limit` 和字符串 `id` 构造 query；每个值经 `encodeURIComponent` 编码。业务读取保留完整 envelope，并按上面的 [GET 恢复规则](#get-业务-10021-恢复) 最多重试一次。
+
+写入适配示例：
+
+```js
+let saving = false;
+
+async function saveFolder(draft) {
+  if (saving) return { state: 'in-flight' };
+  // 同步捕获点击时的账号会话和页面代次；等待授权前就固定它们。
+  const operation = captureOperation();
+  // 验证并深拷贝，保留省略/null/0；不填默认数量、不做金额换算。
+  const payload = validateAndCloneJoin(draft);
+  saving = true;
+  let attempted = false;
+  try {
+    assertCurrent(operation);
+    await enterFolderModule(operation);
+    assertCurrent(operation);
+    // sendJoinOnce 还须在真正发出前核对 operation，内部不得重试。
+    attempted = true;
+    const response = await sendJoinOnce({
+      method: 'POST',
+      path: '/folder/v1/join',
+      data: payload,
+      operation,
+    });
+    assertCurrent(operation);
+    // 原样返回业务失败，不把 code!=0 转成成功或空数据。
+    return { state: response.code === 0 ? 'saved' : 'rejected', response };
+  } catch (error) {
+    // 失效的账号/页面上下文不再接收旧操作结果。
+    if (!isCurrent(operation)) return { state: 'discarded' };
+    return { state: attempted ? 'check-result' : 'not-sent', error };
+  } finally {
+    saving = false;
+  }
+}
+```
+
+`captureOperation/assertCurrent/isCurrent/enterFolderModule/validateAndCloneJoin/sendJoinOnce` 均是应用内部适配点。必须检查实际传输层、token 刷新器和代理确实不重试，而不是只传入未被读取的 `retry: false`。`attempted` 采用保守语义：已开始调用传输且未获得确定结果时先只读核对，不能因本地抛错就认定服务端未写入。业务 `code: 0` 后的列表/详情刷新独立执行，刷新失败不改变写入成功，也不再次发送 POST。示例锁按当前模块实例隔离；页面卸载或会话变化时让 operation 失效。
 
 ## 接入验证要点
 

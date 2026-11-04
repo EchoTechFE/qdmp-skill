@@ -27,9 +27,17 @@ console.log(res.code) // 临时登录凭证，用于换取 session
 
 设备权限的全局声明配置见 [development-guide.md](./development-guide.md) 的「小程序全局权限配置」。全局声明只描述能力用途；运行时仍应在用户主动触发功能后按需请求授权。下面的 `user.*` 用户授权用于 OpenAPI，不属于普通设备权限，也不代表登录或应用已开通相应 OpenAPI。
 
+接口 scope 见 [用户授权映射](./openapi-user-authorization.md) 或 [JSON 映射](../references/openapi-user-scopes.json)。
+
+### 手机号授权 — 原生 button 获取一次性 code
+
+手机号授权使用原生 `<button open-type="getPhoneNumber" @getphonenumber="...">`，不是 `type="getPhoneNumber"` 或进入页面自动直调。要求千岛 App **6.68.0+**，并由开发者在平台侧开通 **`POST /user/v1/phone/exchange`**。成功事件的 code 发给自身后端，由后端携带应用 `CLIENT_CREDENTIALS` 令牌的 `Access-Token` 兑换手机号；不使用登录 code 或用户 token 代替，也不自行猜测 `user.phone.*` scope。
+
+版本、按钮/事件、两种回调结构、一次性消费及参考代码统一见 [手机号授权与后端兑换](./phone-authorization.md)。以下 `getEchoAuthorize` / `requireEchoAuthorize` 的通用 `user.*` 授权流程不替代该原生手机号授权链路。
+
 ### qd.getEchoAuthorize — 查询用户授权状态
 
-接入前确认目标应用的 SDK、实际调用的 OpenAPI **method + path** 及其正式 scope 映射，沿用项目现有登录和请求封装。`user.profile.read` 只是用户信息场景示例；不要根据页面名猜测 scope。
+接入前确认目标应用的 SDK、实际调用的 OpenAPI **method + path** 及其正式 scope 映射，沿用项目现有登录和请求封装。下例 `user.profile.read` 对应已确认的 **GET `/user/v1/me`**，不要把它套给其他接口或根据页面名猜测 scope。
 
 ```js
 const scopes = ['user.profile.read'] // 替换为目标接口正式配置的 scopes
@@ -121,6 +129,7 @@ qd.requireEchoAuthorize({
 先确认接口允许恢复重试。心愿单 `POST /folder/v1/join` 没有幂等键，任何失败均不进入自动重放流程；保留草稿并按 [写入失败处理](./wishlist.md#post-写入失败) 核对结果，不能在授权成功回调中重发。
 
 1. 优先使用本次可信业务响应中非空的 `auth_scope`。缺失时，仅当原请求的 **method + path** 有正式、唯一、非空的 scope 映射才可回退使用；未知接口、明确无 scope 或多项映射不能猜测，无法确定单项时保留响应并停止恢复。
+
 2. 对确定的单个 scope 重新查询，不沿用模块初始化快照。总开关关闭、查询失败或结果不完整时提示并停止；已拒绝或已授权但单项关闭时提示到小程序设置开启；总开关和单项均开放且已授权但业务仍拒绝时，提示权限状态不一致。
 3. 仅在总开关打开、查询项唯一且格式合法、状态为 `unauthorized` 时申请该单项（单项 `isOpen` 可为 false）。收到原生真实成功回调后，以原方法、URL、参数和既有幂等标识重试符合上述条件的业务**一次**，不再查询；申请失败、取消、超时或重试仍返回 `10021` 时停止，不循环弹窗。
 4. 写操作自动重试须以服务端在副作用前完成权限校验、且遵守现有幂等/防重复提交契约为前提。网络超时等执行结果不明的请求不能按「未执行」自动重放。其他业务错误保留原始错误码与文案，不用授权提示覆盖。
