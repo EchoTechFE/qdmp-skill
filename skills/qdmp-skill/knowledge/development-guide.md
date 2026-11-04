@@ -229,6 +229,8 @@ const OPENAPI_BASE = 'https://openapi.qiandao.com'
 const TOKEN_KEY = 'qdmp_access_token'
 const REFRESH_TOKEN_KEY = 'qdmp_refresh_token'
 const EXPIRES_AT_KEY = 'qdmp_token_expires_at'
+const OPEN_ID_KEY = 'qdmp_open_id'
+let sessionGeneration = 0
 
 // 提前刷新时间（秒），在过期前 5 分钟刷新
 const REFRESH_THRESHOLD = 300
@@ -240,6 +242,24 @@ class TokenManager {
 
   static getRefreshToken() {
     return localStorage.getItem(REFRESH_TOKEN_KEY)
+  }
+
+  static getOpenId() {
+    return localStorage.getItem(OPEN_ID_KEY)
+  }
+
+  static captureSession() {
+    return {
+      generation: sessionGeneration,
+      openId: this.getOpenId(),
+      refreshToken: this.getRefreshToken()
+    }
+  }
+
+  static isCurrentSession(session) {
+    return session.generation === sessionGeneration
+      && session.openId === this.getOpenId()
+      && session.refreshToken === this.getRefreshToken()
   }
 
   static getExpiresAt() {
@@ -259,10 +279,23 @@ class TokenManager {
     localStorage.setItem(EXPIRES_AT_KEY, String(expiresAt))
   }
 
+  // 仅供 AUTHORIZATION_CODE 换票成功后保存完整用户会话。
+  static saveSession({ accessToken, refreshToken, expiresAt, openId }) {
+    if (![accessToken, refreshToken, openId].every(value => typeof value === 'string' && value.trim())
+      || !Number.isSafeInteger(expiresAt) || expiresAt <= 0) {
+      throw new Error('登录换票响应不完整')
+    }
+    sessionGeneration += 1
+    this.saveToken(accessToken, refreshToken, expiresAt)
+    localStorage.setItem(OPEN_ID_KEY, openId)
+  }
+
   static clearToken() {
+    sessionGeneration += 1
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(REFRESH_TOKEN_KEY)
     localStorage.removeItem(EXPIRES_AT_KEY)
+    localStorage.removeItem(OPEN_ID_KEY)
   }
 
   /**
@@ -289,8 +322,9 @@ class TokenManager {
    * @throws {Error} 刷新失败时抛出错误（错误码 10007/10008）
    */
   static async refreshToken() {
-    const refreshToken = this.getRefreshToken()
-    if (!refreshToken) {
+    const session = this.captureSession()
+    const refreshToken = session.refreshToken
+    if (!refreshToken || !session.openId) {
       throw new Error('No refresh token available')
     }
 
@@ -301,15 +335,19 @@ class TokenManager {
     })
 
     const json = await res.json()
+    if (!this.isCurrentSession(session)) {
+      throw new Error('刷新期间登录会话已改变')
+    }
 
     // 错误码 10007: refreshToken 无效，10008: refreshToken 已过期
     if (json.code !== 0 && json.code !== '0') {
-      this.clearToken()
+      // 只清理发起这次刷新的会话，不能清除晚于它建立的新会话。
+      if (this.isCurrentSession(session)) this.clearToken()
       throw new Error(json.message || `Refresh failed: ${json.code}`)
     }
 
     const { accessToken, expiresAt } = json.data
-    // 刷新接口不返回新的 refreshToken，保留原有的
+    // 刷新只更新 Token，保留原 refreshToken 和登录换票得到的 openId。
     this.saveToken(accessToken, refreshToken, expiresAt)
 
     return accessToken
@@ -322,16 +360,24 @@ class TokenManager {
   static async getValidToken() {
     const token = this.getAccessToken()
     if (!token) return null
+    if (!this.getOpenId()) {
+      // 旧缓存缺少身份时重新登录换票，禁止调用 user.me 补齐。
+      this.clearToken()
+      return null
+    }
 
+    const session = this.captureSession()
     // Token 即将过期，尝试刷新
     if (this.needsRefresh()) {
       try {
-        return await this.refreshToken()
+        const refreshedToken = await this.refreshToken()
+        return this.isCurrentSession(session) ? refreshedToken : null
       } catch (e) {
+        if (!this.isCurrentSession(session)) return null
         console.error('Token refresh failed:', e)
-        // 如果刷新失败但 Token 尚未完全过期，仍可继续使用
+        // 同一会话下，现有 Token 尚未过期时可继续使用。
         if (!this.isExpired()) {
-          return token
+          return this.getAccessToken()
         }
         return null
       }
@@ -344,43 +390,78 @@ class TokenManager {
 export default TokenManager
 ```
 
-### 获取 Token（含 Refresh）
+### 用户登录换票与 openId
+
+**用户 `openId` 必须从 `POST /auth/v1/token`、`grantType: "AUTHORIZATION_CODE"` 成功响应的 `data.openId` 获取。禁止从 `user.me`（`GET /user/v1/me`）获取、推导或补齐，也不得把该接口的 `id` 当作 `openId`。** `CLIENT_CREDENTIALS` 是应用令牌链路，不能用来获取当前用户身份；手机号兑换响应也不作为登录身份来源。
+
+前端只把 `qd.login` 返回的登录 code 发送给自己的后端。`appId`、`appSecret` 和固定的 `AUTHORIZATION_CODE` 由后端构造；应用密钥只能从服务端环境或受控配置读取，不能放入前端环境变量、构建产物、请求参数或返回给前端。登录换票响应缺少有效 `data.openId` 时按不完整响应处理，不回退查询其他接口。
+
+下面的 `BACKEND_BASE` 是自己的后端 HTTPS 基址，复用已有配置；自建路由与上游平台均使用 `/auth/v1/token`，二者由域名区分。
 
 ```javascript
-// utils/auth.js
+// 前端 utils/auth.js
 import TokenManager from './tokenManager'
+import { BACKEND_BASE } from '@/config'
 
-const OPENAPI_BASE = 'https://openapi.qiandao.com'
-
-/**
- * 使用凭证获取 Token
- * @param {object} params
- * @param {string} params.appId
- * @param {string} params.appSecret
- * @param {string} params.code - 授权码
- * @param {string} params.grantType - 'CLIENT_CREDENTIALS' | 'AUTHORIZATION_CODE'
- */
-export async function getToken({ appId, appSecret, code, grantType }) {
-  const res = await fetch(`${OPENAPI_BASE}/auth/v1/token`, {
+export async function getToken({ code }) {
+  if (typeof code !== 'string' || !code.trim()) {
+    throw new Error('缺少有效登录 code')
+  }
+  const res = await fetch(`${BACKEND_BASE}/auth/v1/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ appId, appSecret, code, grantType })
+    body: JSON.stringify({ code })
   })
-
   const json = await res.json()
-
-  if (json.code !== 0 && json.code !== '0') {
-    throw new Error(json.message || `Auth failed: ${json.code}`)
+  if (!res.ok || (json.code !== 0 && json.code !== '0')) {
+    throw new Error(json.message || '登录换票失败')
   }
 
-  const { accessToken, refreshToken, expiresAt, openId } = json.data
-
-  // 保存 Token 和 RefreshToken
-  TokenManager.saveToken(accessToken, refreshToken, expiresAt)
-
-  return { accessToken, refreshToken, expiresAt, openId }
+  const session = {
+    accessToken: json.data?.accessToken,
+    refreshToken: json.data?.refreshToken,
+    expiresAt: Number(json.data?.expiresAt),
+    openId: json.data?.openId
+  }
+  // 先检查完整结果，再保存；缺少 openId 不尝试 user.me 或手机号接口。
+  TokenManager.saveSession(session)
+  return session
 }
 ```
+
+后端参考函数（Node.js 18+，仅在服务端执行）：
+
+```javascript
+// 后端：由 POST /auth/v1/token 路由解析 JSON { code } 后调用。
+export async function exchangeLoginCode(code) {
+  if (typeof code !== 'string' || !code.trim()) {
+    throw new Error('缺少有效登录 code')
+  }
+  const appId = process.env.QDMP_APP_ID
+  const appSecret = process.env.QDMP_APP_SECRET
+  if (!appId || !appSecret) throw new Error('服务端应用凭证未配置')
+
+  const res = await fetch('https://openapi.qiandao.com/auth/v1/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ appId, appSecret, code, grantType: 'AUTHORIZATION_CODE' }),
+    signal: AbortSignal.timeout(15000)
+  })
+  const json = await res.json()
+  if (!res.ok || (json.code !== 0 && json.code !== '0')) {
+    throw new Error(json.message || '平台登录换票失败')
+  }
+  const { accessToken, refreshToken, expiresAt, openId } = json.data || {}
+  const expiresAtSeconds = Number(expiresAt)
+  if (![accessToken, refreshToken, openId].every(value => typeof value === 'string' && value.trim())
+    || !Number.isSafeInteger(expiresAtSeconds) || expiresAtSeconds <= 0) {
+    throw new Error('平台登录换票响应不完整')
+  }
+  return { accessToken, refreshToken, expiresAt: expiresAtSeconds, openId }
+}
+```
+
+自建路由把成功结果放入 `{ code: 0, data: session }` 返回，设置 `Cache-Control: no-store`；不返回应用密钥。生产路由复用已有输入校验、错误响应与会话机制，后端模板见 [project-workflows.md](./project-workflows.md)。换票只请求一次，不因网络错误或缺少 `openId` 重放旧 code；需要时重新调用 `qd.login`。刷新保留登录换票得到的 `openId`，退出时清理整份会话。
 
 ### 封装请求函数
 
@@ -576,12 +657,14 @@ import { useApi } from '@/composables/useApi'
 
 const { loading, error, get } = useApi()
 const userInfo = ref(null)
+const openId = ref(null)
 const isLoggedIn = ref(false)
 
 onMounted(async () => {
   // 检查是否已有有效 Token
   const token = await TokenManager.getValidToken()
   if (token) {
+    openId.value = TokenManager.getOpenId()
     isLoggedIn.value = true
     await fetchUserInfo()
   }
@@ -593,40 +676,39 @@ async function handleLogin() {
     // 1. 调用 qd.login() 获取授权码
     const code = await new Promise((resolve, reject) => {
       qd.login({
-        success: (res) => resolve(res.data.code),
-        fail: (err) => reject(err)
+        success: (res) => {
+          const code = res?.data?.code ?? res?.code
+          if (typeof code === 'string' && code.trim()) resolve(code)
+          else reject(new Error('登录未返回有效 code'))
+        },
+        fail: () => reject(new Error('登录失败'))
       })
     })
 
-    // 2. 用授权码换取 Token
-    // 注意：appId/appSecret 应从环境变量或后端获取，不要硬编码
-    await getToken({
-      appId: import.meta.env.VITE_APP_ID,
-      appSecret: import.meta.env.VITE_APP_SECRET,
-      code,
-      grantType: 'AUTHORIZATION_CODE'
-    })
-
+    // 2. 只把 code 发自己的后端；由后端携带应用凭证向平台换票。
+    const session = await getToken({ code })
+    openId.value = session.openId // 唯一来源是 /auth/v1/token 的 data.openId。
     isLoggedIn.value = true
     await fetchUserInfo()
   } catch (e) {
-    console.error('登录失败:', e)
+    error.value = e.message || '登录失败'
   }
 }
 
-// 获取用户信息（需要认证）
+// 只获取昵称、头像等资料，不从 user.me 读取或覆盖登录 openId。
 async function fetchUserInfo() {
   const data = await get('/user/v1/me', {
     requireAuth: true
   })
   if (data) {
-    userInfo.value = data
+    userInfo.value = { nickname: data.nickname, avatar: data.avatar }
   }
 }
 
 // 登出
 function handleLogout() {
   TokenManager.clearToken()
+  openId.value = null
   isLoggedIn.value = false
   userInfo.value = null
 }

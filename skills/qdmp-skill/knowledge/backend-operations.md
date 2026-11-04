@@ -1276,7 +1276,7 @@ questions:
 - 每个对象必须有 `uniqueKey` 指定唯一标识字段
 - 唯一标识字段必须设置 `unique: true`
 - 可以设置 `auto: "uuid"` 自动生成，或由用户提供
-- 用户对象的 `openId` 由千岛平台提供，不需要自动生成
+- 用户对象的 `openId` 必须取自 `/auth/v1/token` 的 `AUTHORIZATION_CODE` 成功响应 `data.openId`，不自动生成；**禁止从 `user.me`（`GET /user/v1/me`）获取、兜底或将其 `id` 转换为 `openId`**。
 
 每个对象自动加入 `createdAt`、`updatedAt`（`auto: true`），无需用户指定。
 

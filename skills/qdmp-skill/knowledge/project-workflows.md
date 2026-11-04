@@ -100,6 +100,9 @@ grep -qxF 'qdmp-config.json' .gitignore 2>/dev/null || echo 'qdmp-config.json' >
 
 根据用户选择的语言，在 `backend/` 目录下生成对应的初始代码。
 
+认证路由的前端请求体只接受 `{ code }`。`appId`、`appSecret` 从服务器环境变量 `QDMP_APP_ID`、`QDMP_APP_SECRET` 读取，由后端固定使用 `AUTHORIZATION_CODE` 请求 `https://openapi.qiandao.com/auth/v1/token`；不接收客户端指定的应用凭证或授权类型，不将密钥放入前端环境变量、包产物或响应。用户 `openId` 只取该换票成功响应的 `data.openId`，禁止从 `user.me`（`/user/v1/me`）读取、映射或补齐。换票缺少有效 `openId` 时作为响应不完整处理，不调用其他接口兜底，也不自动重放授权码。
+
+
 **重要**：本地测试环境必须支持 CORS，所有响应自动添加：
 - `Access-Control-Allow-Origin: *`
 - `Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS`
@@ -206,8 +209,11 @@ package handler
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -216,29 +222,71 @@ const baseOpenapiAuthUrl = "https://openapi.qiandao.com/auth/v1/"
 var httpClient = &http.Client{Timeout: 20 * time.Second}
 
 func handleToken(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+	defer r.Body.Close()
+	var input struct {
+		Code string `json:"code"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil || strings.TrimSpace(input.Code) == "" {
+		http.Error(w, "Expected JSON {code}", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
-
-	apiReq, _ := http.NewRequest(http.MethodPost, baseOpenapiAuthUrl+"token", bytes.NewReader(body))
+	var extra any
+	if decoder.Decode(&extra) != io.EOF {
+		http.Error(w, "Expected one JSON object", http.StatusBadRequest)
+		return
+	}
+	appID, appSecret := os.Getenv("QDMP_APP_ID"), os.Getenv("QDMP_APP_SECRET")
+	if appID == "" || appSecret == "" {
+		http.Error(w, "Server application credentials unavailable", http.StatusInternalServerError)
+		return
+	}
+	body, _ := json.Marshal(map[string]string{
+		"appId": appID, "appSecret": appSecret,
+		"code": input.Code, "grantType": "AUTHORIZATION_CODE",
+	})
+	apiReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, baseOpenapiAuthUrl+"token", bytes.NewReader(body))
+	if err != nil {
+		http.Error(w, "Token request unavailable", http.StatusBadGateway)
+		return
+	}
 	apiReq.Header.Set("Content-Type", "application/json")
-	
 	apiResp, err := httpClient.Do(apiReq)
 	if err != nil {
-		http.Error(w, "Request failed: "+err.Error(), http.StatusBadGateway)
+		http.Error(w, "Token request failed", http.StatusBadGateway)
 		return
 	}
 	defer apiResp.Body.Close()
-
-	respBody, _ := io.ReadAll(apiResp.Body)
+	respBody, err := io.ReadAll(apiResp.Body)
+	if err != nil {
+		http.Error(w, "Incomplete token response", http.StatusBadGateway)
+		return
+	}
+	if apiResp.StatusCode >= 200 && apiResp.StatusCode < 300 {
+		var result struct {
+			Code json.RawMessage `json:"code"`
+			Data json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			http.Error(w, "Invalid token response", http.StatusBadGateway)
+			return
+		}
+		if string(result.Code) == "0" || string(result.Code) == `"0"` {
+			var data struct {
+				OpenID string `json:"openId"`
+			}
+			if json.Unmarshal(result.Data, &data) != nil || strings.TrimSpace(data.OpenID) == "" {
+				http.Error(w, "Token response missing openId", http.StatusBadGateway)
+				return
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(apiResp.StatusCode)
 	w.Write(respBody)
@@ -343,40 +391,59 @@ module.exports = { handleRequest };
 ```js
 const https = require('https');
 
-const baseOpenapiAuthUrl = 'https://openapi.qiandao.com/auth/v1/';
-
 function handleToken(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  const fail = (status, message) => {
+    if (res.writableEnded) return;
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: message }));
+  };
+  if (req.method !== 'POST') return fail(405, 'Method not allowed');
   let body = '';
   req.on('data', chunk => { body += chunk.toString(); });
+  req.on('error', () => fail(400, 'Request body unavailable'));
   req.on('end', () => {
-    const apiUrl = new URL(baseOpenapiAuthUrl + 'token');
-    const options = {
-      hostname: apiUrl.hostname,
-      port: 443,
-      path: apiUrl.pathname,
+    let input;
+    try { input = JSON.parse(body); } catch { return fail(400, 'Expected JSON {code}'); }
+    if (!input || Array.isArray(input) || Object.keys(input).length !== 1 ||
+        typeof input.code !== 'string' || !input.code.trim()) {
+      return fail(400, 'Expected JSON {code}');
+    }
+    const appId = process.env.QDMP_APP_ID;
+    const appSecret = process.env.QDMP_APP_SECRET;
+    if (!appId || !appSecret) return fail(500, 'Server application credentials unavailable');
+    const upstreamBody = JSON.stringify({
+      appId, appSecret, code: input.code, grantType: 'AUTHORIZATION_CODE'
+    });
+    const apiReq = https.request('https://openapi.qiandao.com/auth/v1/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body)
+        'Content-Length': Buffer.byteLength(upstreamBody)
       }
-    };
-
-    const apiReq = https.request(options, apiRes => {
+    }, apiRes => {
       let responseBody = '';
       apiRes.on('data', chunk => { responseBody += chunk.toString(); });
+      apiRes.on('error', () => fail(502, 'Incomplete token response'));
+      apiRes.on('aborted', () => fail(502, 'Incomplete token response'));
       apiRes.on('end', () => {
-        res.writeHead(apiRes.statusCode, { 'Content-Type': 'application/json' });
+        if (res.writableEnded) return;
+        const status = apiRes.statusCode;
+        if (status >= 200 && status < 300) {
+          let result;
+          try { result = JSON.parse(responseBody); } catch { return fail(502, 'Invalid token response'); }
+          if (String(result?.code) === '0' &&
+              (typeof result?.data?.openId !== 'string' || !result.data.openId.trim())) {
+            return fail(502, 'Token response missing openId');
+          }
+        }
+        res.writeHead(status, { 'Content-Type': 'application/json' });
         res.end(responseBody);
       });
     });
-
-    apiReq.on('error', err => {
-      res.writeHead(502);
-      res.end('Request failed: ' + err.message);
-    });
-
-    apiReq.write(body);
-    apiReq.end();
+    apiReq.setTimeout(20000, () => apiReq.destroy(new Error('Token request timeout')));
+    apiReq.on('error', () => fail(502, 'Token request failed'));
+    apiReq.end(upstreamBody);
   });
 }
 
@@ -454,19 +521,49 @@ def register_routes(app: Flask):
 
 `backend/routes/auth.py`：
 ```python
+import os
 from flask import request, jsonify, make_response
 import requests as req_lib
 
-BASE_OPENAPI_AUTH_URL = 'https://openapi.qiandao.com/auth/v1/'
+TOKEN_URL = 'https://openapi.qiandao.com/auth/v1/token'
 
 def get_token():
+    def reply(payload, status):
+        response = make_response(jsonify(payload), status)
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
     if request.method == 'OPTIONS':
-        return make_response('', 204)
+        return reply({}, 204)
+    if request.method != 'POST':
+        return reply({'error': 'Method not allowed'}, 405)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {'code'} or not isinstance(data['code'], str) or not data['code'].strip():
+        return reply({'error': 'Expected JSON {code}'}, 400)
+    app_id, app_secret = os.getenv('QDMP_APP_ID'), os.getenv('QDMP_APP_SECRET')
+    if not app_id or not app_secret:
+        return reply({'error': 'Server application credentials unavailable'}, 500)
     try:
-        api_response = req_lib.post(BASE_OPENAPI_AUTH_URL + 'token', json=request.get_json(), timeout=20)
-        return jsonify(api_response.json()), api_response.status_code
-    except req_lib.exceptions.RequestException as e:
-        return jsonify({'error': f'Request failed: {str(e)}'}), 502
+        api_response = req_lib.post(TOKEN_URL, json={
+            'appId': app_id, 'appSecret': app_secret,
+            'code': data['code'], 'grantType': 'AUTHORIZATION_CODE'
+        }, timeout=20)
+    except req_lib.exceptions.RequestException:
+        return reply({'error': 'Token request failed'}, 502)
+    if 200 <= api_response.status_code < 300:
+        try:
+            result = api_response.json()
+        except ValueError:
+            return reply({'error': 'Invalid token response'}, 502)
+        if isinstance(result, dict) and str(result.get('code')) == '0':
+            token_data = result.get('data')
+            open_id = token_data.get('openId') if isinstance(token_data, dict) else None
+            if not isinstance(open_id, str) or not open_id.strip():
+                return reply({'error': 'Token response missing openId'}, 502)
+    response = make_response(api_response.content, api_response.status_code)
+    response.headers['Content-Type'] = api_response.headers.get('Content-Type', 'application/json')
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 ```
 
 ---
