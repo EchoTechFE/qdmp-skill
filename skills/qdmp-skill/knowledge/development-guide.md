@@ -17,12 +17,14 @@ myApp/
 |   ├── package.json
 |   └── qdmp.json            # 小程序配置（appId、loader 等非敏感配置）
 ├── backend/                 # 后端服务目录（详见 project-workflows.md）
-└── qdmp-config.json         # 主配置：appId、appSecret、runtime、mongodb（敏感，需加入 .gitignore）
+└── qdmp-config.json         # 真实主配置：appId、appSecret、runtime、environment、mongodb、后端variables（敏感，需忽略提交）
 ```
 
 > 后端目录结构和代码模板详见 [project-workflows.md](./project-workflows.md) 的「流程一：创建项目 - Step 4: 初始化后端代码模板」
 
 ---
+
+新 create 默认单次拉取原仓库全栈模板，自带空 qdmp-config.json；CLI 保留文件内容，只设置 0600 权限与忽略规则，克隆流程移除模板 .git。直接 git clone 也已有主配置，无需 config init；官方模板只提交空凭据。历史纯前端仍兼容 qdmp.json，升级全栈时只在缺少主配置的情况下，一次性继承实际根式或分离前端的公开身份和支持的旧后端配置，保留已有主配置与源码位置。日常命令直接优先读主配置公开字段，build 内部更新 Taro/EMP 所需 qdmp.json，config sync 只作可选工具，不是发布前置。主配置无效或所选环境身份缺失不能回退；编译产物身份不属于主配置对应环境的有效身份映射时须重新 build。秘密不得进入前端，旧纯前端仍无需 Go 或后端凭据。详见 [配置优先级](./backend-production.md#配置优先级与前端兼容)。
 
 ## 小程序全局权限配置
 
@@ -219,11 +221,12 @@ qd.navigateTo({
 
 ### Token 管理与自动刷新
 
-开发者在获取 Token 时应同时保存 `refreshToken`，并在 Token 过期前主动刷新。
+默认新全栈模板已包含自身后端的 `/auth/v1/token` 代理，refresh 保留原前端直连平台 `https://openapi.qiandao.com/auth/v1/refresh` 的行为；前端优先复用模板的 auth 模块及 `getOpenId()`。源码存在不表示目标环境已经部署；先确认实际服务可用。以下为 Token 管理参考，历史项目需核实自己的接口实现，并在获取 Token 时同时保存 refreshToken、到期前刷新。
 
 ```javascript
 // utils/tokenManager.js
-const OPENAPI_BASE = 'https://openapi.qiandao.com'
+// 按实际接口填写刷新地址；默认模板直连 https://openapi.qiandao.com/auth/v1/refresh。
+const REFRESH_TOKEN_ENDPOINT = ''
 
 // Token 存储 key
 const TOKEN_KEY = 'qdmp_access_token'
@@ -328,7 +331,8 @@ class TokenManager {
       throw new Error('No refresh token available')
     }
 
-    const res = await fetch(`${OPENAPI_BASE}/auth/v1/refresh`, {
+    if (!REFRESH_TOKEN_ENDPOINT) throw new Error('请先配置实际刷新接口')
+    const res = await fetch(REFRESH_TOKEN_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken })
@@ -396,18 +400,26 @@ export default TokenManager
 
 前端只把 `qd.login` 返回的登录 code 发送给自己的后端。`appId`、`appSecret` 和固定的 `AUTHORIZATION_CODE` 由后端构造；应用密钥只能从服务端环境或受控配置读取，不能放入前端环境变量、构建产物、请求参数或返回给前端。登录换票响应缺少有效 `data.openId` 时按不完整响应处理，不回退查询其他接口。
 
-下面的 `BACKEND_BASE` 是自己的后端 HTTPS 基址，复用已有配置；自建路由与上游平台均使用 `/auth/v1/token`，二者由域名区分。
+登录示例要求在项目根目录的全局配置文件 `qdmp-config.json` 中填写 `appId`、`appSecret`，保留已有其他配置字段。AppSecret 只由业务后端从该文件对应的受保护配置读取（本地直接读取，正式发布由 CLI 从同一文件注入私有构建副本），不能放入前端环境变量、源码、请求体或响应。前端只把 `qd.login` 返回的授权码发送给已确认实现的业务后端，由后端完成换取 Token 并返回业务所需的用户凭据。`CLIENT_CREDENTIALS` 属于服务端流程，不在前端调用。
+
+下面的 tokenEndpoint 是本项目已部署的自身后端 `/auth/v1/token` 地址，复用实际配置；它与平台上游由域名区分。默认新模板提供 token 代理和包含 `getOpenId()` 的 auth 模块，从公开 AppID 推导正式后端域名，无需添加 `BACKEND_BASE` 常量；后端使用根目录 `qdmp-config.json` 中的应用凭据，refresh 保留前端直连平台。历史项目先核实接口及会话实现，不能仅凭模板有源码就探测尚未部署的服务。
 
 ```javascript
 // 前端 utils/auth.js
 import TokenManager from './tokenManager'
-import { BACKEND_BASE } from '@/config'
 
-export async function getToken({ code }) {
+/**
+ * 通过业务后端用授权码获取完整用户会话
+ * @param {object} params
+ * @param {string} params.code - 授权码
+ * @param {string} params.tokenEndpoint - 已实现并部署的业务换码接口
+ */
+export async function getToken({ code, tokenEndpoint }) {
   if (typeof code !== 'string' || !code.trim()) {
     throw new Error('缺少有效登录 code')
   }
-  const res = await fetch(`${BACKEND_BASE}/auth/v1/token`, {
+  if (!tokenEndpoint) throw new Error('请先配置实际业务后端换码接口')
+  const res = await fetch(tokenEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code })
@@ -429,7 +441,7 @@ export async function getToken({ code }) {
 }
 ```
 
-后端参考函数（Node.js 18+，仅在服务端执行）：
+后端参考函数（Node.js 18+，仅用于已有 Node.js 后端的服务端接线；默认 Go 模板使用根主配置及私有打包流程）：
 
 ```javascript
 // 后端：由 POST /auth/v1/token 路由解析 JSON { code } 后调用。
@@ -659,6 +671,8 @@ const { loading, error, get } = useApi()
 const userInfo = ref(null)
 const openId = ref(null)
 const isLoggedIn = ref(false)
+// 默认新模板提供 /auth/v1/token；填写实际已部署的服务地址，历史项目先核实实现。
+const TOKEN_EXCHANGE_ENDPOINT = ''
 
 onMounted(async () => {
   // 检查是否已有有效 Token
@@ -686,7 +700,7 @@ async function handleLogin() {
     })
 
     // 2. 只把 code 发自己的后端；由后端携带应用凭证向平台换票。
-    const session = await getToken({ code })
+    const session = await getToken({ code, tokenEndpoint: TOKEN_EXCHANGE_ENDPOINT })
     openId.value = session.openId // 唯一来源是 /auth/v1/token 的 data.openId。
     isLoggedIn.value = true
     await fetchUserInfo()

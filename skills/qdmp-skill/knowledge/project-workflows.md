@@ -4,567 +4,63 @@
 
 ### Step 1: 在后台创建小程序
 
-访问 [千岛开放平台](https://open.qiandao.com) 创建小程序，获取 appId。
+访问 [千岛开放平台](https://open.qiandao.com) 创建小程序，获取 appId。凭据写入本地受保护配置，不要求在聊天中粘贴 AppSecret。
 
-> 账号获取: https://open.qiandao.com/docs/getting-started
+### Step 2: 使用 CLI 创建稳定前后端模板
 
-### Step 2: 创建本地项目
+先读取 [稳定后端模板与正式发布](./backend-production.md)，检查实际 CLI 支持本次后端命令。执行 create 前核对 `qdmp create --help` 的完整全栈模板能力及 `qdmp backend --help` 的 init/package/upload/deploy 命令；旧 CLI 须升级到包含这些能力的已发布版本，当前研发验收使用本地打包 CLI，不能假定 npm latest 已支持或仅凭版本号放行。新项目使用：
 
 ```bash
-qdmp-cli list                       # 查看可用模板信息
-qdmp-cli create <项目名> -t default  # 必须显式指定 2.0 模板
+qdmp-cli list
+qdmp create <项目名> -t default
 cd <项目名>
 ```
 
-**模板禁令**：
-- 禁止省略 `-t`：CLI ≤0.1.11、0.1.13、0.1.15 的默认模板就是 1.0，不能依赖 CLI 的默认选择。
-- 禁止使用 `-t qdmp`：它指向 `frontend/miniapp-taro-template`，即 effuse 版 1.0。
+也可省略 -t，沿用 `qdmp create <项目名>`。CLI 只从 `git@github.com:EchoTechFE/qdmp-taro-template.git` 克隆一次完整全栈模板，校验并保留自带空主配置的内容，只设置 0600 权限与忽略规则；克隆流程移除模板 .git，主配置在生成项目中未被跟踪。默认包含 frontend/、backend/ 和 qdmp-config.json，不新增后端选择参数、不移动目录或拼装第二份模板。历史纯前端保持兼容；确需升级时再执行 `qdmp backend init --runtime go --json`，从同一仓库临时提取后端，源码位置和已有配置保持。
+
+稳定后端模板目前只支持 Go。不要为了语言选项让 Agent 手写 Node.js / Python 模板；已有其他语言项目按自身经过验证的生产工程维护，不能声称使用本稳定模板。
+
+当前默认模板统一为该全栈仓库，`-t default` 可显式指定，省略时沿用默认。旧 CLI 或旧模板仍只有前端布局时应停止并报告不兼容，不能临时拼接后端、改变 loader 或改用旧 effuse 模板。模板变更须先合并到上游默认分支，再发布相应 CLI；研发分支改动不代表上游主分支已生效。
 
 #### 创建后自检（不通过必须停止）
 
 创建完成后、安装依赖或修改项目文件前，必须：
-1. 读取生成的 `qdmp.json`，确认 `loader` 必须是 `EMP`。
-2. 核对 `qdmp-cli list` 和创建输出中的所选模板信息，确认没有「默认模版(1.0)」或 `miniapp-taro-template`。
 
-任何一项不通过（包括文件缺失、无法读取或无法确认模板信息），立即停止流程并向用户报告检查结果；不允许手改配置硬转 2.0，也不允许继续安装依赖或开发。
+1. 新创建读取 `frontend/qdmp.json`，确认 loader 为 EMP；历史根式前端维护时读取实际目录的 qdmp.json。
+2. 核对 `qdmp-cli list` 和创建输出中的模板信息，确认没有「默认模版(1.0)」或 `miniapp-taro-template`。
+3. 新创建必须同时阅读 `backend/README.md` 与 `backend/backend-template.json` 的 runtime、环境、入口和构建契约，确认存在 `main.go`、`go.mod` 及 `/healthz`、`/readyz`。后端不带开发存储模式、Collector 或浏览器依赖。
+
+本次需要的入口文件、运行契约或 loader 无法确认时立即停止；禁止手改 loader 或契约标记伪装迁移。历史纯前端维护按实际范围检查，不自动补建后端。
 
 #### 依赖栈兜底检查（不通过必须停止）
 
-在前端项目目录执行（新建项目为当前目录，分离目录后为 `frontend/`；已有项目在开发前同样必须执行）：
+在实际前端目录执行；分离结构为 `frontend/`：
 
 ```bash
-grep -nE '"(echo-effuse|flyio|tailwindcss)"' package.json
+rg -n '"(echo-effuse|flyio|tailwindcss)"' package.json
 ```
 
-命中任意一项即判定为 1.0 工程，立即停止开发，报告命中内容并与用户确认是否迁移；禁止在 2.0 代码里混用 effuse、flyio 或 Tailwind。退出码 1 表示无命中；文件缺失或命令执行错误不能视为通过，必须停止并报告。
+结合 loader、模板来源和实际构建链判断工程类型，通用依赖或 package.json.version 不能单独作为 1.0 判据。发现 effuse / echo-effuse / effues 有效引用（含别名、锁文件、导入和构建脚本）立即停止，不能在 EMP 工程混用旧运行时。退出码 1 表示无命中；文件缺失或执行错误不能视为通过。
 
-两项检查均通过后，才安装依赖并继续后续步骤：
+检查通过后，在前端目录执行 `pnpm install`，按后端 README 安装 Go 依赖。依赖失败先修复，不退回旧模板。
 
-```bash
-pnpm install
-```
+### Step 3: 填写受保护配置
 
-**依赖安装失败**: 请确认 npm 已正确配置，网络可正常访问 npm registry。
+以下后端配置仅适用于本次包含后端的项目；纯前端不要求新建主配置或提供 AppSecret、Go。已有主配置时，前端命令只取其公开字段；没有时沿用实际 qdmp.json。
 
-### Step 3: 分离前后端目录
+官方模板直接跟踪空 qdmp-config.json，AppID、AppSecret、MongoDB 字段为空，variables 为 {}；直接 git clone 也无需 config init，模板中禁止提交实际凭据。旧项目升级/配置初始化仅在主配置缺失时本地生成（0600、gitignore），一次性从实际根式或 frontend/ 的 qdmp.json 继承 appId/devAppId/loader/name/latest 并保全支持的旧私密字段；已有主配置逐字保留，不做长期反向同步。旧版已有 backend/ 但缺少主配置时可用 `qdmp config init --json` 补齐。主配置兼容顶层 appId/appSecret/runtime/mongodb，并包含 environment、后端专用 variables。实际 AppID、发布 AppSecret 由用户本地填写，空值不得发布；完整契约见 [初始化与配置](./backend-production.md#初始化与配置)。
 
-```bash
-mkdir frontend
-find . -maxdepth 1 ! -name '.' ! -name 'frontend' ! -name '.git' ! -name '.gitignore' ! -name '.gitmodules' ! -name '.DS_Store' ! -name 'qdmp-config.json' -exec mv {} frontend/ \;
-mkdir backend
-```
+MongoDB 省略、null 或 uri/database 同时为空时无持久化；部分填写错误，启用后 database 必须等于 AppID。variables 是后端 JSON 对象，不自动变环境变量、不进前端，修改后必须重新打包。不能用 FileStore 冒充生产持久化。配置文件、秘密 ZIP 和发布目录必须被 `.gitignore` 忽略，不能作为源码内容再次入包；已验证的发布 ZIP 仅用于受控后端上传。
 
-> 说明：`qdmp-config.json` 留在根目录，不随本步移入 `frontend/`（此时通常尚未创建，下一步生成；显式排除以防重跑时被误移）。
+主配置存在时，CLI 日常命令直接优先读取其中的公开字段；旧前端 AppID 不同不要求先 sync。build 内部更新实际前端的公开 qdmp.json，打包不复制秘密；主配置坏或所选环境身份缺失不能回退。编译产物身份不属于当前主配置对应环境的有效身份映射时，需重新 build，不能只改 ZIP 身份。`qdmp config sync` 是可选工具，详见 [配置优先级](./backend-production.md#配置优先级与前端兼容)。
 
-AskUserQuestion 询问后端语言：
+### Step 4: 验证后端模板
 
-```yaml
-questions:
-  - question: "后端使用什么语言？"
-    header: "后端语言"
-    multiSelect: false
-    options:
-      - label: "Go"
-        description: "runtime: go，使用 Go 1.22"
-      - label: "Node.js (Recommended)"
-        description: "runtime: nodejs22，使用 Node.js 22"
-      - label: "Python"
-        description: "runtime: python312，使用 Python 3.12"
-```
+纯前端跳过本步骤。后端代码统一由同一个全栈模板仓库提供，CLI 负责拉取、校验及主配置保护，不从本指引复制拼接模板。按 [构建并冻结发布包](./backend-production.md#构建并冻结发布包) 执行 `go test ./...` 和 `qdmp backend package --json`，确认平台单入口构建通过、源嵌入配置仍为空；打包产物含配置，按秘密制品保护。
 
-在**项目根目录**（`frontend/`、`backend/` 的上一级）创建 `qdmp-config.json`，填入 appId、appSecret 和选择的 runtime：
-```json
-{
-  "appId": "<appId>",
-  "appSecret": "<appSecret>",
-  "runtime": "go"
-}
-```
+认证路由的前端请求体只接受 `{ code }`。默认 Go 模板由后端从根 `qdmp-config.json` 的受保护配置读取 `appId`、`appSecret`，正式发布由 CLI 注入私有构建副本，固定使用 `AUTHORIZATION_CODE` 请求平台 `/auth/v1/token`；不接收客户端指定的应用凭证或授权类型，不将密钥放入前端环境变量、产物或响应。登录成功须核对 HTTP、业务码及完整会话字段，用户 `openId` 只取换票成功响应的 `data.openId`，禁止从 `user.me`（`GET /user/v1/me`）或手机号响应读取、映射或补齐。缺少有效身份时按响应不完整处理，不调用其他接口兜底，也不自动重放授权码；刷新保留换票身份，退出或切号时清理旧会话。完整规则见 [用户登录换票与 openId](./development-guide.md#用户登录换票与-openid)。
 
-在 `frontend/qdmp.json` 更新 appId（供前端构建/关联使用），保留模板生成的 `loader: "EMP"` 及其他非敏感配置，不要用以下示例覆盖整个文件：
-```json
-{
-  "appId": "<appId>",
-  "loader": "EMP"
-}
-```
-
-> 说明：`qdmp-config.json` 是主配置源，含 `appSecret` 等敏感信息，**必须加入项目 `.gitignore`**（见下）；`frontend/qdmp.json` 保留 appId、loader 等非敏感配置，不写入 appSecret，可正常提交。
-
-**保护敏感配置**：确保项目根目录 `.gitignore` 存在且包含 `qdmp-config.json` 一行。不存在则创建，已存在但缺该行则追加：
-```bash
-grep -qxF 'qdmp-config.json' .gitignore 2>/dev/null || echo 'qdmp-config.json' >> .gitignore
-```
-
-### Step 4: 初始化后端代码模板
-
-根据用户选择的语言，在 `backend/` 目录下生成对应的初始代码。
-
-认证路由的前端请求体只接受 `{ code }`。`appId`、`appSecret` 从服务器环境变量 `QDMP_APP_ID`、`QDMP_APP_SECRET` 读取，由后端固定使用 `AUTHORIZATION_CODE` 请求 `https://openapi.qiandao.com/auth/v1/token`；不接收客户端指定的应用凭证或授权类型，不将密钥放入前端环境变量、包产物或响应。用户 `openId` 只取该换票成功响应的 `data.openId`，禁止从 `user.me`（`/user/v1/me`）读取、映射或补齐。换票缺少有效 `openId` 时作为响应不完整处理，不调用其他接口兜底，也不自动重放授权码。
-
-
-**重要**：本地测试环境必须支持 CORS，所有响应自动添加：
-- `Access-Control-Allow-Origin: *`
-- `Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS`
-- `Access-Control-Allow-Headers: Content-Type, Authorization, access-token, x-echo-qdmp-version`
-
-#### Go
-
-**目录结构**：
-```
-backend/
-├── main.go              # 入口文件，启动 HTTP 服务，监听 :8080
-├── go.mod               # 模块定义
-├── handler/
-│   ├── auth.go          # 认证相关路由
-│   └── handler.go       # 路由注册
-├── middleware/
-│   └── cors.go          # CORS 中间件
-├── service/             # 业务逻辑层（可选）
-├── model/               # 数据模型（可选）
-└── pkg/                 # 公共工具（可选）
-```
-
-**约定**：
-- 入口必须是 `main.go`，`package main`
-- 推荐标准库 `net/http`，也可用 `gin`、`echo` 等框架
-- 配置通过环境变量读取，不要硬编码或读本地 `.env` 文件
-
-**代码模板**：
-
-`backend/go.mod`：
-```go
-module <项目名称>
-
-go 1.22
-```
-
-`backend/main.go`：
-```go
-package main
-
-import (
-	"fmt"
-	"log"
-	"net/http"
-
-	"<项目名称>/handler"
-)
-
-func main() {
-	mux := http.NewServeMux()
-	handler.Register(mux)
-	
-	fmt.Println("Server running on :8080")
-	log.Fatal(http.ListenAndServe(":8080", mux))
-}
-```
-
-`backend/middleware/cors.go`：
-```go
-package middleware
-
-import "net/http"
-
-func CORS(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, access-token, X-Client-Package-Id, X-Request-Package-Id")
-		
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		
-		next.ServeHTTP(w, r)
-	}
-}
-```
-
-`backend/handler/handler.go`：
-```go
-package handler
-
-import (
-	"fmt"
-	"net/http"
-
-	"<项目名称>/middleware"
-)
-
-func Register(mux *http.ServeMux) {
-	mux.HandleFunc("/", middleware.CORS(handleIndex))
-	mux.HandleFunc("/auth/v1/token", middleware.CORS(handleToken))
-}
-
-func handleIndex(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "Hello from <项目名称>!")
-}
-```
-
-`backend/handler/auth.go`：
-```go
-package handler
-
-import (
-	"bytes"
-	"encoding/json"
-	"io"
-	"net/http"
-	"os"
-	"strings"
-	"time"
-)
-
-const baseOpenapiAuthUrl = "https://openapi.qiandao.com/auth/v1/"
-
-var httpClient = &http.Client{Timeout: 20 * time.Second}
-
-func handleToken(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	defer r.Body.Close()
-	var input struct {
-		Code string `json:"code"`
-	}
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&input); err != nil || strings.TrimSpace(input.Code) == "" {
-		http.Error(w, "Expected JSON {code}", http.StatusBadRequest)
-		return
-	}
-	var extra any
-	if decoder.Decode(&extra) != io.EOF {
-		http.Error(w, "Expected one JSON object", http.StatusBadRequest)
-		return
-	}
-	appID, appSecret := os.Getenv("QDMP_APP_ID"), os.Getenv("QDMP_APP_SECRET")
-	if appID == "" || appSecret == "" {
-		http.Error(w, "Server application credentials unavailable", http.StatusInternalServerError)
-		return
-	}
-	body, _ := json.Marshal(map[string]string{
-		"appId": appID, "appSecret": appSecret,
-		"code": input.Code, "grantType": "AUTHORIZATION_CODE",
-	})
-	apiReq, err := http.NewRequestWithContext(r.Context(), http.MethodPost, baseOpenapiAuthUrl+"token", bytes.NewReader(body))
-	if err != nil {
-		http.Error(w, "Token request unavailable", http.StatusBadGateway)
-		return
-	}
-	apiReq.Header.Set("Content-Type", "application/json")
-	apiResp, err := httpClient.Do(apiReq)
-	if err != nil {
-		http.Error(w, "Token request failed", http.StatusBadGateway)
-		return
-	}
-	defer apiResp.Body.Close()
-	respBody, err := io.ReadAll(apiResp.Body)
-	if err != nil {
-		http.Error(w, "Incomplete token response", http.StatusBadGateway)
-		return
-	}
-	if apiResp.StatusCode >= 200 && apiResp.StatusCode < 300 {
-		var result struct {
-			Code json.RawMessage `json:"code"`
-			Data json.RawMessage `json:"data"`
-		}
-		if err := json.Unmarshal(respBody, &result); err != nil {
-			http.Error(w, "Invalid token response", http.StatusBadGateway)
-			return
-		}
-		if string(result.Code) == "0" || string(result.Code) == `"0"` {
-			var data struct {
-				OpenID string `json:"openId"`
-			}
-			if json.Unmarshal(result.Data, &data) != nil || strings.TrimSpace(data.OpenID) == "" {
-				http.Error(w, "Token response missing openId", http.StatusBadGateway)
-				return
-			}
-		}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(apiResp.StatusCode)
-	w.Write(respBody)
-}
-```
-
-然后执行：
-```bash
-cd backend && go mod tidy
-```
-
-#### Node.js
-
-**目录结构**：
-```
-backend/
-├── index.js             # 入口文件，启动服务，监听 :8080
-├── package.json         # 依赖定义
-├── routes/
-│   ├── index.js         # 路由注册
-│   └── auth.js          # 认证相关路由
-├── middleware/
-│   └── cors.js          # CORS 中间件
-├── services/            # 业务逻辑层（可选）
-├── models/              # 数据模型（可选）
-└── utils/               # 工具函数（可选）
-```
-
-**约定**：
-- 入口默认 `index.js`，也支持 `package.json` 中 `main` 字段指定
-- 推荐使用 Node.js 原生 `http` 模块，也可用 Express、Koa、Fastify 等框架
-- 不要把 `node_modules/` 放进来，CI 阶段会自动 `npm install`
-
-**代码模板**：
-
-`backend/package.json`：
-```json
-{
-  "name": "<项目名称>-backend",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": { "start": "node index.js" }
-}
-```
-
-`backend/index.js`：
-```js
-const http = require('http');
-const { handleRequest } = require('./routes');
-
-const server = http.createServer(handleRequest);
-
-server.listen(8080, () => {
-  console.log('Server running on :8080');
-});
-```
-
-`backend/middleware/cors.js`：
-```js
-function corsMiddleware(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, access-token, X-Client-Package-Id, X-Request-Package-Id');
-  
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return true;
-  }
-  return false;
-}
-
-module.exports = { corsMiddleware };
-```
-
-`backend/routes/index.js`：
-```js
-const url = require('url');
-const { corsMiddleware } = require('../middleware/cors');
-const { handleToken } = require('./auth');
-
-function handleRequest(req, res) {
-  if (corsMiddleware(req, res)) return;
-  
-  const parsedUrl = url.parse(req.url, true);
-  
-  if (parsedUrl.pathname === '/auth/v1/token' && req.method === 'POST') {
-    handleToken(req, res);
-  } else if (parsedUrl.pathname === '/') {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Hello from <项目名称>!\n');
-  } else {
-    res.writeHead(404);
-    res.end('Not Found');
-  }
-}
-
-module.exports = { handleRequest };
-```
-
-`backend/routes/auth.js`：
-```js
-const https = require('https');
-
-function handleToken(req, res) {
-  res.setHeader('Cache-Control', 'no-store');
-  const fail = (status, message) => {
-    if (res.writableEnded) return;
-    res.writeHead(status, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: message }));
-  };
-  if (req.method !== 'POST') return fail(405, 'Method not allowed');
-  let body = '';
-  req.on('data', chunk => { body += chunk.toString(); });
-  req.on('error', () => fail(400, 'Request body unavailable'));
-  req.on('end', () => {
-    let input;
-    try { input = JSON.parse(body); } catch { return fail(400, 'Expected JSON {code}'); }
-    if (!input || Array.isArray(input) || Object.keys(input).length !== 1 ||
-        typeof input.code !== 'string' || !input.code.trim()) {
-      return fail(400, 'Expected JSON {code}');
-    }
-    const appId = process.env.QDMP_APP_ID;
-    const appSecret = process.env.QDMP_APP_SECRET;
-    if (!appId || !appSecret) return fail(500, 'Server application credentials unavailable');
-    const upstreamBody = JSON.stringify({
-      appId, appSecret, code: input.code, grantType: 'AUTHORIZATION_CODE'
-    });
-    const apiReq = https.request('https://openapi.qiandao.com/auth/v1/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(upstreamBody)
-      }
-    }, apiRes => {
-      let responseBody = '';
-      apiRes.on('data', chunk => { responseBody += chunk.toString(); });
-      apiRes.on('error', () => fail(502, 'Incomplete token response'));
-      apiRes.on('aborted', () => fail(502, 'Incomplete token response'));
-      apiRes.on('end', () => {
-        if (res.writableEnded) return;
-        const status = apiRes.statusCode;
-        if (status >= 200 && status < 300) {
-          let result;
-          try { result = JSON.parse(responseBody); } catch { return fail(502, 'Invalid token response'); }
-          if (String(result?.code) === '0' &&
-              (typeof result?.data?.openId !== 'string' || !result.data.openId.trim())) {
-            return fail(502, 'Token response missing openId');
-          }
-        }
-        res.writeHead(status, { 'Content-Type': 'application/json' });
-        res.end(responseBody);
-      });
-    });
-    apiReq.setTimeout(20000, () => apiReq.destroy(new Error('Token request timeout')));
-    apiReq.on('error', () => fail(502, 'Token request failed'));
-    apiReq.end(upstreamBody);
-  });
-}
-
-module.exports = { handleToken };
-```
-
-然后执行：
-```bash
-cd backend && npm install
-```
-
-#### Python
-
-**目录结构**：
-```
-backend/
-├── app.py               # 入口文件，启动服务，监听 :8080
-├── requirements.txt     # 依赖定义
-├── middleware.py        # CORS 中间件
-├── routes/
-│   ├── index.py         # 路由注册
-│   └── auth.py          # 认证相关路由
-├── services/            # 业务逻辑层（可选）
-├── models/              # 数据模型（可选）
-└── utils/               # 工具函数（可选）
-```
-
-**约定**：
-- 入口文件必须为 `app.py`
-- 推荐 Flask，也可用 FastAPI + Uvicorn 等框架
-- 不要把 `venv/`、`__pycache__/` 放进来，CI 阶段会自动 `pip install`
-- **依赖版本必须兼容 Python 3.12**：运行时为 Python 3.12，requirements.txt 中应锁定具体版本或设置上限，避免使用无上限的 `>=` 约束
-
-**代码模板**：
-
-`backend/requirements.txt`：
-```
-flask==3.0.3
-werkzeug==3.0.4
-requests==2.32.3
-```
-
-`backend/app.py`：
-```python
-from flask import Flask
-from middleware import add_cors
-from routes.index import register_routes
-
-app = Flask(__name__)
-app.after_request(add_cors)
-register_routes(app)
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
-```
-
-`backend/middleware.py`：
-```python
-def add_cors(response):
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, access-token, X-Client-Package-Id, X-Request-Package-Id'
-    return response
-```
-
-`backend/routes/index.py`：
-```python
-from flask import Flask
-from routes.auth import get_token
-
-def register_routes(app: Flask):
-    app.add_url_rule('/', 'index', lambda: 'Hello from <项目名称>!\n')
-    app.add_url_rule('/auth/v1/token', 'get_token', get_token, methods=['POST', 'OPTIONS'])
-```
-
-`backend/routes/auth.py`：
-```python
-import os
-from flask import request, jsonify, make_response
-import requests as req_lib
-
-TOKEN_URL = 'https://openapi.qiandao.com/auth/v1/token'
-
-def get_token():
-    def reply(payload, status):
-        response = make_response(jsonify(payload), status)
-        response.headers['Cache-Control'] = 'no-store'
-        return response
-
-    if request.method == 'OPTIONS':
-        return reply({}, 204)
-    if request.method != 'POST':
-        return reply({'error': 'Method not allowed'}, 405)
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict) or set(data) != {'code'} or not isinstance(data['code'], str) or not data['code'].strip():
-        return reply({'error': 'Expected JSON {code}'}, 400)
-    app_id, app_secret = os.getenv('QDMP_APP_ID'), os.getenv('QDMP_APP_SECRET')
-    if not app_id or not app_secret:
-        return reply({'error': 'Server application credentials unavailable'}, 500)
-    try:
-        api_response = req_lib.post(TOKEN_URL, json={
-            'appId': app_id, 'appSecret': app_secret,
-            'code': data['code'], 'grantType': 'AUTHORIZATION_CODE'
-        }, timeout=20)
-    except req_lib.exceptions.RequestException:
-        return reply({'error': 'Token request failed'}, 502)
-    if 200 <= api_response.status_code < 300:
-        try:
-            result = api_response.json()
-        except ValueError:
-            return reply({'error': 'Invalid token response'}, 502)
-        if isinstance(result, dict) and str(result.get('code')) == '0':
-            token_data = result.get('data')
-            open_id = token_data.get('openId') if isinstance(token_data, dict) else None
-            if not isinstance(open_id, str) or not open_id.strip():
-                return reply({'error': 'Token response missing openId'}, 502)
-    response = make_response(api_response.content, api_response.status_code)
-    response.headers['Content-Type'] = api_response.headers.get('Content-Type', 'application/json')
-    response.headers['Cache-Control'] = 'no-store'
-    return response
-```
+本步骤仅本地初始化和构建，不上传、不创建远端仓库、不触发正式发版。用户要求正式发布时再走后端发布流程。
 
 ---
 
@@ -627,10 +123,10 @@ questions:
 - 选择"确认跳过" → 直接进入操作路由
 
 用户选择"从现有代码生成 PRD"时，执行代码反向扫描：
-1. 读取 `backend/routes/` 下所有文件，提取 HTTP 路由与处理逻辑
-2. 读取 `backend/models/` 下所有文件，提取数据字段与集合名
-3. 读取 `frontend/src/pages/` 下所有页面文件，提取页面功能与 API 调用
-4. 读取 `frontend/src/app.config.js`，提取路由结构
+1. 按已确定的项目形态和本次范围扫描；包含后端时，从实际入口与其引用代码提取 HTTP 路由及处理逻辑，Go 模板从 `backend/main.go` 开始；纯前端跳过后端扫描
+2. 包含后端时，读取实际存在的数据模型或仓储代码，提取数据字段与集合名，不要求存在 `backend/routes/` 或 `backend/models/`
+3. 包含前端时，读取实际 `frontendDir/src/pages/` 下的页面文件，提取页面功能与 API 调用；根式项目的 frontendDir 为项目根目录
+4. 包含前端时，读取 `frontendDir/src/app.config.js`，提取路由结构
 5. 基于扫描结果，AskUserQuestion 补充无法从代码推断的信息：
 
 ```yaml
@@ -737,7 +233,7 @@ questions:
 
 **调试部署顺序规则（强制执行）**：
 
-- 未明确指定前端或后端 → **全量调试部署**：先后端，后端成功后再前端
+- 未明确指定范围时先按 [项目形态与范围规则](#step-1-判断项目形态与部署范围) 识别：纯前端仅前端、全栈先后端再前端、纯后端仅后端；不自动补建后端
 - 明确说"后端" → 仅执行后端测试环境部署
 - 明确说"前端" → 仅执行前端测试环境部署
 
@@ -745,7 +241,7 @@ questions:
 
 | 用户意图关键词 | 部署范围 | 执行流程 |
 |---|---|---|
-| 部署测试环境、本地测试、本地运行、本地调试、启动开发环境（无前端/后端限定） | 全量 | 先后端再前端 |
+| 部署测试环境、本地测试、本地运行、本地调试、启动开发环境（无前后端限定） | 按实际形态 | 仅全栈先后端再前端 |
 | 部署后端测试环境、本地跑后端、调试后端、跑一下后端、test-deploy | 仅后端 | 仅后端 |
 | 部署前端测试环境、启动前端、调试前端、跑一下前端、启动开发服务器 | 仅前端 | 仅前端 |
 
@@ -760,23 +256,25 @@ questions:
 后端测试环境部署失败，已停止部署流程。请先修复后端问题后重新部署。
 ```
 
-操作 6 完成后会自动替换前端 `BACKEND_BASE` 为 `/api`。
+操作 6 只启动并验证本地后端，不自动改写前端地址。默认模板的 `getBackendBase()` 从公开 AppID 推导正式域名，登录示例仍需已部署的正式后端；已有项目仅在具备受控本地代理且本次明确需要时使用其既有配置，不能把启动本地后端等同于前端已接入本地 API。
 
 ### Step 3: 部署前端服务测试环境
 
-**仅在以下条件满足时执行**：全量模式下后端成功，或用户明确选择仅前端。
+**仅本次范围包含前端时执行**：纯前端直接进入；全栈先通过后端验收；纯后端跳过本节。
 
 #### 前置检查（仅"仅前端"模式执行）
 
-搜索 `BACKEND_BASE`：
+按实际 `frontendDir` 检查源码使用的后端地址配置；仅对已有 `BACKEND_BASE` 执行搜索：
 ```bash
-grep -r "BACKEND_BASE" frontend/ --include="*.js" --include="*.ts" --include="*.vue"
+rg -n "BACKEND_BASE" <frontendDir> -g '*.js' -g '*.ts' -g '*.vue'
 ```
 
-- 线上地址（含 `qiandaomp.com` 或 `https://`）→ AskUserQuestion 询问是否切换到 `/api`
-- 本地地址（`/api` 或 `localhost`）→ 直接继续
+- 默认模板使用 `getBackendBase()` 时，核对公开 AppID 与实际正式服务，不添加不存在的 `BACKEND_BASE`。
+- 已有本地地址（`/api` 或 `localhost`）时，核对既有代理和目标可达性；不自动将正式地址切到 `/api`。
 
 #### 部署步骤
+
+直接运行原生 Taro 命令前，主配置存在时先在项目根目录执行 `qdmp config sync --json` 导出公开字段，再进入实际 `frontendDir`；没有主配置的旧纯前端沿用原配置。
 
 检查前端 dev server 是否已在监听 10086：
 ```bash
@@ -842,36 +340,47 @@ pgrep nginx > /dev/null 2>&1 && nginx -s reload || nginx
 
 ## 流程四：打包部署
 
-**部署顺序规则（强制执行）**：
+发布范围、顺序、审查和验收由本 Skill 规定，Agent 负责执行；CLI 只执行本次调用并返回事实。没有后端实现的纯前端项目，不得因用户说“部署”而自动生成、初始化或发布后端。
 
-- 未明确指定前端或后端 → **全量部署**：先后端，后端成功后再前端
-- 明确说"后端" → 仅后端
-- 明确说"前端" → 仅前端
+### Step 1: 判断项目形态与部署范围
 
-### Step 1: 判断部署范围
+先读取用户指定目录或当前项目的实际代码/入口，识别项目形态，再结合本次指令决定范围。配置、依赖和构建完整性决定该部分能否发布，不用于把已有后端代码的工程降级为纯前端：
 
-| 用户意图关键词 | 部署范围 | 执行流程 |
-|---|---|---|
-| 部署、打包部署、上线、发布（无前端/后端限定） | 全量 | 先后端再前端 |
-| 部署后端、发版后端、后端上线、只部署后端 | 仅后端 | 仅后端 |
-| 部署前端、上传前端、前端上线、只部署前端 | 仅前端 | 仅前端 |
+| 实际形态 | 判定依据 | 未指定前后端范围时 |
+| --- | --- | --- |
+| 纯前端 | 根目录 `qdmp.json` + `package.json`，或 `frontend/` 中有这两文件，且没有实际后端实现（空 backend 目录不算） | 仅执行前端步骤，跳过后端配置、AppSecret、Go、打包和 MCP。 |
+| 全栈 | 有前端工程，也有可识别的后端业务入口/源码；发布时再验证依赖、runtime 配置与构建 | 先执行后端发布和 Skill 验收，再执行前端步骤。 |
+| 纯后端 | 有可识别的后端业务入口/源码，且无前端工程 | 只执行后端步骤，跳过前端 loader、构建、登录和 PRD 检查。 |
 
-无法判断时 AskUserQuestion 询问。
+`backend/` 空目录不算后端实现；已有前后端源码但后端配置缺失时，标记“全栈，后端待配置”，默认发布须报告具体缺口，不能跳过后端声称成功。Go 后端发布前应有 `backend/main.go`、`go.mod` 及 `qdmp-config.json` 中匹配的 `runtime="go"`，新稳定模板还需核对 `backend-template.json` 的生产运行契约，并在打包时验证 `go build main.go`。已有 Node.js / Python 后端按其真实入口、依赖、runtime 与受控构建流程识别，不套用 Go 门禁。仅有零散文件或过期模板标记不能证明存在可发布后端；已识别的后端因配置/依赖/编译失败应标记待完善，而非改判纯前端。
+
+明确说“仅前端”时，不运行 Go 或后端构建来证明另一侧有效；明确说“仅后端”时，不检查前端 loader。用户明确要求全栈/后端但对应代码或配置不完整时报告具体缺口，不自动补建后端，也不静默降为前端成功。文件或用户意图仍不足以判定范围时才询问。
+
+| 本次指令 | Agent 执行范围 |
+| --- | --- |
+| 部署/发布/上线，未指定范围 | 按上表的实际形态决定。 |
+| 全栈/前后端一起发布 | 核对两侧工程完整后，后端发布及验收 → 前端上传；正式前端上线再完成提审/发布。 |
+| 仅后端/后端上线 | 只运行后端工具；`qdmp backend deploy` 不发布前端。 |
+| 仅前端/上传前端 | 只运行前端工具；不要求 AppSecret、Go、MongoDB 或后端初始化。 |
+
+实际前端目录记为 `frontendDir`：根式工程为项目根目录，分离结构为 `{projectRoot}/frontend`。后续读取配置、构建和上传均在该目录执行，不能假定所有项目都有 `frontend/`。
+
+全栈工具调用由 Agent 串联：后端 `go test` → `qdmp backend package` → `qdmp backend deploy` 获取 diff → Agent 审查后追加 `--review-digest` → 由 Agent 通过宿主 MCP 获取日志/实际部署版本及副本证据，并验证真实健康结果 → 前端 `qdmp build` / 按需 `qdmp getMe` 或登录 → `qdmp upload`。正式前端上线再按实际版本执行 `experience` / `review --auto-publish` 并等待平台结果。已有 Node.js / Python 后端使用该工程受控后端流程替换 Go 部分。CLI 的每条后端命令只处理后端，不会替 Agent 完成这条全栈链路。
 
 ### Step 2: PRD 与代码一致性检查
 
-在执行任何部署操作前，先检查 `doc/prd.md` 是否存在：
+纯后端运维发布跳过本节。涉及前端或全栈时，仅对本次范围做 PRD 一致性检查：纯前端只扫描 `frontendDir`，不因缺少后端代码、AppSecret 或 Go 停止；全栈才同时核对前后端。先检查 `doc/prd.md` 是否存在：
 
-**`doc/prd.md` 不存在**：对前后端代码进行反向扫描，提取所有已实现的功能，参考 `prd-template.md` 模板生成 `doc/prd.md`，写入后展示完整内容，并告知用户"已根据代码自动生成 PRD"。然后继续部署。
+**`doc/prd.md` 不存在**：对本次范围内代码进行反向扫描，提取已实现的功能，参考 `prd-template.md` 模板生成 `doc/prd.md`，写入后展示完整内容，并告知用户"已根据代码自动生成 PRD"。然后继续部署。
 
 **`doc/prd.md` 存在**：进行双向 review：
 
 **正向检查（PRD → 代码）**：读取 `doc/prd.md`，逐模块检查代码是否有对应实现：
-- 前端：`frontend/` 下的页面和组件是否覆盖了 PRD 中的用户操作流程
+- 前端：`frontendDir` 下的页面和组件是否覆盖了本次范围内的用户操作流程
 - 后端：`backend/` 下的接口是否覆盖了 PRD 中涉及的数据操作
 
 **反向检查（代码 → PRD）**：扫描代码中实现的功能，对照 PRD 判断是否有未记录的功能：
-- 前端：页面、路由、组件中是否有 PRD 未提及的功能入口
+- 前端：`frontendDir` 的页面、路由、组件中是否有 PRD 未提及的功能入口
 - 后端：接口路由中是否有 PRD 未描述的接口
 
 输出检查结果：
@@ -912,37 +421,35 @@ questions:
 
 ### Step 3: 部署后端服务
 
-执行操作 1: publish（发版）。
+本次范围包含后端时进入操作 1: publish，先核对配置、依赖和构建；缺失或失败则报告并停止后续发布。纯前端直接跳到 Step 4，不创建后端。
 
-全量模式下：Pipeline 成功才继续前端；失败则停止：
+全栈范围内：CLI 返回 acceptance_required 后，由 Agent 使用宿主 MCP 和真实健康请求完成 [正式后端上线验收](./backend-production.md#上线验收与失败处理)，确认 build/deploy、两个新副本 Ready、运行版本和健康检查均通过后才继续前端；失败或证据缺失则停止：
 ```
 后端部署失败，已停止部署流程。请先修复后端问题后重新部署。
 ```
 
-#### Step 3.1: 自动替换前端 BACKEND_BASE
+#### Step 3.1: 确认前端后端地址
 
-后端部署成功后：
+仅本次全栈范围的后端验收通过后执行，纯后端不修改前端：
 1. 线上后端地址固定为 `https://{appId}.qiandaomp.com`
-2. 在 `frontend/` 下搜索 `BACKEND_BASE`，用 Edit 工具替换为该地址
-3. 展示替换结果；找不到则提示用户手动配置
+2. 默认模板的 `getBackendBase()` 从公开 AppID 推导该域名，核对目标即可，不新增地址常量；CLI 构建会准备公开配置
+3. 旧项目确有 `BACKEND_BASE` 等地址配置时，按其实际接入契约更新并展示结果；找不到该常量本身不构成配置缺失
 
 ### Step 4: 部署前端服务
 
-**仅在以下条件满足时执行**：全量模式下后端成功，或用户明确选择仅前端。
+**仅本次范围包含前端时执行**：纯前端直接进入；全栈先通过后端验收；纯后端跳过本节。
 
 #### 前置检查 1：后端地址检查（仅"仅前端"模式执行）
 
-搜索 `BACKEND_BASE`：
-- 本地地址（`localhost`/`127.0.0.1`/`/api`）→ AskUserQuestion 询问是否切换到线上地址
-  - 切换 → 线上地址固定为 `https://{appId}.qiandaomp.com`，Edit 替换
-  - 保持 → 提示需确保本地服务可被外网访问
+仅当前端源码确实调用已有后端时检查 `BACKEND_BASE`；没有该配置或不依赖后端的纯前端直接继续，不生成后端地址。
+- 本地地址（`localhost`/`127.0.0.1`/`/api`）→ 从现有配置或真实部署证据确认可访问目标；未确认时先报告配置缺口，不根据 AppID 猜测存在后端，也不自动创建后端。用户明确保留本地地址时说明实际可达状态。
 - 线上地址 → 直接继续
 
 #### 前置检查 2：小程序关联检查
 
-确认 `frontend/qdmp.json` 中存在当前环境的 AppID，并执行 `qdmp-cli getMe` 核对账号、应用与 loader 一致性。2.0 项目必须本地和平台均为 EMP；不一致时停止上传。构建必须执行 `qdmp build` 完成 EMP 编译，失败不能改走 H5。
+CLI 存在根主配置时直接优先读取其公开字段，否则读取实际前端 qdmp.json；getMe、上传和提审不以前端副本同步为前置。主配置损坏或所选环境身份缺失时停止，不回退旧身份。执行 `qdmp getMe` 核对账号、目标应用与实际 loader；编译产物身份不属于当前主配置对应环境的有效身份映射时重新构建。EMP 源码、依赖和构建链必须真实匹配，主配置写成 EMP 不代表已完成旧源码迁移。
 
-> 若检测到旧结构（根目录无 `qdmp-config.json` 但 `frontend/qdmp.json` 含 `appSecret`），执行「通用子流程: 读取项目配置」中的「旧结构自动迁移」后再继续；仅前端部署本身不依赖 `appSecret`，但顺带迁移可保持结构一致并让 `.gitignore` 生效。
+> 纯前端从实际 `qdmp.json` 读取 appId/loader，并使用 CLI 登录态，不要求 `qdmp-config.json`、AppSecret 或后端 runtime。若旧前端配置含秘密，先按敏感配置规范隔离；不能因此初始化后端或要求补齐新的后端凭据。
 
 #### 部署步骤
 
@@ -990,7 +497,7 @@ qdmp-cli upload --help | grep -q -- '--description'
 
 **Step 4.3：构建**
 
-以下命令的工作目录必须是 `{projectRoot}/frontend`（旧结构则是实际包含 `qdmp.json` 的前端目录）：
+以下命令的工作目录必须是 `frontendDir`，即本次识别出的实际前端目录：
 
 ```bash
 qdmp build  # 必须使用 qdmp build，否则 upload 会失败
@@ -1037,4 +544,17 @@ qdmp-cli upload -d "<versionDescription>"
 
 用户明确要求上传并设置体验版时，将本步骤的上传命令替换为 `qdmp upload --experience -d "<versionDescription>"`，按 [设置体验版](./development-guide.md#设置体验版) 展示结果；不要先普通上传再执行一次 `upload --experience`。已上传版本使用 `qdmp experience --version <实际版本号>`。
 
-普通上传成功不代表已经设为体验版或正式发布；需要提审时前往 [开发者后台](https://open.qiandao.com) 提交审核。
+**Step 4.6：按用户意图提交审核与正式发布**
+
+普通 `upload` 成功只表示上传了前端版本，不表示已设体验版、已提审或正式上线。用户只要求上传/体验时到对应结果即结束；明确要求正式前端上线时，由 Agent 继续平台提审/发布流程。
+
+当前 CLI 支持时，使用上传结果中的真实版本号；已上传开发版先设为当前体验版，再提交审核：
+
+```bash
+qdmp experience --version <实际前端版本号>
+qdmp review --version <实际前端版本号> -d "<本次说明>" --auto-publish --json
+```
+
+本次已用 `upload --experience` 设置了体验版时，不重复切换；`review` 也不会重新构建、上传或自动设置体验版。`--auto-publish` 表示审核通过后由平台自动发布，仅在用户已授权正式上线时使用；仅要求提审则不加。命令不存在时使用实际平台能力，不猜测接口。
+
+`reviewSubmitted=true` 只证明已提交审核，不能报告正式上线；最终审核/发布状态以返回的开放平台链接和真实平台结果为准。没有状态查询能力或仍在审核时，报告“已提交审核，正式发布待确认”，不得虚构成功或重复提审。已有待审版本需替换时，先查明目标与授权，不能擅自加 `--replace-review`。

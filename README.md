@@ -207,7 +207,7 @@ claude mcp add --transport http qdmp-gitlab https://openapi.qiandao.com/gitlab/m
 claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/mcp
 ```
 
-> **注意：** MCP 服务需要在对应平台分别配置。Codex 使用 `codex mcp add`，Qoder 国内版使用 `qoderclicn mcp add` 或在 `mcp.json` 中声明。具体请参考各平台 MCP 文档。
+> **注意：** MCP 服务需要在实际宿主分别配置。工具参数、正式环境限制和副作用见 [后端 MCP 清单](skills/qdmp-skill/references/backend-mcp.md)。后端打包、上传与工具编排不依赖浏览器。
 
 ---
 
@@ -258,24 +258,43 @@ claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/m
 
 可直接向 Agent 说“启动真机调试并展示二维码”“上传当前代码并设为体验版”或“把已上传的版本 12 设为体验版”（版本号替换为实际值）。完整说明见 [真机调试](skills/qdmp-skill/knowledge/development-guide.md#真机调试) 和 [设置体验版](skills/qdmp-skill/knowledge/development-guide.md#设置体验版)。
 
-### 部署发布
+### 稳定后端与正式发布
 
+创建沿用原命令，可省略 -t 或显式指定 default，默认获取同一个全栈模板：
+
+```bash
+qdmp create myApp -t default
 ```
-部署上传小程序
-```
+
+发布规范与验收放在本仓库 Skill；Agent 判断项目形态、范围并串联工具，CLI 负责执行和返回事实，MCP/API 服务由平台实现。
+
+已有根式或分离的前端项目，在项目根目录执行 `qdmp backend init --runtime go` 升级全栈，该命令拒绝覆盖后端；仅在主配置缺失时生成受保护的根 `qdmp-config.json`，已有主文件逐字保留。同一全栈模板中的稳定后端仅支持 Go；不带开发存储、Collector 或浏览器依赖。默认 `qdmp backend package --json` 在私有副本注入配置并验证平台 `main.go` 构建，保留源码无密钥。
+
+Agent 使用 `qdmp backend deploy --archive <zip> --sha256 <摘要> --version <vX.Y.Z> --description "<说明>" --json` 自动检查冲突并返回 diff / reviewDigest；审查通过后追加 `--review-digest`，自动完成同字节正式上传、MCP publish 和 master 合并跟踪。命令成功只返回 Pipeline 事实和 acceptance_required，不自动查询 Aliyun/K8s；Agent 通过宿主 MCP 收集实际版本、Job/副本和日志，再验证健康结果，才可判断上线完成。用户已授权当前正式发布时连续执行，单独创建模板或打包不会上线。详见 [稳定后端与正式发布](skills/qdmp-skill/knowledge/backend-production.md)。研发分支能力需先构建验收，使用发布版时先核对实际 `--help`，不要假定旧 CLI 支持新命令。
+
+新 create 只从 `git@github.com:EchoTechFE/qdmp-taro-template.git` 拉取一次完整模板并校验，不拼装内置后端或克隆第二仓库。官方模板直接跟踪空的 qdmp-config.json：AppID、AppSecret、MongoDB 字段为空，variables 为 {}。CLI 保留文件内容，只设置 0600 权限与忽略规则；克隆流程会移除模板 .git，因此生成项目中的主配置未被跟踪。直接 git clone 也已有主配置，无需 config init；模板仓库只提交空配置，禁止提交实际凭据。历史纯前端继续兼容，升级全栈时只在主配置缺失时一次性继承实际 qdmp.json 的公开身份及支持的旧后端配置，已有主配置和根式源码位置保持。根主配置兼容 appId/appSecret/runtime/mongodb，variables 为后端 JSON 对象。CLI 日常命令直接优先读取主配置公开字段；build 内部更新兼容文件，config sync 只是可选工具。主配置坏或所选环境身份缺失不回退，编译产物身份不属于主配置对应环境的有效身份映射时重新 build。详见 [配置优先级](skills/qdmp-skill/knowledge/backend-production.md#配置优先级与前端兼容)。
+
+模板全栈变更须先合并到上游默认分支，再发布相应 CLI；当前改动在研发分支准备审查，不代表主分支已生效。旧模板布局不符时应校验失败并停止，不临时拼装。
+
+### 部署范围与前端正式上线
+
+Agent 先识别实际代码形态，再结合用户范围：纯前端只构建/上传前端，不要求 AppSecret、Go 或后端；全栈先完成后端发布与 Skill 验收，再上传前端；纯后端只运行后端工具。有后端实现但配置缺失时标记全栈待配置，不能降级为纯前端；仅空 backend 目录不算后端。具体工具链见 [部署分流](skills/qdmp-skill/knowledge/project-workflows.md#step-1-判断项目形态与部署范围)。
+
+`upload` 仅上传版本。需要正式前端上线时，还须按实际版本设置体验版并提审；当前 CLI 可用 `qdmp review --version <实际版本号> --auto-publish --json` 选择审核通过后由平台发布。提审成功只证明已进入审核，最终上线以平台结果为准。
+
 
 ---
 
 ## 完整开发流程
 
 ```
-1. 配置环境 → 安装 Node.js、pnpm、qdmp-cli
-2. 创建项目 → qdmp-cli create myApp
-3. 安装依赖 → pnpm install
-4. 开发调试 → pnpm run dev
-5. 打包构建 → qdmp build（发布时必须使用 qdmp build）
-6. 登录账号 → Agent 使用 `qdmp login --agent --env prod` 展示登录链接和二维码图片；前台终端保留扫码、登录 URL、账号密码三种方式
-7. 上传部署 → 自动总结本次改动并执行 `qdmp-cli upload --description "<版本描述>"`
+1. 配置环境 → Node.js、Go、qdmp-cli；前端步骤另需 pnpm
+2. 创建项目 → qdmp create myApp（默认完整全栈模板，也可显式 -t default）
+3. 配置与依赖 → 本地填写模板自带的 qdmp-config.json，CLI 直接读取；在实际前端目录安装依赖
+4. 开发调试 → 按前后端各自 README 启动和验证
+5. 后端正式发布 → backend package 冻结归档，backend deploy 审查 diff 后提交 reviewDigest，完成全部上线验收
+6. 前端构建与登录 → 在 frontend/ 执行 qdmp build，按需 qdmp login --agent --env prod
+7. 前端上传 → 自动总结本次改动并执行 qdmp-cli upload --description "<版本描述>"
 ```
 
 ---

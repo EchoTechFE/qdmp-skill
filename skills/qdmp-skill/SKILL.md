@@ -12,7 +12,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 # 千岛小程序开发助手（外部版）
 
-帮助开发者快速创建、开发、调试和部署千岛小程序。
+帮助开发者快速创建、开发、调试和部署千岛小程序。发布范围、顺序、审查及验收规则由本 Skill 维护；Agent 按规则编排，CLI 执行模板、构建、上传和 MCP 调用并返回事实，MCP/API 服务由平台实现。完整前后端流程由 Agent 串联，不由某一条后端命令自动完成。
 
 ## 知识库
 
@@ -27,6 +27,8 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | [wishlist.md](./knowledge/wishlist.md)                     | 心愿单 OpenAPI：列表、详情、创建与条目修改、数量/心愿价语义、用户授权、分页及写入不重放 |
 | [oss-upload.md](./knowledge/oss-upload.md)                 | OSS：OpenAPI 与存储容量权限、POST 直传/后端中转、两分钟超时、审核发布查询及凭据风险 |
 | [phone-authorization.md](./knowledge/phone-authorization.md) | 手机号授权：平台 OpenAPI 申请、App 6.68.0+、原生 button、一次性 code 与后端应用令牌兑换 |
+| [backend-production.md](./knowledge/backend-production.md) | 稳定 Go 后端模板、生产配置、冻结归档、正式发布与上线验收 |
+| [backend-mcp.md](./references/backend-mcp.md) | 后端正式发布工具参数、master 合并副作用与 HTTP 上传边界 |
 | [backend-operations.md](./knowledge/backend-operations.md) | 云服务使用规范、媒体存储与无效接口限制、通用子流程及操作 1-7                                            |
 | [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署（真机调试与体验版另见开发指南）                                                |
 | [prd-template.md](./knowledge/prd-template.md)             | PRD 模版：好的 PRD 应包含哪些内容 + 可直接使用的模版                                      |
@@ -43,6 +45,8 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 冷启动展示状态机返回的 `disclosure.display`，其中包含完整说明链接；`consent` 模板、固定下载来源/版本、当前目录等 `disclosure` 字段用于内部绑定和校验，不再重复展示。用户明确确认后才下载、校验并执行外部 onboarding。核对中央入口返回的动作与已授权范围一致后自动继续，不重复询问相同业务授权。范围变化则重新确认；宿主执行审批不能绕过。具体步骤见监控指引，不能将工具成功或无上下文的“同意”视为授权。
 
 ## 规范依赖
+
+涉及后端初始化、模板、配置、打包、正式发布或相关代码 Review 时，先读取 [稳定后端模板与正式发布](./knowledge/backend-production.md)；调用部署工具前再读 [后端 MCP 契约](./references/backend-mcp.md)。稳定模板中的后端只支持 Go，由原模板仓库统一提供，CLI 拉取并校验，禁止 Agent 拼写替代模板；生产流程不依赖浏览器或 workflow 的开发运行栈。
 
 涉及数据建模、媒体存储、云服务接口调用、联调、故障排查、全量点位 / 图片等数据验收或相关代码 Review 时，必须先读取并遵守 [云服务使用规范](./knowledge/backend-operations.md#云服务使用规范)。该要求同样适用于运维排查，不以进入数据建模或部署流程为前提。
 
@@ -103,6 +107,8 @@ node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿�
 
 完成上述监控指引处理后，在执行开发业务操作前，必须先确认开发环境就绪：
 
+先用 `node --version` 核对 [CLI 运行时要求](./docs/使用指南.md#前置条件)；运行时不兼容时使用受支持的环境，不自动修改用户全局 Node。历史项目源码兼容不放宽新版 CLI 的运行时要求。
+
 ```bash
 # 检查 qdmp-cli 是否可用
 qdmp-cli --version 2>/dev/null
@@ -123,15 +129,19 @@ qdmp-cli --version 2>/dev/null
 - **验证通过** → 按上述任务范围执行版本检查后继续第一步
 - **仍然失败** → 停止流程，向用户报告错误信息，提示可能原因（npm 未安装、网络问题、权限不足等），并建议用户手动排查后重试。**严禁在 qdmp-cli 不可用的状态下执行创建项目或发布操作。**
 
-同时检查 pnpm 是否可用（创建和开发项目需要）：
+仅创建前端/完整前后端项目、前端开发或前端构建时检查 pnpm；纯 Go 后端初始化、打包、上传和正式部署不检查、不安装 pnpm，也不依赖浏览器：
 ```bash
 pnpm --version 2>/dev/null
 ```
-- 不可用则执行 `npm install -g pnpm`，安装失败同样停止并报告。
+- 本次需要 pnpm 且不可用时才执行 `npm install -g pnpm`；安装失败仅阻断依赖它的前端步骤，不阻断纯后端流程。
 
-### 第一步：项目选择
+### 第一步：项目定位与选择
 
-扫描 `/workspace` 下的小程序项目（同时识别新结构 `qdmp-config.json` 与旧结构 `qdmp.json`，确保开发到一半的旧项目也能被发现并触发迁移）：
+用户已明确当前或指定的已有项目，且能按本地后端 `qdmp-config.json` 或前端 `qdmp.json` + `package.json` 定位时，直接进入第二步读取该目录，不扫描 `/workspace`、不重复询问项目，也不进入创建流程。
+
+**纯后端快捷路由**：仅后端初始化、打包、上传或正式部署，完成 CLI 可用性及后端命令/Go 能力检查后，直接按 [稳定后端模板与正式发布](./knowledge/backend-production.md) 执行。使用用户指定目录或当前项目根目录；主配置可从当前目录及祖先定位。官方模板已带空的根主配置；旧项目缺失时由初始化命令补齐，已有内容不覆盖。此路由跳过 `/workspace` 项目选择、前端 loader/构建/绑定和 PRD 检查，也不生成前端。路径或正式配置缺失时只补齐具体缺口，不自动新建另一个项目。
+
+只有没有明确项目且本次确实需要选择或创建前端/完整项目时，才扫描 `/workspace` 下的小程序项目（同时识别新结构 `qdmp-config.json` 与旧结构 `qdmp.json`，确保开发到一半的旧项目也能被发现并触发迁移）：
 ```bash
 find /workspace -maxdepth 3 \( -name "qdmp-config.json" -o -name "qdmp.json" \) 2>/dev/null
 ```
@@ -157,18 +167,23 @@ questions:
 
 ### 第二步：读取项目配置
 
-执行项目操作前检查前端 loader、依赖和源码引用；仅允许 EMP。搜索 effuse / echo-effuse / effues（含 npm 别名、锁文件、导入与构建脚本），发现有效引用则停止并说明需迁移到官方 2.0 模板。不要删除字符串或改 loader 冒充迁移。配置文件布局调整不等于运行时升级。
+先按 [项目形态与范围规则](./knowledge/project-workflows.md#step-1-判断项目形态与部署范围) 读取实际代码/入口，再结合用户指令确定纯前端、全栈或纯后端范围；空 `backend/` 不算后端实现。有真实后端源码但缺少配置/依赖的工程仍是全栈或纯后端，发布前报告待完善项，不静默降为纯前端。纯前端不自动补建后端。
 
-详细步骤见 [backend-operations.md](./knowledge/backend-operations.md) 的「通用子流程: 读取项目配置」。
+纯前端不要求创建主配置或提供 AppSecret、Go、数据库；主配置不存在时使用实际 qdmp.json，存在时 CLI 直接优先读主配置公开字段。主配置坏或所选环境身份缺失不回退。全栈读取两侧所需配置，纯后端只读取后端配置。明确仅前端时不运行另一侧的构建，明确仅后端时不检查前端 loader。
+
+涉及前端或完整项目时，执行前检查前端 loader、依赖和源码引用；仅允许 EMP。纯后端路由只读取后端配置与模板，不以缺少前端文件或 loader 为阻断。搜索 effuse / echo-effuse / effues（含 npm 别名、锁文件、导入与构建脚本），发现有效引用则停止并说明需迁移到官方 2.0 模板。不要删除字符串或改 loader 冒充迁移。配置文件布局调整不等于运行时升级。
+
+本次范围包含后端时，读取配置详情见 [backend-operations.md](./knowledge/backend-operations.md)；纯前端在实际前端目录按 CLI 构建/关联流程操作，跳过该文档的后端凭据和 runtime 要求。
 
 关键变量：
 - `projectRoot`：小程序根目录
 - `sourceDir`：`{projectRoot}/backend/`
-- `mongoUri` / `mongoDatabase`：来自 `qdmp-config.json` 的 `mongodb` 字段（可选，仅后端使用）
+- `mongoUri` / `mongoDatabase`：来自主配置的 mongodb；省略/null/双空表示未启用，部分填写错误，启用后 database=AppID
+- `variables`：主配置中的后端专用 JSON 对象，不作为 process.env 或前端变量；变化后重新打包
 
 ### 第三步：PRD 检查（仅开发意图时执行）
 
-开发前必须先执行 [依赖栈兜底检查（不通过必须停止）](./knowledge/project-workflows.md#依赖栈兜底检查不通过必须停止)，新建和已有项目均适用。结合 loader、模板来源和实际构建链判断工程类型；通用依赖或 package.json.version 不能单独作为 1.0 判据。绑定和上传前核对本地与平台 loader 一致，新建 2.0 项目必须为 EMP。
+涉及前端开发前必须先执行 [依赖栈兜底检查（不通过必须停止）](./knowledge/project-workflows.md#依赖栈兜底检查不通过必须停止)，新建和已有项目均适用。结合 loader、模板来源和实际构建链判断工程类型；通用依赖或 package.json.version 不能单独作为 1.0 判据。绑定和上传前核对本地与平台 loader 一致，新建 2.0 项目必须为 EMP。
 
 **判断用户意图**：若当前请求属于以下开发类意图，执行 PRD 检查；否则跳过直接进入操作路由。
 
@@ -178,7 +193,7 @@ questions:
 - 数据建模（操作 7）
 
 运维类意图（跳过 PRD 检查）：
-- 查日志、查版本、回滚、查状态、部署/发版、仅启动真机调试、设置体验版
+- 查日志、查版本、回滚、查状态、部署/发版、后端模板初始化/打包、仅启动真机调试、设置体验版
 
 **PRD 检查逻辑**：检查 `{projectRoot}/doc/prd.md` 是否存在：
 - 存在 → 继续，PRD 将在后续流程中按需读取
@@ -208,22 +223,26 @@ questions:
 
 用户明确要求“真机调试 / 手机扫码运行”或“上传体验版 / 设置体验版”时，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`，再按意图读取 [真机调试](./knowledge/development-guide.md#真机调试) 或 [设置体验版](./knowledge/development-guide.md#设置体验版)。这两类请求是前端操作，不自动部署后端。普通上传仍保持原有行为。
 
-根据用户意图匹配操作，详细步骤见 [backend-operations.md](./knowledge/backend-operations.md)：
+后端正式发布按 [backend-production.md](./knowledge/backend-production.md) 执行，其余操作见 [backend-operations.md](./knowledge/backend-operations.md)。已有当前范围的明确发布授权时连续执行；仅初始化或分析不授权生产写入。
+
+根据用户意图匹配操作：
 
 | 关键词                                                                 | 操作                                                |
 | ---------------------------------------------------------------------- | --------------------------------------------------- |
 | 真机调试、手机扫码运行、真机日志                                      | `qdmp debug`，见 development-guide.md 的真机调试 |
 | 上传体验版、上传当前代码给体验人员扫码                                | 构建后 `qdmp upload --experience`，见 development-guide.md 的设置体验版 |
 | 将已上传版本设为体验版、切换体验版本                                  | `qdmp experience --version <实际版本号>`，无需重新构建上传 |
-| 部署、打包部署、上线、发布（无前端/后端限定）                          | 流程四：打包部署（全量，见 project-workflows.md）   |
-| 部署后端、发版后端、后端上线、只部署后端、部署新版本、release          | 操作 1: publish（仅后端）                           |
+| 部署、打包部署、上线、发布、release（未指定范围） | 流程四：先识别实际项目形态，纯前端仅前端、全栈先后端再前端、纯后端仅后端 |
+| 全栈发布、前后端一起上线 | 流程四：核对两侧有效，后端通过 Skill 验收后再前端上传/提审 |
+| 初始化后端、生成稳定后端模板 | `qdmp backend init --runtime go`，见 backend-production.md |
+| 部署后端、发版后端、后端上线、只部署后端、后端 release | 操作 1: publish（仅后端）                           |
 | 部署前端、上传前端、前端上线、只部署前端                               | 流程四：打包部署（仅前端，见 project-workflows.md） |
 | 查看版本、版本列表、版本历史、发布记录                                 | 操作 2: versions                                    |
 | 回滚、回退、恢复到某版本、rollback                                     | 操作 3: rollback                                    |
 | 查看日志、服务日志、启动失败、报错、logs、排查问题                     | 操作 4: logs                                        |
 | 部署状态、当前版本、线上版本、运行状态、status                         | 操作 5: status                                      |
 | 部署后端测试环境、本地跑后端、调试后端、跑一下后端、test-deploy        | 操作 6: test-deploy（仅后端）                       |
-| 部署测试环境、本地测试、本地运行、本地调试、启动开发环境               | 流程三：开发调试（全量，见 project-workflows.md）   |
+| 部署测试环境、本地测试、本地运行、本地调试、启动开发环境 | 流程三：按实际形态选择前端/全栈/后端，不自动生成后端 |
 | 数据建模、设计数据、我要存什么数据、数据库设计、定义数据结构、管理数据 | 操作 7: schema                                      |
 
 只说“设置体验版 / 给体验人员扫码”且上下文无法判断目标时，确认是上传当前代码还是使用已上传版本；不要默认重复上传。其他意图不明确时，使用 AskUserQuestion 让用户选择。
@@ -234,12 +253,9 @@ questions:
 
 ## 操作触发规则
 
-**所有操作只能由用户明确、主动发出指令时才触发，严禁自动触发：**
-- 用户只是在修改代码，没有说"发版"、"部署"等关键词 → 不触发
-- AI 完成代码编写、bug 修复后 → **绝对禁止**自动衔接发版、部署、调试部署
-- 用户说"帮我改一下然后部署" → 代码改完后**停下来汇报**，等用户再次明确发出部署指令
+只有用户已明确授权相应操作时才执行，不因完成代码修改就自行衔接发布。仅要求分析、生成模板、打包或查看 diff，不构成正式发布授权。
 
-**判断标准**：用户当前这条消息的核心意图必须是执行上述操作之一。即使同一句话中同时提到代码修改和部署，也必须分步执行：先改代码，停下来汇报，等确认后再部署。
+用户明确要求“修改后部署”“自动正式发布”且目标、范围与发布内容清楚时，授权覆盖本次编排；Agent 完成检查、展示可审查的目标和 diff 后连续执行，不要求用户逐步重发指令。范围变化、异常差异或缺少必要决定时才补充确认，不能用 CLI 执行成功替代 Skill 的验收。
 
 ---
 
@@ -319,6 +335,10 @@ qd.navigateTo({
 
 ### 后端（`backend/`）
 
+默认新项目从官方模板取得空的 qdmp-config.json，CLI 保留内容并设置 0600 权限与忽略规则；克隆流程移除模板 .git，主配置在生成项目中未被跟踪。旧项目升级/配置初始化只在主配置缺失时生成，并一次性继承实际根式或分离前端的公开字段和支持的旧私密配置；已有主配置保留，源码不搬动，不长期双向同步。日常 CLI 直接优先读取主配置公开字段，旧前端 AppID 不同不要求先 sync；build 内部适配公开 qdmp.json，打包直接用主配置，config sync 仅可选。编译产物身份不属于主配置对应环境的有效身份映射时重新 build，不能只改 ZIP 身份；旧非 EMP 源码须真实迁移。秘密和后端 variables 不得进入前端。
+
+修改前读取 `backend/README.md` 和 [生产模板约束](./knowledge/backend-production.md)。保留单入口构建、健康/就绪检查和配置加载；源码嵌入配置始终为空，密钥只进入打包器的私有副本。数据库模型复用模板入口，不硬编码凭据或自动改写线上 URI。
+
 修改后端代码前，若项目根目录存在 `qdmp-schema.json`，必须先读取它，确保代码直接引用已定义的数据模型，不重复定义字段。新增数据存储需求时，先更新 `qdmp-schema.json`，再生成对应 model 代码。
 
 后端调用千岛 OpenAPI 时，可以使用官方 [qdmp-server-sdk](https://github.com/EchoTechFE/qdmp-server-sdk) 简化认证授权、Token 生命周期管理和类型安全的业务接口调用，安装及用法见仓库 README。
@@ -332,8 +352,14 @@ Agent 对话中需要登录或用户要求登录时，先读 [Agent 对话登录
 | 命令                              | 说明                                                                          |
 | --------------------------------- | ----------------------------------------------------------------------------- |
 | `qdmp-cli list`                   | 查看可用模板                                                                  |
-| `qdmp-cli create <项目名> -t default` | 创建 2.0 项目；创建后必须通过模板自检和依赖栈检查                              |
-| `qdmp-cli init -a <id>`           | 关联小程序                                                                    |
+| `qdmp create <项目名>` / `qdmp create <项目名> -t default` | 单次拉取全栈模板，保留自带空主配置并设置权限/忽略规则，必须自检 |
+| `qdmp backend init --runtime go --json` | 为根式/分离前端添加后端；缺主配置时一次性继承，已有内容不覆盖 |
+| `qdmp backend package --json` | 私有生产归档、平台单入口构建与 SHA-256 |
+| `qdmp backend upload --archive <zip> --sha256 <摘要> --version <版本> --json` | 同字节上传 temp-diff / 正式版本 |
+| `qdmp backend deploy --archive <zip> --sha256 <摘要> --version <vX.Y.Z> --description "<说明>" --json` | 先审查 diff，再追加 `--review-digest` 发布；仅返回 Pipeline 事实，Agent 通过宿主 MCP 完成验收 |
+| `qdmp config init --json` | 为旧项目无损补齐真实主配置，不改后端、不覆盖已有配置 |
+| `qdmp config sync --json` | 可选：更新本地公开兼容文件；日常命令直接读取主配置，无需先执行 |
+| `qdmp-cli init -a <id>`           | 初始化空目标身份；已配置时拒绝覆盖，保留 MongoDB                                                                    |
 | `pnpm install`                    | 安装依赖                                                                      |
 | `pnpm run dev`                    | 开发模式                                                                      |
 | `pnpm run build`                  | 打包构建（本地调试）                                                          |
@@ -344,10 +370,11 @@ Agent 对话中需要登录或用户要求登录时，先读 [Agent 对话登录
 | `qdmp-cli upload -d "<版本描述>"` | 上传部署；skill 自动总结当前版本变化并传入描述                                |
 | `qdmp upload --experience -d "<版本描述>"` | CLI ≥0.1.32；上传后自动设置本次版本为体验版并输出二维码，无需手填版本号 |
 | `qdmp experience --version <实际版本号>` | CLI ≥0.1.32；将已上传的开发版本设为体验版，不重新构建上传 |
+| `qdmp review --version <前端版本号> --auto-publish --json` | 当前 CLI 支持时提审并选择审核通过后平台自动发布；提审成功不代表已上线 |
 | `qdmp debug` | CLI ≥0.1.32；构建后启动 EMP 真机扫码调试，持续输出日志 |
 | `qdmp debug --no-build --json` | 使用已有 EMP 产物，输出二维码和设备日志的 NDJSON 事件 |
 
-创建命令禁止省略 `-t`（CLI ≤0.1.11、0.1.13、0.1.15 的默认模板就是 1.0）；禁止使用 `-t qdmp`（指向 `frontend/miniapp-taro-template`，即 effuse 版 1.0）。创建后必须读取 `qdmp.json` 确认 `loader` 为 `EMP`，并确认模板信息没有「默认模版(1.0)」或 `miniapp-taro-template`；不通过就停止并报告，禁止手改配置硬转。完整步骤见 [创建项目](./knowledge/project-workflows.md#流程一创建项目)。
+新创建沿用原命令，默认从 `git@github.com:EchoTechFE/qdmp-taro-template.git` 获取唯一全栈模板，不增加后端选择参数；可省略 -t 或显式指定 default。创建后检查 frontend/backend 布局、EMP 实际依赖和后端运行契约。上游全栈变更须先合并后再发布 CLI，旧布局校验失败时停止，不拼装后端或手改 loader 放行。历史纯前端继续兼容，只在用户要求时从同一仓库提取后端升级。完整步骤见 [创建项目](./knowledge/project-workflows.md#流程一创建项目)。
 
 ## 常见问题
 
@@ -363,7 +390,7 @@ Agent 对话中需要登录或用户要求登录时，先读 [Agent 对话登录
 
 编码涉及千岛 HTTP OpenAPI 时，从实际代码调用收集接口路径和方法，并通过 qdmp-cli 的 OpenAPI 能力清单查询每个接口唯一的 `id/key`，只记录真实使用的接口。
 
-待申请的多个 key 按稳定顺序编码为可逆的 `requiredApis` 短字符参数，并使用 `qdmp-cli openapi apply-url --env <env> --json` 生成申请链接。解码后 key 的数量、值和对应关系必须完全一致，参数需进行 URL 编码。
+待申请的多个 key 按稳定顺序编码为可逆的 `requiredApis` 短字符参数，并使用 `qdmp-cli openapi apply-url --env <env> --json` 生成申请链接。显式传入 --app-id 时沿用原参数优先规则，不要求与当前项目主配置一致，也不因主配置损坏而拒绝该显式目标。解码后 key 的数量、值和对应关系必须完全一致，参数需进行 URL 编码。
 
 权限页检测到合法 `requiredApis` 后，解析唯一 key，加载对应清单，默认勾选用户尚未拥有且需要申请的接口并主动打开申请能力弹框。没有 `requiredApis` 时保持原有页面行为，不触发额外的全量 OpenAPI/ability 分页请求。
 
