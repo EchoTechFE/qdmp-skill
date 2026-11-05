@@ -25,7 +25,7 @@ Codex 的对应入口为 `codex mcp add qdmp-gitlab --url https://openapi.qianda
 | 工具名 | 额外参数 | 行为与约束 |
 | --- | --- | --- |
 | `qdmp_gitlab_repo_exists` | 无 | 检查仓库初始化状态。 |
-| `qdmp_gitlab_init_repo` | `appName: string`、`runtime: string` | 写入：初始化仓库。平台接受 `go` / `nodejs22` / `python312`；本稳定模板只能传 `go`。runtime 不符不能自动重置仓库。 |
+| `qdmp_gitlab_init_repo` | `appName: string`、`runtime: string` | 写入：初始化仓库。平台契约接受 `go` / `nodejs22` / `python312`；当前 CLI 发布适配支持 `go` / `nodejs22`，按规范化 `config.runtime` 传入。Python 尚无本 CLI 适配，不能自动改为 Go。已有仓库 runtime 不符时停止，不能自动重置。 |
 | `qdmp_gitlab_list_versions` | 无 | 查询已发布版本，用于版本唯一性及并发检查。 |
 | `qdmp_gitlab_get_version` | `version: string` | 获取指定 `vX.Y.Z` 的真实详情。 |
 | `qdmp_gitlab_diff` | `ref?: string`、`version?: string` | 比较已上传归档与远端；默认分别为 `master`、`temp-diff`，正式流程显式传入。 |
@@ -36,7 +36,7 @@ Codex 的对应入口为 `codex mcp add qdmp-gitlab --url https://openapi.qianda
 | `qdmp_k8s_deployed_version` | 无 | 通过镜像 tag 查询运行版本；不能单独证明部署成功或两个副本均 Ready。 |
 | `qdmp_k8s_logs` | `environment?: "production"`、`type?: string`、`duration?: string`、`limit?: number` | 正式流程显式传 `environment="production"`；`type` 为 `all` / `startup` / `error`，`duration` 为 `5m` / `30m` / `1h` / `6h` / `24h`，默认 `30m`；条数默认及最大均为 100。 |
 
-本清单只描述生产参数，不将工具的开发环境扩展带入小程序生产模板。K8s Ready 检查没有独立工具在此清单中，使用实际 deploy Job 日志证据；工具未提供的字段不能自行补造。当前也没有通用 KENV / GitLab 变量写入 MCP，不能声称 `publish` 会自动配置全部运行变量。
+本清单只描述生产参数，不将工具的开发环境扩展带入小程序生产模板。runtime 枚举仅确认 MCP 接口接受该运行时，不能代替某个应用的构建和启动验收。K8s Ready 检查没有独立工具在此清单中，使用实际 deploy Job 日志证据；工具未提供的字段不能自行补造。当前也没有通用 KENV / GitLab 变量写入 MCP，不能声称 `publish` 会自动配置全部运行变量。Go / Node 的变量由打包器分别注入私有 Go 副本或生成 `.qdmp-runtime-config.json`，与 MCP 发布同字节归档配合。
 
 ## 归档上传
 

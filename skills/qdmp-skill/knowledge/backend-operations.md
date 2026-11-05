@@ -59,15 +59,17 @@
 
 ## 通用子流程: 读取项目配置
 
-先按 [项目形态与范围](./project-workflows.md#step-1-判断项目形态与部署范围) 确定本次操作。新 create 默认获取带空主配置的全栈模板，CLI 保留内容并设置 0600 权限与忽略规则；没有主配置的历史纯前端仍直接读取实际 qdmp.json，不要求 AppSecret、Go 或数据库。主配置存在时，日常命令直接优先使用其公开字段，前端副本中的旧 AppID 不触发手动同步前置；主配置损坏或所选环境身份缺失不能回退。
+先按 [项目形态与范围](./project-workflows.md#step-1-判断项目形态与部署范围) 确定本次操作。根目录有 `qdmp.json` 即为旧项目：同级有 `backend/` 目录为全栈，无该目录为纯前端；即使后端为空或入口不完整，也不得改判纯前端。先完成 [旧项目强制迁移](./project-workflows.md#旧项目强制迁移)，再读取新版根主配置。小程序只支持纯前端与全栈两种形态，没有纯后端项目。
 
-范围包含后端时，读取真实根 qdmp-config.json 的 appId/runtime/environment、后端 variables 和可选 MongoDB；上传/发布还需真实 AppSecret。CLI 可从根目录或 backend/ 定位同一文件，显式 --config 只读取指定文件。实际前端源码可在根目录，也可在 frontend/；不为读取配置搬动项目。
+所有新版项目均包含根 `qdmp-config.json` 与 `frontend/`。日常命令优先使用主配置中的公开字段，主配置损坏或所选环境身份缺失不能回退旧身份；前端副本中的旧 AppID 不触发手动同步前置。纯前端只要求公开身份有效，不要求 AppSecret、Go 或数据库。范围包含后端时，读取主配置的 appId/runtime/environment、后端 variables 和可选 MongoDB；上传/发布还需真实 AppSecret。CLI 可从根目录或 `backend/` 定位同一文件，显式 `--config` 只读取指定文件。
 
 ### 一次性初始化与旧项目升级
 
-- 历史纯前端需要添加后端时，在项目根目录执行 `qdmp backend init --runtime go`，从同一 qdmp-taro-template 仓库临时提取后端；只在主配置缺失时，从实际 qdmp.json 一次性继承 appId/devAppId/loader/name/latest，并保全 AppSecret、MongoDB、variables 等已支持的旧后端字段。
-- 已有主配置逐字保留，不以新的前端副本覆盖；这不是长期双向同步。新增主配置为 0600 并忽略提交。
-- 已有 backend/ 但缺少主配置时，用 `qdmp config init --json` 无损补齐，不删除后端。直接克隆当前官方模板已带空主配置，无需补齐。
+- 旧项目迁移先盘点旧根配置和后端实际配置，提取 appId/devAppId/loader/name/latest、AppSecret、runtime、MongoDB、environment、variables 等支持字段。多来源冲突先报告字段与来源，不能静默覆盖；未知字段不得自动公开。
+- 根式前端必须移入 `frontend/`，全栈保留 `backend/` 及已有 Go / Node 业务语言。Go 补齐官方运行契约；Node 规范为 `nodejs22`，补齐入口、锁文件和配置 helper，不强制转 Go。Python 和未知 runtime 当前报告不支持，保留原实现。纯前端保持没有后端，不为满足目录规范生成无用服务。
+- 已有主配置先逐字段核对并保留既有值，不以新的前端副本覆盖；迁移补齐缺项时只写已核实来源。这不是长期双向同步。主配置设为 0600 并忽略提交。
+- `qdmp config init --json` 仅是配置初始化工具，不代表目录、运行时和配置迁移全部完成。直接克隆当前官方模板已带空主配置，无需补齐。
+- 已迁移的新结构纯前端明确需要增加后端时，才执行 `qdmp backend init --runtime go`，从同一模板仓库提取后端；已有 `backend/` 时禁止覆盖或删除后重建。
 - build 内部生成/同步公开 qdmp.json，打包直接读取主配置。config sync 仅是可选的本地兼容文件更新工具，不是日常调用的必经步骤。
 
 完整字段契约见 [初始化与配置](./backend-production.md#初始化与配置)。MongoDB 省略/null/uri 与 database 双空时未启用，部分填写错误；启用后 database=AppID。variables 是后端 JSON 对象，不转为 process.env，不导入前端；生产配置改变后重新打包，不能复用旧 configSha256。
@@ -75,7 +77,7 @@
 **关键变量**：
 
 - projectRoot：本次项目根目录；sourceDir：其 backend/。
-- frontendDir：实际根式或分离的前端目录，由 CLI 定位。
+- frontendDir：固定为 `{projectRoot}/frontend`；发现根式旧入口先迁移。
 - mongoUri/mongoDatabase：本地主配置中完整启用的数据库配置，不猜测主机或凭据。
 
 ---
@@ -85,21 +87,21 @@
 业务项目的 `qdmp-config.json` 可含 AppSecret 与数据库密码，不能提交已填写的配置或将文件放入上传包；官方模板仓库仅跟踪所有凭据为空的初始文件。create 会移除模板 .git 并保留忽略规则，生成项目中的主配置未被跟踪。生产运行所需字段仅由打包器注入私有副本，发布包和镜像均按秘密制品保护：
 
 - 确保 `{projectRoot}/.gitignore` 存在且包含一行 `qdmp-config.json`；不存在则创建，已存在但缺该行则追加。
-- **后端打包**：稳定 Go 模板只使用 `qdmp backend package`，检查排除配置、密钥和本地目录；源文件中的配置保持为空。生成的秘密 ZIP 及镜像按受保护制品处理，不能提交仓库。
-- **前端打包**：在识别出的实际前端目录执行 `qdmp build` / `qdmp-cli upload`。分离结构的主配置位于上级；根式纯前端工程也不能把后端秘密配置放进源码或产物。构建前排除/隔离误放的敏感配置，不要求纯前端补建该文件。
+- **后端打包**：Go / Node 均使用 `qdmp backend package`，按 runtime 构建并注入私有配置，排除原始主配置、密钥和本地目录。Go 源配置为空，Node helper 无秘密，生成的 `.qdmp-runtime-config.json` 只存在于私有 staging/归档。秘密 ZIP 及镜像按受保护制品处理，不能提交仓库。
+- **前端打包**：在迁移后的 `frontend/` 执行 `qdmp build` / `qdmp-cli upload`，主配置位于上级。纯前端同样需要根主配置，但无需填写后端字段。构建前检查并隔离误放的敏感配置，不能把后端秘密配置放进源码或产物。
 - `frontend/qdmp.json` 只投影 appId/devAppId/loader 等公开白名单，不含 AppSecret、MongoDB、variables 或 runtime，可正常提交；未知主配置字段保留原文件，不自动导入前端或保证后端注入。
 
 ---
 
 ## 通用子流程: 仓库初始化（publish 共用）
 
-使用 [MCP 工具契约](../references/backend-mcp.md) 中的 `qdmp_gitlab_repo_exists`。不存在时才调用 `qdmp_gitlab_init_repo`；稳定模板的 runtime 为 `go`。仓库存在且 runtime 不一致时停止分析迁移，不自动重新初始化已有仓库。
+使用 [MCP 工具契约](../references/backend-mcp.md) 中的 `qdmp_gitlab_repo_exists`。不存在时才调用 `qdmp_gitlab_init_repo(runtime=config.runtime)`，规范化值为 `go` 或 `nodejs22`。仓库存在且 runtime 与本次配置、manifest 不一致时停止报告，不自动重新初始化已有仓库或转换业务语言。
 
 ---
 
 ## 通用子流程: 本地文件打包上传（publish/diff 共用）
 
-稳定 Go 模板统一执行 [构建并冻结发布包](./backend-production.md#构建并冻结发布包)：
+Go / Node 均执行 [构建并冻结发布包](./backend-production.md#构建并冻结发布包)，CLI 按实际 runtime 分流：
 
 ```bash
 qdmp backend package --json
@@ -108,7 +110,7 @@ qdmp backend upload --archive <本次ZIP> --sha256 <本次SHA256> --version temp
 
 从 package 结果读取路径、归档 SHA-256 和 manifest 的 configSha256；生产配置改变后重新打包，不能复用旧包。审查 `qdmp_gitlab_diff(ref="master", version="temp-diff")` 后，用同一归档、同一 SHA-256 上传正式版本。禁止手工 `zip -r`、两次上传之间重新打包、从项目 MCP 配置猜上传主机，或在 curl 参数暴露 AppSecret。HTTP 上传端点和成功判定见 [归档上传](../references/backend-mcp.md#归档上传)。
 
-已有 Node.js / Python 后端不受新的 Go 模板打包器支持。保留其已验证工程和平台工具，使用该工程受控的打包与配置流程；没有可验证流程时停止并说明缺口，不临时退回通用 ZIP 或声称通过 Go 单入口门禁。
+旧 Node 后端先按 [原 runtime 契约迁移](./project-workflows.md#step-m4按原-runtime-迁移后端运行契约) 接入统一目录和配置后直接使用 Node 发布适配，不重写为 Go。Python 或其他语言当前没有 CLI 发布适配，明确报告缺口，不冒充 Go/Node 或绕过构建校验。
 
 ---
 
@@ -125,11 +127,11 @@ CLI deploy 成功仅返回 Pipeline 事实和 acceptance_required，不自动调
 `qdmp-schema.json` 是业务数据定义来源；修改前先读已有后端 README、配置加载和数据库入口，复用真实 API，不重复创建另一套数据库连接。
 
 1. 有持久化需求时，确认本地 `qdmp-config.json` 已配置 MongoDB；生产数据库名等于 AppID。缺少凭据时由用户在本地安全填写，不要求在聊天中提供密码。
-2. 模型接收模板已初始化的数据库对象或业务仓储接口；不要从模型直接读取主配置，也不要将 URI、密码或 AppSecret 写入源码常量。现有 Node.js / Python 项目使用其环境注入契约，同样禁止源码硬编码。
-3. Go 平台只编译 `main.go`。新模型放进明确导入的 package，接入真实启动和路由调用；不要依靠同目录额外 `init.go` 或仅 `go build .` 成功。保留模板生产配置和就绪检查，新增必需索引初始化失败时不能报 ready。
+2. 模型接收后端已初始化的数据库对象或业务仓储接口；不要从模型直接读取主配置，也不要将 URI、密码或 AppSecret 写入源码常量。旧 Node 配置读取改为统一 helper，保持原数据语义，不复制旧源码中的硬编码凭据。
+3. Go 平台只编译 `main.go`，新模型放进明确导入的 package，接入真实启动和路由调用；不要依靠同目录额外 `init.go` 或仅 `go build .` 成功。Node 模型通过原 `index.js` 启动链真实加载，不因目录迁移改变业务模块。两者保留配置和就绪检查，新增必需索引初始化失败时不能报 ready。
 4. 根据 Schema 创建必要索引，记录迁移影响；禁止仅因 Schema 未列出就自动删除线上已有索引、集合或数据。破坏性变更先生成可审查迁移计划，按已有授权执行。
 5. 只存媒体引用与必要元数据，后端校验所有写入路径；业务重试和批量导入也遵守 [云服务使用规范](#云服务使用规范)。
-6. 运行针对性模型检查和 `go test ./...`，再用 `qdmp backend package --json` 验证单入口构建。生成后报告实际新增/修改模型、索引与接入点，不展示配置值。
+6. 运行针对性模型检查：Go 使用 `go test ./...`，Node 使用已有测试和配置 smoke；再用 `qdmp backend package --json` 验证对应 runtime 的构建与配置投影。生成后报告实际新增/修改模型、索引与接入点，不展示配置值。
 
 本地调试通过进程环境或项目已有受保护配置切换，禁止自动重写源码里的生产数据库地址；正式打包重新读取生产配置，不依赖把测试地址替换回去。
 
@@ -137,7 +139,7 @@ CLI deploy 成功仅返回 Pipeline 事实和 acceptance_required，不自动调
 
 ## 操作 1: publish（发版）
 
-读取配置、实际 runtime 和本次用户授权。稳定 Go 后端完整执行 [稳定后端模板与正式发布](./backend-production.md) 的构建、冻结、diff、正式上传、publish、master 合并及上线验收；工具参数见 [MCP 清单](../references/backend-mcp.md)。
+读取配置、实际 runtime 和本次用户授权。Go / Node 后端完整执行 [后端运行契约与正式发布](./backend-production.md) 的构建、冻结、diff、正式上传、publish、master 合并及上线验收；工具参数见 [MCP 清单](../references/backend-mcp.md)。
 
 用户已明确授权当前范围的正式发布时，可生成说明并选择未占用的 patch 版本（无历史版本默认 v1.0.0，最新 v1.2.3 则默认 v1.2.4），展示具体目标、版本、制品摘要和 diff 后连续执行；用户已指定版本则使用该版本并验证唯一性。仅分析、创建模板或打包不等于授权生产发布；缺少授权时在可审查结果上取得一次决定，不强制每一步重复问版本和确认。
 
