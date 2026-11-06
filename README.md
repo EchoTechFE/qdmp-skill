@@ -268,17 +268,17 @@ qdmp create myApp -t default
 
 发布规范与验收放在本仓库 Skill；Agent 判断项目形态、范围并串联工具，CLI 负责执行和返回事实，MCP/API 服务由平台实现。
 
-已有根式或分离的前端项目，在项目根目录执行 `qdmp backend init --runtime go` 升级全栈，该命令拒绝覆盖后端；仅在主配置缺失时生成受保护的根 `qdmp-config.json`，已有主文件逐字保留。同一全栈模板中的稳定后端仅支持 Go；不带开发存储、Collector 或浏览器依赖。默认 `qdmp backend package --json` 在私有副本注入配置并验证平台 `main.go` 构建，保留源码无密钥。
+旧项目先执行 `qdmp config migrate --check --json` 和 `qdmp config migrate --json`，统一根主配置、`frontend/` 和真实 EMP 前端，保留原后端语言与业务。已迁移的纯前端需要新增后端时，在项目根目录执行 `qdmp backend init --runtime go`，从官方模板添加 Go 后端，已有后端时拒绝覆盖。新建模板默认 Go；已有 Node 可按 `nodejs22` 发布，不要求改写为 Go。后端就绪状态单独记录，仅前端操作不因后端 pending 失败。
 
-Agent 使用 `qdmp backend deploy --archive <zip> --sha256 <摘要> --version <vX.Y.Z> --description "<说明>" --json` 自动检查冲突并返回 diff / reviewDigest；审查通过后追加 `--review-digest`，自动完成同字节正式上传、MCP publish 和 master 合并跟踪。命令成功只返回 Pipeline 事实和 acceptance_required，不自动查询 Aliyun/K8s；Agent 通过宿主 MCP 收集实际版本、Job/副本和日志，再验证健康结果，才可判断上线完成。用户已授权当前正式发布时连续执行，单独创建模板或打包不会上线。详见 [稳定后端与正式发布](skills/qdmp-skill/knowledge/backend-production.md)。研发分支能力需先构建验收，使用发布版时先核对实际 `--help`，不要假定旧 CLI 支持新命令。
+Agent 使用 `qdmp backend deploy --description "<说明>" --json`，由 CLI 内部构建当前最新 Go / Node 代码、校验归档与配置摘要、自动选择新补丁版本并直接上传、MCP publish 和跟踪 master 合并。默认不调用 diff，只有显式 `--review` 才启用 diff / reviewDigest 两阶段审查。命令成功只返回 Pipeline 事实和 acceptance_required，不自动查询 Aliyun/K8s；Agent 通过宿主 MCP 收集实际版本、Job/副本和日志，再验证健康结果，才可判断上线完成。用户已授权当前正式发布时连续执行，不再询问版本；单独创建模板或打包不会上线。详见 [后端运行与正式发布](skills/qdmp-skill/knowledge/backend-production.md)。研发分支能力需先构建验收，使用发布版时先核对实际 `--help`，不要假定旧 CLI 支持新命令。
 
-新 create 只从 `git@github.com:EchoTechFE/qdmp-taro-template.git` 拉取一次完整模板并校验，不拼装内置后端或克隆第二仓库。官方模板直接跟踪空的 qdmp-config.json：AppID、AppSecret、MongoDB 字段为空，variables 为 {}。CLI 保留文件内容，只设置 0600 权限与忽略规则；克隆流程会移除模板 .git，因此生成项目中的主配置未被跟踪。直接 git clone 也已有主配置，无需 config init；模板仓库只提交空配置，禁止提交实际凭据。历史纯前端继续兼容，升级全栈时只在主配置缺失时一次性继承实际 qdmp.json 的公开身份及支持的旧后端配置，已有主配置和根式源码位置保持。根主配置兼容 appId/appSecret/runtime/mongodb，variables 为后端 JSON 对象。CLI 日常命令直接优先读取主配置公开字段；build 内部更新兼容文件，config sync 只是可选工具。主配置坏或所选环境身份缺失不回退，编译产物身份不属于主配置对应环境的有效身份映射时重新 build。详见 [配置优先级](skills/qdmp-skill/knowledge/backend-production.md#配置优先级与前端兼容)。
+新 create 只从 `git@github.com:EchoTechFE/qdmp-taro-template.git` 拉取一次完整模板并校验，不拼装内置后端或克隆第二仓库。官方模板直接跟踪空的 qdmp-config.json：AppID、AppSecret、MongoDB 字段为空，variables 为 {}。CLI 保留文件内容，只设置 0600 权限与忽略规则；克隆流程会移除模板 .git，因此生成项目中的主配置未被跟踪。直接 git clone 也已有主配置，无需 config init；模板仓库只提交空配置，禁止提交实际凭据。旧项目迁移时提取旧 qdmp.json 及已识别后端配置的身份、MongoDB 和 variables 到根主配置，并将前端工程移入 frontend/；项目级元数据与后端保留，配置冲突先报告，不静默覆盖。根主配置支持 appId/appSecret/runtime/mongodb，variables 为后端 JSON 对象。CLI 日常命令直接优先读取主配置公开字段；build 内部更新兼容文件，config sync 只是可选工具。主配置坏或所选环境身份缺失不回退，编译产物身份不属于主配置对应环境的有效身份映射时重新 build。详见 [配置优先级](skills/qdmp-skill/knowledge/backend-production.md#配置优先级与前端兼容)。
 
 模板全栈变更须先合并到上游默认分支，再发布相应 CLI；当前改动在研发分支准备审查，不代表主分支已生效。旧模板布局不符时应校验失败并停止，不临时拼装。
 
 ### 部署范围与前端正式上线
 
-Agent 先识别实际代码形态，再结合用户范围：纯前端只构建/上传前端，不要求 AppSecret、Go 或后端；全栈先完成后端发布与 Skill 验收，再上传前端；纯后端只运行后端工具。有后端实现但配置缺失时标记全栈待配置，不能降级为纯前端；仅空 backend 目录不算后端。具体工具链见 [部署分流](skills/qdmp-skill/knowledge/project-workflows.md#step-1-判断项目形态与部署范围)。
+Agent 按 backend/ 目录是否存在识别项目，再结合用户范围：纯前端只构建/上传前端，不要求 AppSecret、Go 或后端；全栈默认先完成后端发布与 Skill 验收，再上传前端。不存在纯后端小程序；明确仅后端时，只操作全栈项目的 backend/。空 backend/ 或配置缺失仍为全栈待完善，不能降级为纯前端；明确仅前端时，不要求后端构建或配置接入通过。具体工具链见 [部署分流](skills/qdmp-skill/knowledge/project-workflows.md#step-1-判断项目形态与部署范围)。
 
 `upload` 仅上传版本。需要正式前端上线时，还须按实际版本设置体验版并提审；当前 CLI 可用 `qdmp review --version <实际版本号> --auto-publish --json` 选择审核通过后由平台发布。提审成功只证明已进入审核，最终上线以平台结果为准。
 
@@ -292,7 +292,7 @@ Agent 先识别实际代码形态，再结合用户范围：纯前端只构建/�
 2. 创建项目 → qdmp create myApp（默认完整全栈模板，也可显式 -t default）
 3. 配置与依赖 → 本地填写模板自带的 qdmp-config.json，CLI 直接读取；在实际前端目录安装依赖
 4. 开发调试 → 按前后端各自 README 启动和验证
-5. 后端正式发布 → backend package 冻结归档，backend deploy 审查 diff 后提交 reviewDigest，完成全部上线验收
+5. 后端正式发布 → backend deploy --description "<说明>" 内部构建、校验归档并直接发布，完成全部上线验收；--review 为可选审查
 6. 前端构建与登录 → 在 frontend/ 执行 qdmp build，按需 qdmp login --agent --env prod
 7. 前端上传 → 自动总结本次改动并执行 qdmp-cli upload --description "<版本描述>"
 ```

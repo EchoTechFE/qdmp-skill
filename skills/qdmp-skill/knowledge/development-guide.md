@@ -26,7 +26,7 @@ myApp/
 
 新 create 默认单次拉取原仓库全栈模板，自带空 qdmp-config.json；CLI 保留文件内容，只设置 0600 权限与忽略规则，克隆流程移除模板 .git。直接 git clone 也已有主配置，无需 config init；官方模板只提交空凭据。
 
-旧项目根目录存在 `qdmp.json` 时，同级无 `backend/` 为纯前端、有该目录为全栈，不以入口是否完整改变分类，也没有纯后端形态。任何开发、构建、真机调试或部署前，先执行 `qdmp config migrate --check --json` 生成计划，再执行 `qdmp config migrate --json`，将前端工程移入 `frontend/`、提取根主配置，并按 [旧项目强制迁移](./project-workflows.md#旧项目强制迁移) 验收。已有 Node 保留业务，规范为 `nodejs22`，补齐入口、依赖锁和 `qdmp-runtime-config.cjs` helper 接入；已有 Go 仍按 Go 契约。`backend_migration_required` 表示需要 Agent 补齐原 runtime 的运行契约，不能当作整体迁移完成。Python 或未知 runtime 当前报告不支持，不自动转 Go。纯前端也要根主配置与 `frontend/`，但保持无后端，不要求 Go、AppSecret 或 MongoDB。
+旧项目根目录存在 `qdmp.json` 时，同级无 `backend/` 为纯前端、有该目录为全栈，不以入口是否完整改变分类，也没有纯后端形态。前端开发、构建、真机调试或部署前，先执行 `qdmp config migrate --check --json` 生成计划，再执行 `qdmp config migrate --json`，将前端工程移入 `frontend/`、提取根主配置，并按 [旧项目强制迁移](./project-workflows.md#旧项目强制迁移) 验收目录、公开配置和 EMP。原后端语言、源码和业务保持，不为前端迁移补 Go 契约或生成 Node helper。`backendReadiness` 独立记录后端状态；pending、unsupported 不阻断前端构建、调试或上传。只有本次要求后端操作时，才检查实际 runtime 的入口、配置与发布适配；不支持的语言只报告后端工具缺口，不自动转 Go。纯前端也要根主配置与 `frontend/`，但保持无后端，不要求 Go、AppSecret 或 MongoDB。
 
 日常命令优先读根主配置公开字段，build 内部更新 `frontend/qdmp.json`；config sync 只作可选工具，不是发布前置。主配置无效或所选环境身份缺失不能回退；编译产物身份不属于主配置对应环境的有效身份映射时须重新 build。秘密不得进入前端。详见 [配置优先级](./backend-production.md#配置优先级与前端兼容)。
 

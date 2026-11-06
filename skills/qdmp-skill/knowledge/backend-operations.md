@@ -66,7 +66,7 @@
 ### 一次性初始化与旧项目升级
 
 - 旧项目迁移先盘点旧根配置和后端实际配置，提取 appId/devAppId/loader/name/latest、AppSecret、runtime、MongoDB、environment、variables 等支持字段。多来源冲突先报告字段与来源，不能静默覆盖；未知字段不得自动公开。
-- 根式前端必须移入 `frontend/`，全栈保留 `backend/` 及已有 Go / Node 业务语言。Go 补齐官方运行契约；Node 规范为 `nodejs22`，补齐入口、锁文件和配置 helper，不强制转 Go。Python 和未知 runtime 当前报告不支持，保留原实现。纯前端保持没有后端，不为满足目录规范生成无用服务。
+- 根式前端必须移入 `frontend/` 并符合 EMP，原 `backend/` 语言与业务保留。目录/前端迁移不补 Go 元数据、不生成 Node helper；后端就绪状态通过 `backendReadiness` 独立报告。只有本次需要后端改造或打包部署时才补齐原 runtime 的运行契约，CLI 未支持的语言只限制该后端发布，不阻断前端操作。纯前端保持没有后端，不为满足目录规范生成无用服务。
 - 已有主配置先逐字段核对并保留既有值，不以新的前端副本覆盖；迁移补齐缺项时只写已核实来源。这不是长期双向同步。主配置设为 0600 并忽略提交。
 - `qdmp config init --json` 仅是配置初始化工具，不代表目录、运行时和配置迁移全部完成。直接克隆当前官方模板已带空主配置，无需补齐。
 - 已迁移的新结构纯前端明确需要增加后端时，才执行 `qdmp backend init --runtime go`，从同一模板仓库提取后端；已有 `backend/` 时禁止覆盖或删除后重建。
@@ -87,7 +87,7 @@
 业务项目的 `qdmp-config.json` 可含 AppSecret 与数据库密码，不能提交已填写的配置或将文件放入上传包；官方模板仓库仅跟踪所有凭据为空的初始文件。create 会移除模板 .git 并保留忽略规则，生成项目中的主配置未被跟踪。生产运行所需字段仅由打包器注入私有副本，发布包和镜像均按秘密制品保护：
 
 - 确保 `{projectRoot}/.gitignore` 存在且包含一行 `qdmp-config.json`；不存在则创建，已存在但缺该行则追加。
-- **后端打包**：Go / Node 均使用 `qdmp backend package`，按 runtime 构建并注入私有配置，排除原始主配置、密钥和本地目录。Go 源配置为空，Node helper 无秘密，生成的 `.qdmp-runtime-config.json` 只存在于私有 staging/归档。秘密 ZIP 及镜像按受保护制品处理，不能提交仓库。
+- **后端打包**：正式部署由 `qdmp backend deploy` 内部按 runtime 构建、注入私有配置并校验归档，独立构建检查可用 `qdmp backend package`。排除原始主配置、密钥和本地目录；Go 源配置为空，Node helper 无秘密，生成的 `.qdmp-runtime-config.json` 只存在于私有 staging/归档。秘密 ZIP 及镜像按受保护制品处理，不能提交仓库。
 - **前端打包**：在迁移后的 `frontend/` 执行 `qdmp build` / `qdmp-cli upload`，主配置位于上级。纯前端同样需要根主配置，但无需填写后端字段。构建前检查并隔离误放的敏感配置，不能把后端秘密配置放进源码或产物。
 - `frontend/qdmp.json` 只投影 appId/devAppId/loader 等公开白名单，不含 AppSecret、MongoDB、variables 或 runtime，可正常提交；未知主配置字段保留原文件，不自动导入前端或保证后端注入。
 
@@ -101,16 +101,16 @@
 
 ## 通用子流程: 本地文件打包上传（publish/diff 共用）
 
-Go / Node 均执行 [构建并冻结发布包](./backend-production.md#构建并冻结发布包)，CLI 按实际 runtime 分流：
+正式部署直接执行 `qdmp backend deploy --description "<本次说明>" --json`，内部按实际 runtime 构建当前最新代码、校验归档与配置摘要，再上传发布。无需先 package、手动传递 SHA-256 或默认审查 diff。独立打包、上传用于高级编排或可选审查，参见 [构建与内部归档校验](./backend-production.md#构建与内部归档校验)：
 
 ```bash
 qdmp backend package --json
-qdmp backend upload --archive <本次ZIP> --sha256 <本次SHA256> --version temp-diff --json
+qdmp backend upload --archive <本次ZIP> --sha256 <本次SHA256> --version <正式版本或temp-diff> --json
 ```
 
-从 package 结果读取路径、归档 SHA-256 和 manifest 的 configSha256；生产配置改变后重新打包，不能复用旧包。审查 `qdmp_gitlab_diff(ref="master", version="temp-diff")` 后，用同一归档、同一 SHA-256 上传正式版本。禁止手工 `zip -r`、两次上传之间重新打包、从项目 MCP 配置猜上传主机，或在 curl 参数暴露 AppSecret。HTTP 上传端点和成功判定见 [归档上传](../references/backend-mcp.md#归档上传)。
+高级调用从 package 结果读取路径和摘要，生产配置改变后重新构建，不复用旧包。只有选用 diff 审查时才使用 `temp-diff`、调用 `qdmp_gitlab_diff`，并以同一归档继续正式发布。禁止手工 `zip -r`、从项目 MCP 配置猜上传主机，或在 curl 参数暴露 AppSecret。HTTP 上传端点和成功判定见 [归档上传](../references/backend-mcp.md#归档上传)。
 
-旧 Node 后端先按 [原 runtime 契约迁移](./project-workflows.md#step-m4按原-runtime-迁移后端运行契约) 接入统一目录和配置后直接使用 Node 发布适配，不重写为 Go。Python 或其他语言当前没有 CLI 发布适配，明确报告缺口，不冒充 Go/Node 或绕过构建校验。
+本次要求后端打包部署时，旧 Node 后端按 [原 runtime 契约迁移](./project-workflows.md#step-m4按原-runtime-迁移后端运行契约) 接入配置后使用 Node 发布适配，不重写为 Go。Python 或其他语言当前没有 CLI 发布适配，只报告该后端的工具缺口，不冒充 Go/Node 或绕过构建校验，也不因此阻断已完成迁移的前端操作。
 
 ---
 
@@ -139,13 +139,13 @@ CLI deploy 成功仅返回 Pipeline 事实和 acceptance_required，不自动调
 
 ## 操作 1: publish（发版）
 
-读取配置、实际 runtime 和本次用户授权。Go / Node 后端完整执行 [后端运行契约与正式发布](./backend-production.md) 的构建、冻结、diff、正式上传、publish、master 合并及上线验收；工具参数见 [MCP 清单](../references/backend-mcp.md)。
+读取配置、实际 runtime 和本次用户授权。Go / Node 后端按 [后端运行契约与正式发布](./backend-production.md) 执行构建、内部归档校验、正式上传、publish、master 合并及上线验收；diff 审查是可选项，默认部署不调用。工具参数见 [MCP 清单](../references/backend-mcp.md)。
 
-用户已明确授权当前范围的正式发布时，可生成说明并选择未占用的 patch 版本（无历史版本默认 v1.0.0，最新 v1.2.3 则默认 v1.2.4），展示具体目标、版本、制品摘要和 diff 后连续执行；用户已指定版本则使用该版本并验证唯一性。仅分析、创建模板或打包不等于授权生产发布；缺少授权时在可审查结果上取得一次决定，不强制每一步重复问版本和确认。
+用户已明确授权当前范围的正式发布时，Agent 根据本次实际改动生成说明，直接执行 `qdmp backend deploy --description "<本次说明>" --json`，由 CLI 构建当前工作区最新代码并自动选择新 patch（无历史版本默认 v1.0.0，最新 v1.2.3 则默认 v1.2.4）；用户指定版本时传入并校验。归档和摘要由 CLI 内部生成与验证，无需用户参与。只在用户要求或本次需要审计时选用 `--review`。仅分析、创建模板、打包或查看 diff 不等于授权生产发布；不强制用户每一步确认或选择版本。
 
-发布前检查最新 Pipeline，未结束时禁止并发。镜像构建或推送开始后版本不可复用，失败修复使用新 patch。不要直接 push master、手工覆盖平台 CI / Dockerfile 或跳过打包器。运行时不符、配置不完整、异常 diff、构建失败或验收证据不足时停止并报告具体状态。
+发布前检查最新 Pipeline，未结束时禁止并发。镜像构建或推送开始后版本不可复用，失败修复使用新 patch。不要直接 push master、手工覆盖平台 CI / Dockerfile 或跳过打包器。运行时不符、配置不完整、构建失败或验收证据不足时停止并报告具体状态；选用审查时发现异常 diff 也须先处理。
 
-只有全部验收通过才能报告“后端发版成功”，包含实际版本、归档 SHA-256、Pipeline/Job、两个 Ready、运行版本及健康结果。全量部署也只有此时才继续前端。
+只有全部验收通过才能报告“后端发版成功”，包含实际版本、Pipeline/Job、两个 Ready、运行版本及健康结果；归档摘要留在脱敏机器记录中，不要求用户核对。全量部署也只有此时才继续前端。
 
 ---
 

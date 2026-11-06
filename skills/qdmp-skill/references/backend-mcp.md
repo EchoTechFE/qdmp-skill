@@ -25,10 +25,10 @@ Codex 的对应入口为 `codex mcp add qdmp-gitlab --url https://openapi.qianda
 | 工具名 | 额外参数 | 行为与约束 |
 | --- | --- | --- |
 | `qdmp_gitlab_repo_exists` | 无 | 检查仓库初始化状态。 |
-| `qdmp_gitlab_init_repo` | `appName: string`、`runtime: string` | 写入：初始化仓库。平台契约接受 `go` / `nodejs22` / `python312`；当前 CLI 发布适配支持 `go` / `nodejs22`，按规范化 `config.runtime` 传入。Python 尚无本 CLI 适配，不能自动改为 Go。已有仓库 runtime 不符时停止，不能自动重置。 |
+| `qdmp_gitlab_init_repo` | `appName: string`、`runtime: string` | 写入：初始化仓库。平台契约接受 `go` / `nodejs22` / `python312`；当前 CLI 发布适配支持 `go` / `nodejs22`，按规范化 `config.runtime` 传入。Python 尚无本 CLI 适配，不能自动改为 Go。默认遇到已有仓库 runtime 不符时停止；用户已明确授权语言切换时，可用此工具更新 runtime，随后回读确认并验收新部署。 |
 | `qdmp_gitlab_list_versions` | 无 | 查询已发布版本，用于版本唯一性及并发检查。 |
 | `qdmp_gitlab_get_version` | `version: string` | 获取指定 `vX.Y.Z` 的真实详情。 |
-| `qdmp_gitlab_diff` | `ref?: string`、`version?: string` | 比较已上传归档与远端；默认分别为 `master`、`temp-diff`，正式流程显式传入。 |
+| `qdmp_gitlab_diff` | `ref?: string`、`version?: string` | 可选审查：比较已上传归档与远端；默认分别为 `master`、`temp-diff`，选用时显式传入。默认直接部署不调用。 |
 | `qdmp_gitlab_publish` | `version: string`、`description?: string` | 写入：推送已上传代码并触发 CI/CD。Skill 必须传具体说明；只调用一次，结果不明先查状态。 |
 | `qdmp_gitlab_pipeline_status` | `version: string` | 查询并推进发布状态；成功时会自动更新日志并合并分支，具有写入副作用，不能作为纯只读查询描述。 |
 | `qdmp_gitlab_pipeline_logs` | `version: string` | 查询本次构建与部署日志；核对 build、deploy 和 rollout 证据。 |
@@ -47,7 +47,9 @@ POST https://openapi.qiandao.com/gitlab-mcp/upload
 multipart/form-data: appId, appSecret, version, file
 ```
 
-`version` 为 `temp-diff` 或已选定的正式 `vX.Y.Z`。`temp-diff` 是每个 AppID 共享的槽位，当前 API 不提供分布式锁或远端归档 hash；全流程必须保证同一 AppID 单发布者串行，reviewDigest 不能保证跨机器并发隔离。成功响应须为合法 JSON 且 `message="ok"`，按实际响应检查 `size`；HTTP 失败、非 JSON 或业务失败立即停止。本流程通过 CLI 上传，核对归档 SHA-256 和 manifest 的 configSha256，AppSecret、MongoDB 或后端 variables 变化须重新打包与审查；避免将秘密直接放入 shell 参数：
+默认 `qdmp backend deploy --description "<说明>" --json` 内部构建当前最新代码、生成并校验归档与配置摘要，再直接上传正式 `vX.Y.Z` 并 publish。默认不使用 `temp-diff` 或 reviewDigest；需要可选 diff 审查时才加 `--review`。高级独立上传支持 `temp-diff` 或已选定的正式版本，示例如下。
+
+同一 AppID 的正式上传和 `temp-diff` 槽位均是共享远端状态，当前 API 不提供分布式锁或远端归档 hash；全流程须单发布者串行，reviewDigest 不能保证跨机器并发隔离。成功响应须为合法 JSON 且 `message="ok"`，按实际响应检查 `size`；HTTP 失败、非 JSON 或业务失败立即停止。CLI 内部核对归档 SHA-256 和 manifest 的 configSha256；AppSecret、MongoDB 或后端 variables 变化须重新构建，仅选用审查时才重新审查。避免将秘密直接放入 shell 参数：
 
 ```bash
 qdmp backend upload --archive <ZIP路径> --sha256 <已验证摘要> --version temp-diff --json

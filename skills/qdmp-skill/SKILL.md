@@ -27,7 +27,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | [wishlist.md](./knowledge/wishlist.md)                     | 心愿单 OpenAPI：列表、详情、创建与条目修改、数量/心愿价语义、用户授权、分页及写入不重放 |
 | [oss-upload.md](./knowledge/oss-upload.md)                 | OSS：OpenAPI 与存储容量权限、POST 直传/后端中转、两分钟超时、审核发布查询及凭据风险 |
 | [phone-authorization.md](./knowledge/phone-authorization.md) | 手机号授权：平台 OpenAPI 申请、App 6.68.0+、原生 button、一次性 code 与后端应用令牌兑换 |
-| [backend-production.md](./knowledge/backend-production.md) | Go / Node 后端运行契约、生产配置、冻结归档、正式发布与上线验收 |
+| [backend-production.md](./knowledge/backend-production.md) | Go / Node 后端运行契约、生产配置、内部归档校验、直接发布与可选 diff 审查、上线验收 |
 | [backend-mcp.md](./references/backend-mcp.md) | 后端正式发布工具参数、master 合并副作用与 HTTP 上传边界 |
 | [backend-operations.md](./knowledge/backend-operations.md) | 云服务使用规范、媒体存储与无效接口限制、通用子流程及操作 1-7                                            |
 | [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署（真机调试与体验版另见开发指南）                                                |
@@ -46,7 +46,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 ## 规范依赖
 
-涉及后端初始化、模板、配置、打包、正式发布或相关代码 Review 时，先读取 [后端运行契约与正式发布](./knowledge/backend-production.md)；调用部署工具前再读 [后端 MCP 契约](./references/backend-mcp.md)。新建默认 Go 模板由原模板仓库统一提供，CLI 拉取并校验；已有 Node 后端保留原业务实现，迁移到 `runtime: "nodejs22"` 的构建和配置契约，不强制转 Go。当前 CLI 发布适配支持 `go` / `nodejs22`；Python 或未知 runtime 报告不支持，不能仅修改标记或自行改写语言放行。生产流程不依赖浏览器或 workflow 的开发运行栈。
+涉及后端初始化、模板、配置、打包、正式发布或相关代码 Review 时，先读取 [后端运行契约与正式发布](./knowledge/backend-production.md)；调用部署工具前再读 [后端 MCP 契约](./references/backend-mcp.md)。新建默认 Go 模板由原模板仓库统一提供，CLI 拉取并校验。旧项目迁移只强制新版前端目录、EMP 和公开配置规范，保留已有后端语言与业务，不以新模板的 Go 后端替换旧实现。当前 CLI 后端发布适配支持 `go` / `nodejs22`；Python 或未知 runtime 只影响该后端的打包部署，不阻断前端迁移、构建或上传，也不能改标为 Go 放行。生产流程不依赖浏览器或 workflow 的开发运行栈。
 
 涉及数据建模、媒体存储、云服务接口调用、联调、故障排查、全量点位 / 图片等数据验收或相关代码 Review 时，必须先读取并遵守 [云服务使用规范](./knowledge/backend-operations.md#云服务使用规范)。该要求同样适用于运维排查，不以进入数据建模或部署流程为前提。
 
@@ -165,9 +165,9 @@ questions:
 
 ### 第二步：读取项目配置
 
-先检查项目根目录是否存在 `qdmp.json`。存在即为旧项目：同级存在 `backend/` 目录时判定为旧全栈，否则判定为旧纯前端；不再通过后端入口是否完整、目录是否为空或依赖是否可构建改变这个旧项目分类。任何开发、构建、真机调试、上传或部署前，都必须先按 [旧项目强制迁移](./knowledge/project-workflows.md#旧项目强制迁移) 完成新版目录和配置改造，迁移失败不得继续使用根式旧结构。
+先检查项目根目录是否存在 `qdmp.json`。存在即为旧项目：同级存在 `backend/` 目录时判定为旧全栈，否则判定为旧纯前端；不再通过后端入口是否完整、目录是否为空或依赖是否可构建改变这个旧项目分类。前端开发、构建、真机调试、上传前，先按 [旧项目强制迁移](./knowledge/project-workflows.md#旧项目强制迁移) 完成新版目录、公开配置和 EMP 改造，不能继续使用根式旧前端。原后端语言、源码和运行方式保留；后端就绪状态单独记录，仅在本次操作包含后端时检查其配置和发布契约。
 
-迁移完成后只允许两种项目形态：`qdmp-config.json + frontend/` 为纯前端，再包含 `backend/` 为全栈。纯前端也必须有根主配置和分离的 `frontend/`，但不要求填写 AppSecret、Go、MongoDB，也不自动创建后端；全栈读取两侧所需配置。明确仅前端时不运行后端构建，明确仅后端时仍须确认当前项目是包含 `frontend/` 的全栈项目。
+目录/前端迁移完成后只允许两种项目形态：`qdmp-config.json + frontend/` 为纯前端，再包含 `backend/` 为全栈。纯前端也必须有根主配置和分离的 `frontend/`，但不要求填写 AppSecret、Go、MongoDB，也不自动创建后端。全栈也按本次范围读取配置：明确仅前端时，不要求后端 runtime、Go 元数据、Node helper/锁文件或后端构建通过；明确仅后端时，仍须确认当前项目是包含 `frontend/` 的全栈项目，再检查实际后端运行契约。
 
 迁移后检查 `frontend/` 的 loader、依赖和源码引用；仅允许 EMP。搜索 effuse / echo-effuse / effues（含 npm 别名、锁文件、导入和构建脚本），发现有效引用时执行真实的前端运行时迁移，不能只删除字符串或修改 loader 冒充完成。配置布局调整不等于运行时升级。
 
@@ -253,7 +253,7 @@ questions:
 
 只有用户已明确授权相应操作时才执行，不因完成代码修改就自行衔接发布。仅要求分析、生成模板、打包或查看 diff，不构成正式发布授权。功能修复或开发完成且用户尚未要求后续操作时，在本地检查通过并报告结果后，主动一次性询问是否需要真机测试，以及是否部署本次变更涉及的前端、后端或两者；真机测试与部署是两个独立选择，未获明确授权不执行。
 
-用户明确要求“修改后部署”“部署最新版本”“自动正式发布”且目标、环境、范围与发布内容清楚时，授权覆盖本次编排；Agent 直接使用完成修改后的当前工作区最新代码，执行检查、构建、自动选择下一未占用 patch、展示可审查的目标和 diff，然后连续部署及验收，不再询问版本、不要求用户逐步重发指令。展示和实际审查 diff 是安全检查，不是再次确认版本。范围变化、异常差异、构建失败或缺少必要决定时才停止并补充确认，不能用 CLI 执行成功替代 Skill 的验收。
+用户明确要求“修改后部署”“部署最新版本”“自动正式发布”且目标、环境、范围与发布内容清楚时，授权覆盖本次编排；Agent 使用完成修改后的当前工作区最新代码，执行检查并生成具体说明，直接调用 `qdmp backend deploy --description "<说明>" --json`。CLI 内部构建、校验归档和配置摘要、自动选择下一未占用 patch，并连续上传发布；不要求用户提供摘要、确认版本或逐步重发指令。默认不调用 diff，不进入强制两阶段部署；只有用户要求或本次需要审计时选用 `--review`，按后端发布文档完成该可选流程。范围变化、构建失败或缺少必要决定时才停止，不能用 CLI 执行成功替代 Skill 的上线验收。
 
 ---
 
@@ -333,7 +333,7 @@ qd.navigateTo({
 
 ### 后端（`backend/`）
 
-默认新项目从官方模板取得空的 qdmp-config.json，CLI 保留内容并设置 0600 权限与忽略规则；克隆流程移除模板 .git，主配置在生成项目中未被跟踪。根目录存在旧 `qdmp.json` 时必须先完成强制迁移：从旧配置和后端受保护配置提取支持字段到根 `qdmp-config.json`，将公开字段写入 `frontend/qdmp.json`，并把旧根式前端工程移动到 `frontend/`。全栈保留 `backend/` 及其业务语言；Go 按官方模板契约验收，Node 规范为 `nodejs22` 并接入配置 helper、依赖锁文件及启动契约。CLI 不自动改写任意业务配置读取；Agent 按原路由、模型、依赖和任务接入后验证行为。秘密和后端 variables 不得进入前端。
+默认新项目从官方模板取得空的 qdmp-config.json，CLI 保留内容并设置 0600 权限与忽略规则；克隆流程移除模板 .git，主配置在生成项目中未被跟踪。旧项目先提取受支持的根配置并把前端工程移动到 `frontend/`，只向 `frontend/qdmp.json` 投影公开字段。`backend/` 的原语言、源码和业务继续保留，前端迁移不自动生成 Node helper、不补齐 Go 模板或重写后端配置引用。需要打包部署该后端时，再按实际 runtime 接入配置和运行契约并验收；CLI 不支持的语言报告后端工具缺口，不阻断前端操作。秘密和后端 variables 不得进入前端。
 
 修改前读取 `backend/README.md` 和 [生产运行契约](./knowledge/backend-production.md)。保留对应 runtime 的构建、启动、健康/就绪检查和配置加载；Go 源码嵌入配置保持为空，Node helper 不含秘密，密钥只进入打包器的私有副本。数据库模型复用现有后端入口，不硬编码凭据或自动改写线上 URI。
 
@@ -352,12 +352,13 @@ Agent 对话中需要登录或用户要求登录时，先读 [Agent 对话登录
 | `qdmp-cli list`                   | 查看可用模板                                                                  |
 | `qdmp create <项目名>` / `qdmp create <项目名> -t default` | 单次拉取全栈模板，保留自带空主配置并设置权限/忽略规则，必须自检 |
 | `qdmp backend init --runtime go --json` | 为已迁移的新结构纯前端添加官方 Go 后端；已有后端时拒绝覆盖 |
-| `qdmp backend package --json` | 按 go / nodejs22 校验、构建和注入私有配置，生成归档与 SHA-256 |
+| `qdmp backend package --json` | 独立构建检查；按 go / nodejs22 注入私有配置，生成归档与内部校验摘要，不发布 |
 | `qdmp backend upload --archive <zip> --sha256 <摘要> --version <版本> --json` | 同字节上传 temp-diff / 正式版本 |
-| `qdmp backend deploy --archive <zip> --sha256 <摘要> --version <vX.Y.Z> --description "<说明>" --json` | 先审查 diff，再追加 `--review-digest` 发布；仅返回 Pipeline 事实，Agent 通过宿主 MCP 完成验收 |
-| `qdmp config init --json` | 低层配置初始化；旧项目仍须完成目录、公开配置和后端 runtime 的完整强制迁移 |
+| `qdmp backend deploy --description "<说明>" --json` | 默认构建最新代码、内部校验归档、自动选择新 patch 并直接发布；Agent 继续完成上线验收 |
+| `qdmp backend deploy --review --description "<说明>" --json` | 可选：构建后仅返回脱敏 diff 和继续参数，不发布；完整流程见 backend-production.md |
+| `qdmp config init --json` | 低层配置初始化；旧项目仍须完成目录、公开配置和 EMP 前端迁移，后端 readiness 单独报告 |
 | `qdmp config migrate --check --json` | 旧项目只读盘点：按根 qdmp.json 与 backend/ 目录分类，输出目录/配置迁移计划与阻塞项 |
-| `qdmp config migrate --json` | 迁移旧项目目录和配置；保留 Node，实现待补齐项后按对应 runtime 与 EMP 契约验收 |
+| `qdmp config migrate --json` | 迁移旧项目前端目录和公开配置；frontend_migration_required 阻止前端操作，backendReadiness 单独报告后端状态 |
 | `qdmp config sync --json` | 可选：更新本地公开兼容文件；日常命令直接读取主配置，无需先执行 |
 | `qdmp-cli init -a <id>`           | 初始化空目标身份；已配置时拒绝覆盖，保留 MongoDB                                                                    |
 | `pnpm install`                    | 安装依赖                                                                      |

@@ -4,13 +4,13 @@
 
 ## Skill、Agent、CLI 与平台的职责
 
-发布范围、执行顺序、授权边界、diff 审查和上线验收规则由 qdmp-skill 维护；Agent 读取本规范后识别项目形态、决定本次范围、调用工具、审查事实并完成验收。CLI 提供模板生成、构建打包、上传和 MCP 调用能力，返回执行事实；backend deploy 成功只返回 Pipeline 事实与 acceptance_required，不自动调用 Aliyun/K8s 查询；部署版本、副本 Ready 和健康证据由 Agent 按 Skill 收集并判断，不能用 CLI 返回替代上线验收。两个副本 Ready、健康检查等验收条件只在 Skill 维护，不能在 CLI 中另立一份产品流程。
+发布范围、执行顺序、授权边界、可选 diff 审查和上线验收规则由 qdmp-skill 维护；Agent 读取本规范后识别项目形态、决定本次范围、调用工具并完成验收。CLI 提供模板生成、构建打包、上传和 MCP 调用能力，默认 deploy 一次完成当前代码的构建发布；归档与摘要是内部校验，不是用户审批步骤。backend deploy 成功只返回 Pipeline 事实与 acceptance_required，不自动调用 Aliyun/K8s 查询；部署版本、副本 Ready 和健康证据由 Agent 按 Skill 收集并判断，不能用 CLI 返回替代上线验收。两个副本 Ready、健康检查等验收条件只在 Skill 维护，不能在 CLI 中另立一份产品流程。
 
 MCP 和业务 API 的服务实现属于平台，Skill 维护参数和调用指引。CLI 不会因后端命令自动发布前端，也没有自动取得全部副本 Ready 和健康证据的完整能力。全栈项目由 Agent 按 [项目形态和范围分流](./project-workflows.md#流程四打包部署) 串联后端验收与前端上传/提审；纯前端不进入本后端流程。
 
-CLI 发布适配支持 `runtime: "go"` 和 `"nodejs22"`。Go 要求 Go 1.24 或更新版本；Node 打包校验使用 Node 22，不能拿 Node 24 的语法检查冒充 Node 22 兼容。旧 `node` / `nodejs` 配置规范为 `nodejs22`，保留业务语言。平台 MCP 的 `init_repo` 契约还接受 `python312`，但当前 CLI 没有 Python 发布适配；遇到 Python 或未知 runtime 报告不支持并保留源码，不自动重写为 Go。旧项目均先按 [旧项目强制迁移](./project-workflows.md#旧项目强制迁移) 完成统一目录、配置和对应 runtime 验收。
+CLI 后端发布适配支持 `runtime: "go"` 和 `"nodejs22"`。Go 要求 Go 1.24 或更新版本；Node 打包校验使用 Node 22，不能拿 Node 24 的语法检查冒充 Node 22 兼容。旧 `node` / `nodejs` 配置可规范为 `nodejs22`，保留业务语言。平台 MCP 的 `init_repo` 契约还接受 `python312`，但当前 CLI 没有 Python 发布适配；这只限制该后端的打包部署，不阻断目录/前端迁移或要求重写为 Go。旧项目按 [旧项目强制迁移](./project-workflows.md#旧项目强制迁移) 统一目录、公开配置和 EMP，只有本次需要后端操作时才执行本文件的 runtime 验收。
 
-MCP runtime 枚举及已有 Node 生产消费者证明该部署通道支持 Node；具体应用是否上线仍须完成真实 Pipeline、启动、Ready 和健康验收。CLI 契约测试通过不能替代线上 Node 发版结果，也不能据此声称研发功能已发布到 npm。
+Node 适配已通过实际 MCP 生产发布验证：配置 JSON 随后端私有归档进入镜像，Node 22 进程成功启动，两个新副本 Ready，健康、就绪与配置证明接口均成功读取本次注入变量。该验证支持保留旧 Node 后端的方案，不把测试应用、固定变量或业务接口写成通用要求；后续每个应用仍须完成自身 Pipeline、启动、Ready 和健康验收，也不能据此声称研发功能已发布到 npm。
 
 ## 初始化与配置
 
@@ -33,7 +33,7 @@ qdmp backend init --runtime go --json
 
 CLI 后端命令可从项目根目录或 `backend/` 定位同一份根 `qdmp-config.json`；显式 `--config` 只读取指定文件。Go 模板本地从 `../qdmp-config.json` 读取运行配置，`QDMP_CONFIG` 可指定受保护路径；生产配置嵌入私有构建副本。Node 本地和生产的 helper 规则见下文，不将项目根配置直接放入发布包。
 
-`backend init --runtime go` 仍只从同一模板仓库临时提取 Go backend/，不提供另一份手写 Node 模板，也不覆盖已有后端；不要删除 Node 业务目录以绕过检查，或对已有项目重跑 create。旧项目使用 `qdmp config migrate --check --json` 先生成只读计划，再执行 `qdmp config migrate --json` 迁移目录和配置；`config init` 只补配置，不能代替迁移。CLI 返回 `backend_migration_required` 时，Agent 根据 pending 补齐原 runtime 的入口、配置加载和运行契约，保留业务实现，不将该返回当作已完成迁移。先阅读现有 `backend/README.md`，保留监听端口、健康检查和退出清理逻辑。
+`backend init --runtime go` 仍只从同一模板仓库临时提取 Go backend/，不提供另一份手写 Node 模板，也不覆盖已有后端；不要删除 Node 业务目录以绕过检查，或对已有项目重跑 create。旧项目使用 `qdmp config migrate --check --json` 先生成只读计划，再执行 `qdmp config migrate --json` 迁移目录和公开配置；`config init` 只补配置，不能代替迁移。顶层迁移状态只描述目录/前端，`backendReadiness` 单独描述后端。仅前端操作不因后端 pending 失败，也不自动生成 helper 或改造后端。需要后端操作时，再阅读现有 `backend/README.md`，按 pending 接入原 runtime 的配置、入口与发布契约，保留业务行为。
 
 官方模板仓库直接跟踪空的 `qdmp-config.json`，只提交空的 AppID、AppSecret、MongoDB 字段和空的 variables 对象，不得写入实际凭据。直接 git clone 已有主配置，无需 config init。旧项目迁移时从根 `qdmp.json` 与后端受保护配置提取支持字段，权限设为 `0600` 并加入 `.gitignore`；已有主配置保留既有值，只补已核实的缺项。来源冲突时先报告字段与来源，不显示秘密值、不静默覆盖。包含后端的主配置字段如下；迁移纯前端仍创建主配置，但不要求填写 AppSecret、runtime、MongoDB 或 variables：
 
@@ -52,7 +52,7 @@ CLI 后端命令可从项目根目录或 `backend/` 定位同一份根 `qdmp-con
 
 这是待填写的真实配置文件，不是有效的发布凭据。AppID、AppSecret 和 MongoDB 凭据由用户在本地填写，禁止要求在聊天中粘贴。`appId` 须为实际应用身份；本地打包可以没有 AppSecret，上传和正式部署必须有真实 AppSecret，空值和示例占位不能放行。
 
-旧根配置是迁移时的核心配置来源；同时检查后端环境文件、受保护配置和实际加载代码，提取 MongoDB、业务 variables 等支持字段。不能只迁移 AppID 而遗漏后端数据库配置。静态工具不能可靠解析的动态配置由 Agent 核对，无法确定时停止并列出缺口。完成后主配置成为唯一权威来源，前端后续变更不反向覆盖它。
+旧根配置是迁移时的核心配置来源；已能确定的后端受保护配置也应安全提取 MongoDB、业务 variables 等支持字段，不能遗漏或公开秘密。静态工具不能可靠解析的后端动态配置由 Agent 在 `backendReadiness` 中记录待核对；明确仅前端时保留原配置和读取代码，不因此停止前端迁移。本次操作包含后端时，再检查其环境文件、实际加载代码和完整配置，无法确定则停止该后端操作并列出缺口。应用身份冲突、私密字段来源冲突或泄露风险仍在写入前停止，不因范围分流而静默覆盖。已迁移字段以根主配置为权威来源，前端后续变更不反向覆盖它。
 
 MongoDB 可省略、设为 `null`，或保持 `uri` / `database` 都为空，此时为无持久化模式。只填写一项属于错误；启用时必须同时填写完整 `uri` 与等于 `appId` 的 `database`，保留 URI 路径和 `authSource` 等认证语义。无持久化模式不能将内存或文件数据宣称为跨副本持久化；需要共享状态时使用 MongoDB，禁止回退到 FileStore、混用有状态与无状态副本，或引入必须可用的 Redis。
 
@@ -62,7 +62,7 @@ MongoDB 可省略、设为 `null`，或保持 `uri` / `database` 都为空，此
 
 Node 后端使用 `runtime: "nodejs22"`，保留 CommonJS / ESM 业务实现。要求 `backend/package.json` 的 `main="index.js"`、`scripts.start="node index.js"`，存在一致的 `package-lock.json`；使用构建工具时，入口加载本次生成的产物。Go 的工具链、注入声明和 `backend-template.json` 不作为 Node 门禁。
 
-无秘密的 `backend/qdmp-runtime-config.cjs` 由 CLI 维护，可作为源码提交。接入示例：
+无秘密的 `backend/qdmp-runtime-config.cjs` 契约由 CLI 维护，可在本次后端适配时加入源码；单独迁移前端不自动生成它。接入示例：
 
 ```js
 // CommonJS
@@ -86,19 +86,19 @@ helper 导出配置对象：生产优先读取同目录 `.qdmp-runtime-config.js
 
 前端构建由 `qdmp build` 在内部生成/同步公开 qdmp.json，以适配 Taro/EMP；打包和上传直接使用权威主配置中的公开字段，不复制 AppSecret、MongoDB、variables、runtime 或 environment。`qdmp config sync --json` 只是可选的本地兼容文件更新工具，日常发布不必先执行，也不构建、上传或部署。
 
-旧项目先通过 `qdmp config migrate --check --json` 检查分类、移动清单与配置冲突，再执行 `qdmp config migrate --json`。前端工程必须移入 `frontend/`；全栈保留 `backend/` 的 Go / Node 实现。CLI 负责可确定的结构和配置迁移；`backend_migration_required` 由 Agent 根据 pending 接入原 runtime 契约，`backend_runtime_unsupported` 明确报告当前不支持，不自动转换语言。已有分离结构不重复搬动，重复执行不得覆盖已有文件。这是一次性迁移，不建立长期双向同步。
+旧项目先通过 `qdmp config migrate --check --json` 检查分类、移动清单与配置冲突，再执行 `qdmp config migrate --json`。前端工程必须移入 `frontend/` 并满足 EMP；全栈保留 `backend/` 的原语言和业务。CLI 负责可确定的目录和公开配置迁移，后端 readiness 独立报告，不能把它作为仅前端操作的前置。`backend_runtime_unsupported` 仅表示该后端的 CLI 发布适配缺口，不自动转换语言。已有分离结构不重复搬动，重复执行不得覆盖已有文件。这是一次性迁移，不建立长期双向同步。
 
 `qdmp init -a <实际AppID>` 只初始化空目标身份：已有主配置时仅填写所选环境中空的 appId/devAppId，已有目标值就拒绝；旧项目先完成迁移。它不改绑已有身份，不改 MongoDB。编译产物身份不属于当前主配置对应环境的有效身份映射时，必须重新 `qdmp build`，不能只改 ZIP 身份；这是构建产物校验，不是 config sync 要求。非 EMP 的旧源码仍须按实际依赖和构建链迁移，不能靠主配置 loader 覆盖冒充 EMP。
 
 迁移后的纯前端需要根主配置与 `frontend/`，但不要求 AppSecret、Go 或数据库，不自动生成后端。前端源码只使用公开设置，不得导入根主配置或通过构建变量暴露秘密。
 
-`qdmp-config.json`、`.env*`、私有发布目录、旧 ZIP、密钥和证书必须忽略，不能作为源码再次入包；本次经过验证的发布 ZIP 只上传到已授权的正式服务。`frontend/qdmp.json` 只保留 `appId`、`loader: "EMP"` 等非敏感前端字段。迁移时验证两侧结构和运行契约；日常明确仅后端操作不执行前端构建，但仍须识别为包含前端的全栈项目，不能以独立后端目录绕过项目门禁。
+`qdmp-config.json`、`.env*`、私有发布目录、旧 ZIP、密钥和证书必须忽略，不能作为源码再次入包；本次经过验证的发布 ZIP 只上传到已授权的正式服务。`frontend/qdmp.json` 只保留 `appId`、`loader: "EMP"` 等非敏感前端字段。旧项目迁移验证目录与前端规范；仅后端操作再验证实际后端运行契约，不执行前端构建，但仍须识别为包含前端的全栈项目，不能以独立后端目录绕过项目门禁。
 
 生产模板不包含 workflow 的开发存储模式、Collector、Run / Session、发布 Token、测试媒体或 GridFS 业务。媒体只保存 OSS 引用，继续遵守 [云服务使用规范](./backend-operations.md#云服务使用规范)。
 
-## 构建并冻结发布包
+## 构建与内部归档校验
 
-在理解工作区实际改动后，先执行对应 runtime 的针对性验证。Go：
+在理解工作区实际改动后，先执行对应 runtime 的针对性验证。Go 使用 `go test ./...`，Node 使用 Node 22 运行现有业务测试和配置读取 smoke。已获正式部署授权时，直接执行下一节的 `qdmp backend deploy`；它内部构建最新代码、生成归档和 manifest 并校验摘要，无需用户先执行 package 或传递摘要。只需构建检查、不发布时可独立打包，例如 Go：
 
 ```bash
 cd backend
@@ -107,9 +107,9 @@ cd ..
 qdmp backend package --json
 ```
 
-Node 使用 Node 22 运行现有业务测试和配置读取 smoke，然后在项目根目录执行同一条 `qdmp backend package --json`。打包器在私有 staging 运行 `npm ci --no-audit --no-fund`，存在 build 脚本时运行 `npm run build`，再校验入口及 JavaScript。旧 dist/build 不复用，node_modules 不发布；当前构建生成的产物按运行契约进入归档。依赖安装先于秘密注入，构建失败不产生可发布包；这些是 CLI 本地打包步骤，不据此猜测平台内部 Dockerfile 的安装命令。
+Node 的独立打包同样使用 `qdmp backend package --json`。打包器在私有 staging 运行 `npm ci --include=dev --no-audit --no-fund`，存在 build 脚本时运行 `npm run build`，再校验入口及 JavaScript。旧 dist/build 不复用，node_modules 不发布；当前构建生成的产物按运行契约进入归档。依赖安装先于秘密注入，构建失败不产生可发布包；这些是 CLI 本地打包步骤，不据此猜测平台内部 Dockerfile 的安装命令。
 
-需要指定配置或制品位置时使用 `--config <配置文件路径>`、`--output <ZIP路径>`。从本次 JSON 结果读取实际归档路径、SHA-256 及 manifest 路径，不猜路径、不复用历史摘要。归档与 `.manifest.json` 一起保留；manifest 的 `configSha256` 绑定规范化生产配置，包含 AppID、AppSecret、已启用的数据库配置和后端 variables。打包后配置发生变化，必须重新 package 并重新审查，不能手改 manifest 或复用旧 ZIP。
+独立 package 需要指定配置或制品位置时使用 `--config <配置文件路径>`、`--output <ZIP路径>`。归档与 `.manifest.json` 一起保留；manifest 的 `configSha256` 绑定规范化生产配置，包含 AppID、AppSecret、已启用的数据库配置和后端 variables。默认 deploy 内部使用本次生成的归档和摘要，不复用历史包。显式归档仅用于高级调用或可选审查继续；从本次 JSON 结果读取路径和摘要，不猜路径、不手改 manifest。配置改变后必须重新构建；仅选用审查流程时才需要重新审查。
 
 Go 镜像只编译 `main.go`。新增代码必须被该入口真实引用；`go build .` 成功不能代替单入口验证。`package` 在私有临时目录复制源码，只对该副本嵌入生产配置，按平台的 `go build main.go` 验证。Node 将规范化生产配置写入 staging 的 `.qdmp-runtime-config.json`，通过 helper 读取。两种 runtime 均只对私有副本注入，源工作区无秘密生成物；打包失败必须停止。
 
@@ -123,33 +123,43 @@ Go 镜像只编译 `main.go`。新增代码必须被该入口真实引用；`go 
 
 ### 自动部署命令
 
-同一 AppID 必须由单一发布者串行操作，从 temp-diff 上传到 publish 完成期间不允许其他 Agent、进程、机器或用户同时上传/发版。平台 `temp-diff` 是每个 AppID 的共享槽，现有 API 没有分布式锁，也不返回可绑定远端上传字节的 hash；`reviewDigest` 只绑定本次观察到的 diff 和本地制品，不能证明跨发布者隔离。无法确定单发布者时先协调串行窗口，不把 CLI 的 Pipeline 冲突检查当成解决跨机器并发。
+同一 AppID 必须由单一发布者串行操作，从上传到 publish 完成期间不允许其他 Agent、进程、机器或用户同时上传/发版。正式版本上传和可选审查使用的 `temp-diff` 都是远端共享状态，现有 API 没有分布式锁，也不返回可绑定远端上传字节的 hash。无法确定单发布者时先协调串行窗口，不把 CLI 的 Pipeline 冲突检查当成跨机器发布锁。
 
-先根据版本历史选择未占用、递增的不可变 `vX.Y.Z`，自动生成具体的中文说明。首次仓库没有版本时默认 `v1.0.0`；已有 `v1.2.3` 时默认选择未占用的 `v1.2.4`。用户指定版本时校验该版本；已有明确正式发布授权时可以自动选择 patch，不必重复问版本。构建或镜像推送开始后绝不复用版本，失败修复也增加 patch。
+Agent 根据本次实际改动生成具体中文说明，传入必填的 `--description`。未指定版本时，CLI 查询版本历史并自动选择未占用、递增的不可变 `vX.Y.Z`：首次默认 `v1.0.0`，最新为 `v1.2.3` 则默认 `v1.2.4`。用户指定版本时传入 `--version` 并校验该版本，不再要求用户确认版本。远端镜像构建或推送开始后绝不复用版本，失败修复也增加 patch。
 
-使用本次 package 返回的归档与摘要：
+用户已明确授权当前目标和范围的正式部署时，在项目根目录执行：
 
 ```bash
-qdmp backend deploy --archive <本次ZIP> --sha256 <本次SHA256> --version <vX.Y.Z> --description "<本次说明>" --json
+qdmp backend deploy --description "<本次说明>" --json
 ```
 
-第一阶段检查仓库（缺少时按 `config.runtime` 初始化 Go 或 Node 仓库）、版本和最新 Pipeline 冲突，用已核对的同一字节上传 `temp-diff` 并调用 MCP diff；不会 publish。远端 runtime 与本次归档不同、未结束的 Pipeline、已占用或过低版本、无法确认的返回结构均阻断正式发布，不自动重建已有仓库。
+默认命令内部构建当前工作区最新代码、校验归档及生产配置，检查仓库（缺少时按 `config.runtime` 初始化 Go 或 Node 仓库）、版本和最新 Pipeline 冲突，然后直接上传正式版本、调用 publish 并有界跟踪 Pipeline。默认不上传 `temp-diff`、不调用 MCP diff、不返回强制的 `diff_review_required`。无需用户提供 archive、sha256 或 reviewDigest，也不应为常规部署先准备旧包。远端 runtime 不同、未结束的 Pipeline、已占用或过低版本、无法确认的返回结构均阻断发布，不自动重建已有仓库。
 
-结果为 `status="diff_review_required"` 时，Agent 必须实际检查脱敏 diff，并展示版本、runtime、正式目标、归档摘要、变更摘要和说明。Go 私有 `main.go` 注入或 Node `.qdmp-runtime-config.json` 投影属于预期，秘密正文必须脱敏；原始凭据文件、无关文件或异常删除必须先处理。仅要求分析、初始化、打包或查看 diff 不构成生产发布授权；缺少授权时停在此可审查结果，取得一次决定后继续。用户已明确授权本次正式发布且范围无变化时，直接复用返回的 `reviewDigest`：
+用户明确授权将已有应用从一种语言切换为另一种语言时，Agent 可先调用 MCP `init_repo(runtime=<目标运行时>)` 更新平台运行时，再回读 `repo_exists` 确认匹配，核对原版本仍可查询后继续新版本部署。本轮 Go→Node 实测支持更新 runtime 并保留已有 tags；这不是目录迁移的默认动作，也不意味着换一个本地目录就隔离了服务。相同 AppID 指向同一个线上后端，语言切换必须在授权范围内，之后完整验收新 Pipeline、启动、副本和健康结果。
+
+### 可选 diff 审查
+
+用户要求先看远端差异，或本次确实需要审计时，显式选用 `--review`。该模式构建当前代码、上传 `temp-diff` 并返回脱敏 diff、`reviewDigest`、`archivePath`、`sha256` 和选定版本，不 publish：
+
+```bash
+qdmp backend deploy --review --description "<本次说明>" --json
+```
+
+只有选用该模式才有两阶段流程。结果为 `status="diff_review_required"` 时检查脱敏 diff；Go 私有 `main.go` 注入或 Node `.qdmp-runtime-config.json` 投影属于预期，秘密正文须脱敏。发现原始凭据文件、无关文件或异常删除时先处理。仅查看 diff 不构成生产发布授权。已有正式发布授权且检查通过时，使用返回的同一归档、摘要、版本和说明继续，不再询问版本：
 
 ```bash
 qdmp backend deploy --archive <同一ZIP> --sha256 <同一SHA256> --version <同一vX.Y.Z> --description "<同一说明>" --review-digest <本次reviewDigest> --json
 ```
 
-第二阶段先核验归档字节与 manifest 的 configSha256，再重新核验远端 diff，匹配后上传同一归档字节、调用 publish 并有界跟踪 Pipeline。生产配置（含 AppSecret、MongoDB 或 variables）变化使 configSha256 不匹配时直接拒绝，必须重新 package 和审查，不能反复执行旧包的 deploy。只有远端 diff 变化才返回新的待审查结果，不 publish；重新审查后再使用新 reviewDigest。不要把 `reviewDigest` 当作自动放行开关，禁止未看 diff 就复制执行。
+审查继续时先校验归档字节与 manifest 的 configSha256，再重新核验远端 diff；匹配才上传同一归档字节并 publish。配置或源码改变后重新构建，选用审查时重新审查；远端 diff 改变则返回新的待审查结果，不 publish。`reviewDigest` 只绑定本次观察到的 diff 和本地制品，不提供跨机器并发隔离。不要在选用审查后跳过实际检查。
 
 | 返回状态 | 处理 |
 | --- | --- |
-| `diff_review_required` | 尚未正式发布；检查本次 diff、目标、归档和授权，再提交匹配的 reviewDigest。 |
+| `diff_review_required` | 仅可选审查模式；尚未正式发布，检查本次 diff 和授权后提交匹配的 reviewDigest。 |
 | `pipeline_pending` | 已触发发布但轮询预算用尽；保留版本、归档摘要并查询已有 Pipeline，不重新 deploy/publish。 |
 | `acceptance_required`、`deploymentAccepted=false` | 仅返回 Pipeline 事实；Agent 通过宿主 MCP 查询版本、Job/副本证据并验证健康状态，不能报告上线成功。 |
-| configSha256 不匹配 | 本地配置已漂移，在任何 MCP 调用前拒绝；重新 package 并重新审查，不能修改 manifest 或重试旧包。 |
-| 请求失败、返回结构无法识别或写入结果未知 | 保留脱敏错误；先查版本、Pipeline 和日志，不盲目重放有副作用的命令。 |
+| configSha256 不匹配 | 本地配置已漂移，在发布前拒绝；重新构建，选用审查时重新审查，不能修改 manifest 或重试旧包。 |
+| 请求失败、返回结构无法识别或写入结果未知 | 保留脱敏错误；按 `uploading` 进度事件中的目标版本查询远端版本、Pipeline 和日志，不盲目重放有副作用的命令。 |
 
 CLI 通过原生 HTTP MCP 客户端完成发布与 Pipeline 跟踪，不依赖浏览器或 pnpm；用户命令固定使用正式 https://openapi.qiandao.com 端点，不提供服务地址切换参数，也不从项目配置推导其他上传主机。
 
@@ -159,11 +169,11 @@ CLI 因远端返回契约变化而拒绝继续时，先核对真实 schema；可
 
 1. `qdmp_gitlab_repo_exists` 检查仓库，不存在才 `init_repo(runtime=config.runtime)`；CLI 支持值为 `go` 或 `nodejs22`。已存在且 runtime 不符时停止报告，不自动重置或换语言。
 2. 查询版本和最新 Pipeline，`running`、`pending`、`waiting_for_resource` 等未结束状态禁止并发，未知状态先查清。
-3. 用 `qdmp backend upload --archive <ZIP> --sha256 <摘要> --version temp-diff --json` 上传冻结归档，再调用 `qdmp_gitlab_diff(ref="master", version="temp-diff")` 审查。
-4. 核对实际发布授权，使用同一 ZIP / SHA-256 上传正式版本，再调用 `qdmp_gitlab_publish`，传已审查版本和说明。两次上传间不重新打包；源码或配置变化则重新构建和审查。
+3. 使用 `qdmp backend package --json` 构建当前最新代码并读取本次归档、摘要和 manifest。仅用户选用 diff 审查时，才上传 `temp-diff` 并调用 `qdmp_gitlab_diff(ref="master", version="temp-diff")`。
+4. 核对实际发布授权，使用本次经过内部校验的 ZIP / SHA-256 上传正式版本，再调用 `qdmp_gitlab_publish`，传选定版本和具体说明。可选审查须使用被审查的同一字节；源码或配置改变后重新构建，选用审查时重新审查。
 5. 默认间隔 10 秒、最多 60 次调用 `qdmp_gitlab_pipeline_status`。它在 Pipeline 成功后会自动更新日志并合并发布分支，具有写入副作用；通过平台流程完成正式 `master` 合并，不直接 push master。超时保留状态并继续查询，不重新 publish。
 
-上传使用独立 [HTTP multipart 端点](../references/backend-mcp.md#归档上传)，不是 MCP 工具。使用 CLI 从配置读取秘密，禁止退回 `curl -F appSecret=...` 的秘密进程参数示例。确认同 AppID 单发布者串行、同字节、配置摘要、版本不可变、真实 diff 审查、授权和完整验收，在两种执行方式下都不可跳过。
+上传使用独立 [HTTP multipart 端点](../references/backend-mcp.md#归档上传)，不是 MCP 工具。使用 CLI 从配置读取秘密，禁止退回 `curl -F appSecret=...` 的秘密进程参数示例。同 AppID 单发布者串行、同字节、配置摘要、版本不可变、授权和完整验收在两种执行方式下都保留；diff 审查是可选项，不能由 fallback 重新变为必经流程。
 
 ## 上线验收与失败处理
 
@@ -180,4 +190,4 @@ Job、Ready 数量或健康证据缺失时，报告“发布已触发 / 验收�
 
 等待失败 Pipeline 结束，修正后用新 patch 发布并重做全部验收。保留健康旧副本，不强删旧 Pod、不强制流量进入故障副本。用户要求回滚时先展示当前与目标版本、按授权调用 `qdmp_gitlab_rollback`，同样核对 build/deploy、两个 Ready、版本及健康检查；回滚不修改历史版本内容。
 
-只有验收全部通过，才继续全量部署的前端上传并核对其使用的服务地址为 `https://{appId}.qiandaomp.com`；默认模板从公开 AppID 推导地址，无需新增或替换常量，旧项目按实际地址配置处理。最终报告版本、归档摘要、Pipeline / Job、Ready 数量、运行版本和健康结果；秘密 ZIP 用完后及时清理，保留脱敏记录供排查。
+只有验收全部通过，才继续全量部署的前端上传并核对其使用的服务地址为 `https://{appId}.qiandaomp.com`；默认模板从公开 AppID 推导地址，无需新增或替换常量，旧项目按实际地址配置处理。最终报告版本、Pipeline / Job、Ready 数量、运行版本和健康结果；归档摘要保留在脱敏机器记录中，无需用户核对。秘密 ZIP 用完后及时清理，保留脱敏记录供排查。
