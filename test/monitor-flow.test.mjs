@@ -45,7 +45,7 @@ for (const host of ["codex", "claude-code", "qoder"]) {
     assert.equal((await f.action(s, "inspect")).state, "choice_ready");
     const activated = await f.action(s, "execute");
     assert.equal(activated.state, "activation_reported");
-    assert.match(activated.instruction, host === "codex" ? /trust/ : /restart/);
+    assert.match(activated.instruction, host === "codex" ? /trust/ : /restart/i);
     if (host !== "codex") assert.doesNotMatch(activated.instruction, /Settings > Hooks/);
   });
   test(`${host}: older runtime update requires separate bound approval`, async t => {
@@ -67,7 +67,7 @@ for (const host of ["codex", "claude-code", "qoder"]) {
     assert.equal(f.counts().installs, 1);
   });
 }
-async function fixture(t, host = "codex") {
+async function fixture(t, host = "codex", identityNotice = null, permittedAction = null) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "qdmp-flow-")));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const installed = path.join(root, "skill"); fs.cpSync(skill, installed, { recursive: true });
@@ -77,6 +77,8 @@ async function fixture(t, host = "codex") {
   const content = Buffer.from("// pinned test entry, never executed\n");
   manifest.onboarding.sha256 = hash(content);
   manifest.pre_download_notice.onboarding_sha256 = hash(content);
+  if (identityNotice) manifest.pre_download_notice.identity_notice_version = identityNotice;
+  if (permittedAction) manifest.pre_download_notice.permitted_action = permittedAction;
   fs.writeFileSync(manifestFile, JSON.stringify(manifest));
   const api = await import(path.join(installed, "scripts/monitor-flow.mjs"));
   let mode = "missing", granted = false, hook = "hooks_pending", mutate = x => x, installs = 0, calls = 0, downloads = 0;
@@ -87,6 +89,7 @@ async function fixture(t, host = "codex") {
       permissions: [...(mode === "missing" ? ["install"] : []), "monitor_current_workspace", "production_upload"] };
     choice.argv = ["enable", "--cwd", cwd, "--host", host, "--accept-monitoring", "--exact-workspace", "--authorization-version", choice.authorization_version,
       ...(mode === "missing" ? [] : ["--expected-version", manifest.version])];
+    if (identityNotice) { choice.identity_notice_version = identityNotice; choice.argv.push("--identity-notice-version", identityNotice); }
     return mutate({ project_root: cwd, host, exact_workspace: true,
       upload_endpoint: manifest.pre_download_notice.upload_endpoint, legal: manifest.pre_download_notice.legal,
       distribution: manifest, status: { plugin_state: mode, installed_version: choice.expected_version,
@@ -127,9 +130,9 @@ test("happy cold start enforces every step and distinguishes Hook from warehouse
   assert.match(activated.instruction, /cannot grant trust to itself/);
   const pending = await f.action(s, "verify");
   assert.equal(pending.state, "verification_pending");
-  assert.match(pending.instruction, /trust agent-runtime-telemetry/);
-  assert.match(pending.instruction, /Settings > Hooks/);
-  assert.ok(pending.instruction.indexOf("trust agent-runtime-telemetry") < pending.instruction.indexOf("restart Codex Desktop"));
+  assert.match(pending.instruction, /chat\'s bound workspace/);
+  assert.match(pending.instruction, /Trust status is unknown/);
+  assert.doesNotMatch(pending.instruction, /Settings > Hooks|fully restart Codex Desktop/);
   f.setHook("collecting"); const done = await f.action(s, "verify");
   assert.equal(done.state, "collecting"); assert.equal(done.warehouse, "not_verified");
   assert.equal(f.counts().installs, 1);
@@ -178,11 +181,18 @@ test("decline persists a terminal state without any network call", async t => {
 test("changed manifest or replaced directory invalidates authorization", async t => {
   const f = await fixture(t); const s = await f.start(); await f.approve(s);
   fs.renameSync(f.cwd, f.cwd + "-old"); fs.mkdirSync(f.cwd);
+  assert.equal((await f.action(s, "status")).compatibility.reason, "directory_identity_changed");
   await assert.rejects(f.action(s, "fetch"), /directory identity/);
   const newFlow = await f.start(); await f.approve(newFlow);
   fs.writeFileSync(f.manifestFile, JSON.stringify({ ...f.manifest, artifact_url: "https://example.com/changed.tgz" }));
   await assert.rejects(f.action(newFlow, "fetch"), /release or disclosure changed/);
   assert.equal(f.counts().downloads, 0);
+});
+
+test("a planned project path is not created as a monitoring placeholder", async t => {
+  const f = await fixture(t); const planned = path.join(f.root, "not-created-yet");
+  await assert.rejects(f.api.monitorFlow("begin", { cwd: planned, host: "codex" }, f.options), /project creator/);
+  assert.equal(fs.existsSync(planned), false); assert.equal(f.counts().downloads, 0);
 });
 test("hash mismatch blocks external execution before and after verified download", async t => {
   const f = await fixture(t); const s = await f.start(); await f.approve(s);
@@ -268,5 +278,109 @@ test("already granted live project goes to verification without duplicate activa
   const another = await f.start(); await f.approve(another); await f.action(another, "fetch");
   assert.equal((await f.action(another, "inspect")).state, "verification_pending");
   await assert.rejects(f.action(another, "execute"), /invalid transition/);
+  assert.equal(f.counts().installs, 1);
+});
+
+test("legacy different-version login failure resumes the same approved flow without another consent", async t => {
+  const f = await fixture(t); f.setMode("installed");
+  const receipt = { status: "activation_pending", project_root: f.cwd, host: "codex", exact_workspace: true,
+    accepted: true, agreement: "monitor-production-v1", authorization_id: "original-authorization", version: "0.2.15", error: "开启数据采集前需要登录千岛。" };
+  f.mutate(n => { n.status.installed_version = "0.2.15"; n.status.receipt = receipt;
+    n.choices[0].expected_version = "0.2.15";
+    n.choices[0].argv[n.choices[0].argv.indexOf("--expected-version") + 1] = "0.2.15"; return n; });
+  const s = await f.start(); await f.approve(s); await f.action(s, "fetch");
+  const proposal = await f.action(s, "inspect");
+  const approved = await f.action(s, "confirm-action", { decision: "approve", digest: proposal.action_digest });
+  const original = f.options.run;
+  f.options.run = (entry, argv, state) => { if (argv[0] === "enable") throw new Error("开启数据采集前需要登录千岛。"); return original(entry, argv, state); };
+  assert.equal((await f.action(s, "execute")).state, "failed");
+  await assert.rejects(f.action(s, "execute"), /invalid transition/);
+  // status/verify may have moved the failed flow to verification_pending.
+  f.options.run = (entry, argv, state) => argv[0] === "status"
+    ? { project_root: f.cwd, host: "codex", installed_version: "0.2.15", compatible: true, project: { granted: false } }
+    : original(entry, argv, state);
+  await f.action(s, "verify");
+  const resumed = await f.action(s, "resume");
+  assert.equal(resumed.id, s.id); assert.equal(resumed.state, "choice_ready");
+  assert.equal(resumed.authorized_at, approved.authorized_at);
+  assert.equal(resumed.action_approved_at, approved.action_approved_at);
+  assert.equal(resumed.resuming_authorization_id, receipt.authorization_id);
+  assert.equal((await f.action(s, "execute")).state, "activation_reported");
+  assert.deepEqual(f.counts().downloads, 1); assert.equal(f.counts().installs, 1);
+});
+
+for (const invalid of ["unknown_failure", "already_granted", "wrong_receipt", "changed_id"]) test(`resume rejects ${invalid} without mutation`, async t => {
+  const f = await fixture(t); f.setMode("installed"); const s = await f.ready();
+  const original = f.options.run;
+  f.options.run = (entry, argv, state) => { if (argv[0] === "enable") throw new Error(invalid === "unknown_failure" ? "connection lost" : "QDMP_LOGIN_REQUIRED"); return original(entry, argv, state); };
+  await f.action(s, "execute"); f.options.run = original;
+  const receipt = { status: "activation_pending", project_root: f.cwd, host: "codex", exact_workspace: true,
+    accepted: true, agreement: "monitor-production-v1", authorization_id: "original-authorization", version: f.manifest.version, error: "QDMP_LOGIN_REQUIRED" };
+  f.mutate(n => ({ ...n, status: { ...n.status, receipt: { ...receipt, ...(invalid === "wrong_receipt" ? { project_root: "/other" } : {}) }, project: { granted: invalid === "already_granted" } } }));
+  if (invalid === "changed_id") {
+    await f.action(s, "resume"); receipt.authorization_id = "replacement-authorization";
+    assert.equal((await f.action(s, "execute")).state, "needs_reconfirmation");
+  } else await assert.rejects(f.action(s, "resume"), /pre-consent login failure/);
+  assert.equal(f.counts().installs, 0);
+});
+
+test("partial Hook evidence asks for the missing tool in the bound workspace", async t => {
+  const f = await fixture(t); const s = await f.ready(); await f.action(s, "execute");
+  const original = f.options.run;
+  f.options.run = (...args) => { const result = original(...args);
+    if (args[1][0] === "status") result.project.hooks = { prompt_seen: true, tool_seen: false };
+    return result; };
+  const result = await f.action(s, "verify");
+  assert.equal(result.state, "verification_pending");
+  assert.match(result.instruction, /missing tool completion/); assert.ok(result.instruction.includes(f.cwd));
+  assert.doesNotMatch(result.instruction, /Settings > Hooks|Fully restart/);
+  const output = f.api.flowOutput(result);
+  assert.equal(output.verification.project.hooks.prompt_seen, true);
+  assert.equal(output.verification.production_readback_verified, false);
+  assert.equal(output.history, undefined); assert.equal(output.notice, undefined);
+  assert.equal(output.execution_result, undefined);
+  assert.ok(JSON.stringify(output).length < 4000);
+});
+
+test("status reads an atomic snapshot without acquiring a writable lock", async t => {
+  const f = await fixture(t); const s = await f.start();
+  const dir = path.join(f.options.homeDir, ".qdmp-skill/monitor-flows", s.id);
+  fs.writeFileSync(path.join(dir, ".lock"), "held by a writer");
+  const before = fs.readFileSync(path.join(dir, "state.json"), "utf8");
+  assert.equal((await f.action(s, "status")).state, "awaiting_consent");
+  assert.equal(fs.readFileSync(path.join(dir, "state.json"), "utf8"), before);
+  await assert.rejects(f.approve(s), /busy/);
+});
+
+test("new identity parameter requires the pinned notice and leaves legacy grants unchanged", async t => {
+  const f = await fixture(t, "codex", "people-v1"); const s = await f.start();
+  assert.match(s.disclosure.display, /people-v1/); assert.match(s.disclosure.display, /未登录也可采集/);
+  await f.approve(s); await f.action(s, "fetch");
+  assert.equal((await f.action(s, "inspect")).state, "choice_ready");
+  assert.equal((await f.action(s, "execute")).state, "activation_reported");
+  const anonymous = await fixture(t, "codex", "people-v1"); anonymous.setMode("installed");
+  anonymous.mutate(n => { delete n.choices[0].identity_notice_version;
+    const index = n.choices[0].argv.indexOf("--identity-notice-version"); n.choices[0].argv.splice(index, 2); return n; });
+  const anonFlow = await anonymous.ready();
+  assert.equal((await anonymous.action(anonFlow, "execute")).state, "activation_reported");
+  const legacy = await fixture(t); const old = await legacy.start();
+  assert.doesNotMatch(old.disclosure.display, /people-v1/);
+  await legacy.approve(old); await legacy.action(old, "fetch");
+  legacy.mutate(n => { n.choices[0].identity_notice_version = "people-v1";
+    n.choices[0].argv.push("--identity-notice-version", "people-v1"); return n; });
+  assert.equal((await legacy.action(old, "inspect")).state, "needs_reconfirmation");
+  assert.equal(legacy.counts().installs, 0);
+});
+
+for (const host of ["codex", "claude-code", "qoder"]) test(`${host}: disclosed compatible-version reuse needs only the original decision`, async t => {
+  const f = await fixture(t, host, null, "install_if_missing_or_reuse_compatible_version");
+  f.setMode("installed");
+  f.mutate(n => { n.status.installed_version = "0.2.15"; n.choices[0].expected_version = "0.2.15";
+    n.choices[0].argv[n.choices[0].argv.indexOf("--expected-version") + 1] = "0.2.15"; return n; });
+  const s = await f.start(); assert.match(s.disclosure.display, /不更新或降级/);
+  await f.approve(s); await f.action(s, "fetch");
+  const ready = await f.action(s, "inspect");
+  assert.equal(ready.state, "choice_ready"); assert.equal(ready.choice.action, "reuse");
+  assert.equal((await f.action(s, "execute")).state, "activation_reported");
   assert.equal(f.counts().installs, 1);
 });

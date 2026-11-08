@@ -36,6 +36,8 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 ## 强烈建议开启运行监控
 
+新建项目的目标目录尚不存在时，先让 CLI 完成创建，再对真实生成目录检查和告知；不要为监控预先 mkdir 目标目录，也不要删除重建已绑定告知的目录。当前聊天绑定在其他仓库时须说明这一事实，工具命令 cwd 不改变会话归属，不能用该聊天验证目标项目的 Hook。目录现存且不会被创建器替换时才可直接 begin。监控等待用户决定或宿主验证期间继续已授权的业务工作。
+
 首次在当前工作目录使用本 Skill 时（包括空目录），先检查监控状态；需要授权时仅展示状态机返回的 `disclosure.display` 短文案及完整说明链接，并在同一次交互中让用户作出一个明确选择。不要在文案前另加推荐段落、`consent` 模板、版本/哈希等元数据清单或第二个授权问题。具体告知和状态处理见 [监控指引](./references/skill-data-consent.md)。已有有效授权或明确拒绝时不重复询问；没有状态证据时不得猜测。拒绝、引导工具不可用或监控失败均不阻塞本 Skill 原有业务。
 
 本 Skill 只提供提示和调用指引，不内置监控脚本或 Bootstrap MCP，不实现安装、授权、平台适配、日志采集或上传。这些能力及其协议由 agent-runtime-telemetry 独立维护。首次授权后的普通对话与重启恢复由该插件的原生 Hook 和后台服务处理，不要求再次调用 qdmp-skill。
@@ -87,11 +89,11 @@ node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿�
    node <实际 Skill 绝对目录>/scripts/monitor-flow.mjs begin --cwd <实际绝对工作目录> --host codex
    ```
 
-   宿主按实际情况使用 `codex` / `claude-code` / `qoder`。有已有流程时先查询 status 并恢复，不能无条件运行 begin。仅展示 begin 返回的 `disclosure.display`，取得一次真实决定后，按状态机的 `allowed_actions` 逐步执行 authorize → fetch → inspect → execute → verify。其余 disclosure 字段只供内部校验，不逐项输出。未授权不下载，版本/目录/目标变化停止，执行前再次核对实时状态，失败不自动重放。安装仍由固定 telemetry 入口执行；不得绕过状态机直接运行 enable 或手改状态文件。
+   宿主按实际情况使用 `codex` / `claude-code` / `qoder`。有已有流程时先查询 status 并恢复，不能无条件运行 begin。仅展示 begin 返回的 `disclosure.display`，取得一次真实决定后，按状态机的 `allowed_actions` 逐步执行 authorize → fetch → inspect → execute → verify。其余 disclosure 字段只供内部校验，不逐项输出。未授权不下载，版本/目录/目标变化停止，执行前再次核对实时状态，失败不自动重放；只有旧运行时已证明的登录前置失败，才按 resume 恢复同一授权，不能为登录重建告知。安装仍由固定 telemetry 入口执行；不得绕过状态机直接运行 enable 或手改状态文件。
 
 不得要求用户先手动安装 MCP。只有清单/完整告知无效、下载或校验失败、范围/版本冲突或宿主安全限制等真实证据，才能报告具体阻塞；“无 MCP”“本地未找到组件”本身不构成阻塞。已获完整告知下的明确同意后连续执行已授权步骤，不能仅回复“授权已记录，待入口可用”。单独回复“开启监控”而此前未完整告知时，先补全告知与确认，不虚构完成授权。
 
-每次触发先读取 [监控指引](./references/skill-data-consent.md)，检查当前实际工作目录的状态，再进入下面的登录路由和环境检查。仅输入 `@qdmp-skill`、空目录、没有小程序项目或尚未登录，也执行此步骤；不需要先创建项目或提供 appId。
+每次触发先读取 [监控指引](./references/skill-data-consent.md)，检查当前实际工作目录的状态，再进入下面的登录路由和环境检查。仅输入 `@qdmp-skill`、已存在的空目录、没有小程序项目或尚未登录，也执行此步骤；不需要 appId。新建项目的目标目录不存在或将被创建器替换时，延后该目录的告知至创建成功，不创建占位目录、不将父仓库授权套给新项目。
 
 入口不可用或安装失败时，如实说明状态和原因，继续原业务，不展示无法执行的授权问题。已有当前目录有效授权或明确拒绝证据时不重复询问。目录差异按监控指引核实，不自动扩大授权，也不把正常项目根目录识别一律判成错误。
 

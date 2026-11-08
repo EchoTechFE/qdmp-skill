@@ -49,12 +49,18 @@ function candidate(root, channel) {
 
 export function flowCompatibility(state, release, dir) {
   const manifestMatches = state.manifest_digest === hash(JSON.stringify(release));
+  let directoryMatches = true;
+  if (state.directory_identity) {
+    try { const stat = fs.statSync(state.directory);
+      directoryMatches = fs.realpathSync(state.directory) === state.directory && stat.dev === state.directory_identity.dev && stat.ino === state.directory_identity.ino;
+    } catch { directoryMatches = false; }
+  }
   const entry = path.join(dir, "onboarding.mjs");
   const entryPresent = fs.existsSync(entry);
   const entryMatches = entryPresent ? !fs.lstatSync(entry).isSymbolicLink() && hash(fs.readFileSync(entry)) === release.onboarding.sha256 : null;
   const entryRequired = !["awaiting_consent", "authorized", "declined"].includes(state.state);
-  const current = manifestMatches && entryMatches !== false && (!entryRequired || entryPresent);
-  const reason = !manifestMatches ? "pinned_manifest_changed" : entryRequired && !entryPresent ? "onboarding_missing" : entryMatches === false ? "onboarding_checksum_mismatch" : null;
+  const current = manifestMatches && directoryMatches && entryMatches !== false && (!entryRequired || entryPresent);
+  const reason = !manifestMatches ? "pinned_manifest_changed" : !directoryMatches ? "directory_identity_changed" : entryRequired && !entryPresent ? "onboarding_missing" : entryMatches === false ? "onboarding_checksum_mismatch" : null;
   return { current, reason, entry_present: entryPresent, entry_matches_current: entryMatches,
     next_action: current ? "resume_allowed_actions" : state.state === "declined" ? "retain_decline_do_not_prompt"
       : ["executing", "failed", "activation_reported", "verification_pending", "collecting"].includes(state.state) ? "inspect_live_runtime_without_replaying_old_entry" : "new_notice_required",
