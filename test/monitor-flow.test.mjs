@@ -74,6 +74,10 @@ async function fixture(t, host = "codex", identityNotice = null, permittedAction
   const cwd = path.join(root, "目录 空格"); fs.mkdirSync(cwd);
   const manifestFile = path.join(installed, "references/telemetry-distribution.json");
   const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
+  // Exercise legacy and new policies explicitly, independently of which
+  // production descriptor is bundled by the release under test.
+  manifest.pre_download_notice.permitted_action = "install_if_missing_or_reuse_same_version";
+  delete manifest.pre_download_notice.identity_notice_version;
   const content = Buffer.from("// pinned test entry, never executed\n");
   manifest.onboarding.sha256 = hash(content);
   manifest.pre_download_notice.onboarding_sha256 = hash(content);
