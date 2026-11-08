@@ -13,9 +13,12 @@ const digest = value => crypto.createHash("sha256").update(typeof value === "str
 const transitions = {
   awaiting_consent: ["authorize"], authorized: ["fetch"], entry_verified: ["inspect"],
   choice_ready: ["inspect", "execute"], check_failed: ["inspect"], action_confirmation_required: ["inspect", "confirm-action"], activation_reported: ["verify"],
-  verification_pending: ["verify"], collecting: ["verify"],
-  declined: [], needs_reconfirmation: ["inspect"], failed: ["verify"], executing: ["verify"]
+  verification_pending: ["verify", "resume"], collecting: ["verify"],
+  declined: [], needs_reconfirmation: ["inspect"], failed: ["verify", "resume"], executing: ["verify"]
 };
+const legacyLoginFailure = value => /QDMP_LOGIN_REQUIRED|开启数据采集前需要登录千岛/.test(value || "");
+const allowedActions = s => (transitions[s.state] || []).filter(action => action !== "resume"
+  || s.choice?.action === "reuse" && !s.execution_result && legacyLoginFailure(s.reason));
 const immutable = s => ({ schema: s.schema, id: s.id, directory: s.directory, host: s.host,
   manifest_digest: s.manifest_digest, disclosure_digest: s.disclosure_digest, directory_identity: s.directory_identity });
 function write(file, value) {
@@ -74,6 +77,8 @@ const fingerprint = notice => digest({ root: notice.project_root, host: notice.h
   installation: { state: notice.status?.plugin_state, root: notice.status?.installation?.root,
     version: notice.status?.installed_version, recommended: notice.status?.recommended_version,
     compatible: notice.status?.compatible, granted: notice.status?.project?.granted }, choices: notice.choices });
+const reuseNeedsApproval = (choice, release) => choice.action === "reuse" && choice.expected_version !== release.version
+  && release.pre_download_notice.permitted_action !== "install_if_missing_or_reuse_compatible_version";
 
 function verifyNotice(notice, s, release) {
   if (notice.project_root !== s.directory || notice.host !== s.host || notice.exact_workspace !== true) throw new Error("directory/host scope mismatch");
@@ -94,7 +99,7 @@ function safeChoice(notice, s, release, selected = null) {
   const argv = choice.argv;
   if (!Array.isArray(argv) || argv[0] !== (choice.action === "update" ? "update" : "enable") || argv.some(x => typeof x !== "string")) throw new Error("invalid central argv");
   const flags = {}; const boolean = new Set(["--accept-monitoring", "--accept-update", "--exact-workspace"]);
-  const values = new Set(["--cwd", "--host", "--authorization-version", "--expected-version", "--target-version", "--artifact-url"]);
+  const values = new Set(["--cwd", "--host", "--authorization-version", "--identity-notice-version", "--expected-version", "--target-version", "--artifact-url"]);
   for (let i = 1; i < argv.length; i++) {
     const key = argv[i];
     if (Object.hasOwn(flags, key)) throw new Error("duplicate central option");
@@ -103,22 +108,27 @@ function safeChoice(notice, s, release, selected = null) {
     else throw new Error("unexpected central option");
   }
   const protocol = choice.action === "update" ? null : choice.action === "update_and_enable" ? "update-monitor-production-v1" : choice.action === "install" ? "install-monitor-production-v1" : "monitor-production-v1";
+  const identityNotice = choice.identity_notice_version || null;
+  if (identityNotice && (!protocol || identityNotice !== release.pre_download_notice.identity_notice_version)) throw new Error("identity notice was not disclosed by the pinned release");
   if (flags["--cwd"] !== s.directory || flags["--host"] !== s.host || !flags["--exact-workspace"] || !flags[choice.action === "update" ? "--accept-update" : "--accept-monitoring"]
     || Boolean(flags[choice.action === "update" ? "--accept-monitoring" : "--accept-update"])
     || (flags["--authorization-version"] || null) !== protocol || choice.authorization_version !== protocol
+    || (flags["--identity-notice-version"] || null) !== identityNotice
     || (flags["--expected-version"] || null) !== (installed || null)
     || (choice.action.startsWith("update") ? flags["--target-version"] !== release.version : flags["--target-version"] && flags["--target-version"] !== release.version)
     || (flags["--artifact-url"] && flags["--artifact-url"] !== release.artifact_url)) throw new Error("central argv scope/version mismatch");
   return choice;
 }
 
-function hookInstruction(host, result) {
+function hookInstruction(host, result, directory) {
   const project = result.project || result.status || {};
   if (result.native_hooks_verified === true || project.state === "collecting") return "Native Hooks verified; production warehouse readback remains separate. No restart required.";
+  const hooks = project.hooks || result.hooks;
+  const workspace = `First confirm the chat's bound workspace is ${directory}; a shell command's cwd does not rebind the chat. `;
+  if (hooks?.prompt_seen || hooks?.tool_seen) return workspace + `Native ${hooks.prompt_seen ? "prompt" : "tool"} evidence exists. Observe the missing ${hooks.prompt_seen ? "tool completion" : "prompt"} in that workspace, then verify. Missing one event does not prove a trust or restart problem. Production warehouse readback remains separate.`;
   const action = result.next_action || project.next_action;
-  if (host === "codex" && action === "review_host_hooks") return "Review and trust agent-runtime-telemetry in Codex Settings > Hooks. A plugin cannot grant trust to itself. Only after trust, fully restart Codex Desktop if requested by the host, resume this conversation and verify normal prompt/tool events in this same surface.";
-  if (result.restart_required === true || action === "reload_host") return `Fully restart ${host}, resume this conversation and verify native prompt/tool events. Do not repeat business consent.`;
-  return `Observe a normal prompt and tool event in ${host}, then verify again. Do not infer capture from registration or restart without host evidence.`;
+  if (result.restart_required === true || action === "reload_host") return workspace + `The host reports a reload requirement. Restart ${host}, resume the flow and verify native prompt/tool events. Do not repeat business consent.`;
+  return workspace + `Observe a normal prompt and tool completion in ${host}. If still missing, inspect the actual host's Hook controls and diagnostics; a plugin cannot grant trust to itself. Trust status is unknown unless the host reports it. Restart only if requested by the host; do not invent a Settings path, transfer CLI trust to Desktop, or repeat restart requests from missing events alone. Continue business work while verification is pending.`;
 }
 
 export async function monitorFlow(command, args = {}, options = {}) {
@@ -133,7 +143,7 @@ export async function monitorFlow(command, args = {}, options = {}) {
       .filter(s => s.directory === directory && s.host === args.host)
       .map(s => { const compatibility = flowCompatibility(s, release, path.join(base, s.id));
         return { id: s.id, state: s.state, directory: s.directory, host: s.host, created_at: s.created_at,
-          compatibility, allowed_actions: compatibility.current ? transitions[s.state] || [] : [] }; });
+          compatibility, allowed_actions: compatibility.current ? allowedActions(s) : [] }; });
     return { flows };
   }
   if (command === "begin") {
@@ -145,27 +155,33 @@ export async function monitorFlow(command, args = {}, options = {}) {
       manifest_digest: digest(release), disclosure_digest: digest(disclosure), directory_identity: { dev: stat.dev, ino: stat.ino }, created_at: new Date().toISOString(), history: [] };
     const dir = path.join(base, id); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     s.binding_digest = digest(immutable(s)); write(path.join(dir, "state.json"), s);
-    return { ...s, allowed_actions: transitions[s.state], disclosure, instruction: "Show only disclosure.display as the user-facing authorization copy, including its full-notice link. Do not print disclosure.consent or other fields separately. Ask for one explicit decision, then record it with authorize and this disclosure_digest; do not ask again when the inspected action remains within the authorized scope." };
+    return { ...s, allowed_actions: allowedActions(s), disclosure, instruction: "Show only disclosure.display as the user-facing authorization copy, including its full-notice link. Do not print disclosure.consent or other fields separately. Ask for one explicit decision, then record it with authorize and this disclosure_digest; do not ask again when the inspected action remains within the authorized scope." };
   }
   if (!/^[a-f0-9-]{36}$/.test(args.flow || "")) throw new Error("valid flow ID required");
   const dir = path.join(base, args.flow); const file = path.join(dir, "state.json");
+  if (command === "status") {
+    // State commits are atomic renames. A snapshot needs no writable lock.
+    const s = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (s.id !== args.flow || s.schema !== 1 || s.binding_digest !== digest(immutable(s))) throw new Error("flow binding corrupted");
+    const compatibility = flowCompatibility(s, checkDistribution(), dir);
+    return { ...s, compatibility, allowed_actions: compatibility.current ? allowedActions(s) : [] };
+  }
   const lock = path.join(dir, ".lock");
   let fd;
   try { fd = fs.openSync(lock, "wx", 0o600); } catch (e) { if (e.code === "EEXIST") throw new Error("flow busy; do not retry concurrently"); throw e; }
   try {
     const s = JSON.parse(fs.readFileSync(file, "utf8"));
     if (s.id !== args.flow || s.schema !== 1 || s.binding_digest !== digest(immutable(s))) throw new Error("flow binding corrupted");
-    if (command === "status") {
-      const compatibility = flowCompatibility(s, checkDistribution(), dir);
-      return { ...s, compatibility, allowed_actions: compatibility.current ? transitions[s.state] || [] : [] };
-    }
     if (!transitions[s.state]?.includes(command)) throw new Error(`invalid transition: ${s.state} -> ${command}`);
     const release = bindingCheck(s);
     if (!["authorize", "verify"].includes(command) && (s.decision !== "approve" || !s.authorized_at)) throw new Error("no recorded explicit authorization");
     const next = (state, detail = {}) => {
       s.history.push({ from: s.state, action: command, to: state, at: new Date().toISOString() });
+      if (["choice_ready", "activation_reported", "collecting"].includes(state)) {
+        for (const key of ["reason", "diagnostic", "error_code", "phase"]) delete s[key];
+      }
       Object.assign(s, detail, { state }); write(file, s);
-      return { ...s, allowed_actions: transitions[state] || [] };
+      return { ...s, allowed_actions: allowedActions(s) };
     };
     if (command === "authorize") {
       if (args.digest !== s.disclosure_digest || !["approve", "decline"].includes(args.decision)) throw new Error("explicit decision and matching disclosure digest required");
@@ -206,8 +222,8 @@ export async function monitorFlow(command, args = {}, options = {}) {
       }
       try {
         const choice = safeChoice(notice, s, release);
-        if (choice.action === "reuse" && choice.expected_version !== release.version) return next("action_confirmation_required", { notice, action_digest: digest({ inventory: fingerprint(notice), choice }), proposed_action: "reuse", instruction: "Display the compatible installed version, directory and monitoring permissions, then obtain explicit approval for reusing this different version. No update or downgrade is permitted." });
-        return next("choice_ready", { choice, notice, inventory_digest: fingerprint(notice), instruction: "The authorization is saved for this exact directory. Missing qdmp.json or appId does not invalidate it. If QDMP login is unfinished, leave this flow at choice_ready, continue project creation, then resume from status and execute after login; no second monitoring consent is needed." });
+        if (reuseNeedsApproval(choice, release)) return next("action_confirmation_required", { notice, action_digest: digest({ inventory: fingerprint(notice), choice }), proposed_action: "reuse", instruction: "Display the compatible installed version, directory and monitoring permissions, then obtain explicit approval for reusing this different version. No update or downgrade is permitted." });
+        return next("choice_ready", { choice, notice, inventory_digest: fingerprint(notice), instruction: "The authorization is saved for this exact directory. Missing qdmp.json, appId or login does not invalidate it. Current runtimes allow anonymous activation. Only follow login requirements explicitly reported by a legacy runtime; retain this flow and continue business work without a second monitoring consent." });
       }
       catch (error) {
         const update = notice.choices?.find(c => c.action === "update_and_enable") || notice.choices?.find(c => c.action === "update");
@@ -226,31 +242,75 @@ export async function monitorFlow(command, args = {}, options = {}) {
       if (digest({ inventory: fingerprint(notice), choice }) !== s.action_digest) return next("needs_reconfirmation", { reason: "update action changed; inspect and disclose again" });
       return next("choice_ready", { notice, choice, inventory_digest: fingerprint(notice), action_approved_at: new Date().toISOString() });
     }
+    if (command === "resume") {
+      // Legacy runtimes gated consent on login. Only that known pre-consent
+      // failure may resume, and only as reuse of the already approved runtime.
+      // Unknown failures/crashes remain verification-only: never replay install.
+      if (s.execution_result || s.choice?.action !== "reuse" || !legacyLoginFailure(s.reason)) throw new Error("resume requires a known pre-consent login failure on reuse; verify ambiguous mutations only");
+      const notice = inspect(); const receipt = notice.status?.receipt;
+      const version = s.choice.action === "reuse" ? s.choice.expected_version : release.version;
+      if (notice.status?.project?.granted !== false || receipt?.status !== "activation_pending"
+        || receipt.project_root !== s.directory || receipt.host !== s.host || receipt.exact_workspace !== true
+        || receipt.accepted !== true || receipt.agreement !== s.choice.authorization_version
+        || !receipt.authorization_id || receipt.version !== version || !legacyLoginFailure(receipt.error)) {
+        throw new Error("pending activation does not prove the same pre-consent login failure; verify without replay");
+      }
+      const choice = safeChoice(notice, s, release, "reuse");
+      if (choice.expected_version !== version) throw new Error("approved runtime changed; new action confirmation required");
+      if (reuseNeedsApproval(choice, release) && !s.action_approved_at) throw new Error("different-version reuse was not approved");
+      return next("choice_ready", { notice, choice, inventory_digest: fingerprint(notice), resuming_authorization_id: receipt.authorization_id,
+        action_digest: digest({ inventory: fingerprint(notice), choice }),
+        instruction: "Resume the same approved runtime and directory after the legacy QDMP login completes. Consent and prior version approval remain valid. Execute will recheck live state; no install/update replay or second monitoring consent is authorized." });
+    }
     if (command === "execute") {
       let notice;
       try { notice = inspect(); } catch (error) { return next("check_failed", { reason: error.message }); }
       if (notice.status?.plugin_state === "unknown") return next("check_failed", { diagnostic: notice.status.diagnostic, notice });
       if (fingerprint(notice) !== s.inventory_digest) return next("needs_reconfirmation", { reason: "live installation/authorization/options changed" });
       const choice = safeChoice(notice, s, release, s.choice?.action);
-      if ((choice.action.startsWith("update") || choice.action === "reuse" && choice.expected_version !== release.version) && (!s.action_approved_at || digest({ inventory: fingerprint(notice), choice }) !== s.action_digest)) throw new Error("action authorization missing or changed");
+      if (s.resuming_authorization_id && notice.status?.receipt?.authorization_id !== s.resuming_authorization_id) return next("needs_reconfirmation", { reason: "pending authorization changed; inspect without replay" });
+      if ((choice.action.startsWith("update") || reuseNeedsApproval(choice, release)) && (!s.action_approved_at || digest({ inventory: fingerprint(notice), choice }) !== s.action_digest)) throw new Error("action authorization missing or changed");
       // Persist before mutation: a crash or failed command must never auto-replay.
       next("executing");
       try {
         const argv = [...choice.argv];
         if (!argv.includes("--artifact-url")) argv.push("--artifact-url", release.artifact_url);
         const result = run(entry, argv, s, options);
-        return next("activation_reported", { execution_result: result, instruction: hookInstruction(s.host, result) });
-      } catch (error) { return next("failed", { reason: error.message, instruction: "Inspect live state before a new flow; never auto-replay an ambiguous mutation." }); }
+        return next("activation_reported", { execution_result: result, instruction: hookInstruction(s.host, result, s.directory) });
+      } catch (error) { return next("failed", { reason: error.message, instruction: "Verify live state; never auto-replay an ambiguous mutation. A proven legacy pre-consent login failure on reuse may resume the same flow after login; do not repeat consent or version approval." }); }
     }
     if (command === "verify") {
       const result = run(entry, ["status", ...queryArgs(s)], s, options);
       const expected = s.choice?.action === "reuse" ? s.choice.expected_version : s.notice?.status?.installed_version && !s.choice ? s.notice.status.installed_version : release.version;
       if (result.project_root !== s.directory || result.host !== s.host || result.installed_version !== expected || !result.compatible) throw new Error("live runtime scope/version mismatch");
       const collecting = result.project?.granted === true && result.project?.state === "collecting";
-      return next(collecting ? "collecting" : "verification_pending", { verification: result, warehouse: "not_verified", instruction: hookInstruction(s.host, result) });
+      return next(collecting ? "collecting" : "verification_pending", { verification: result, warehouse: "not_verified", instruction: hookInstruction(s.host, result, s.directory) });
     }
     throw new Error("unsupported flow command");
   } finally { fs.closeSync(fd); fs.unlinkSync(lock); }
+}
+
+// Keep repeated CLI replies small enough for an Agent to see current evidence.
+// Full receipts, legal text and history remain in the private state file.
+export function flowOutput(result) {
+  if (result.flows) return result;
+  const keys = ["id", "state", "directory", "host", "allowed_actions", "disclosure_digest", "action_digest", "proposed_action", "choice", "reason", "diagnostic", "error_code", "phase", "instruction", "compatibility", "warehouse"];
+  const view = Object.fromEntries(keys.filter(key => result[key] !== undefined).map(key => [key, result[key]]));
+  if (result.disclosure) view.disclosure = { display: result.disclosure.display };
+  if (result.notice?.status) view.runtime = { installed_version: result.notice.status.installed_version,
+    compatible: result.notice.status.compatible, activation_requirements: result.notice.status.activation_requirements };
+  if (result.state === "action_confirmation_required") view.notice = {
+    project_root: result.notice?.project_root, host: result.notice?.host,
+    choices: result.notice?.choices, consent: result.notice?.consent, legal: result.notice?.legal
+  };
+  if (result.verification) {
+    const status = result.verification;
+    view.verification = { project_root: status.project_root, host: status.host, installed_version: status.installed_version,
+      compatible: status.compatible, activation_requirements: status.activation_requirements, project: status.project, next_action: status.next_action,
+      upload_endpoint: status.project?.collector?.endpoint || status.receipt?.upload_endpoint || status.receipt?.activation?.upload_endpoint,
+      production_readback_verified: status.production_readback_verified ?? status.project?.production_readback_verified ?? false };
+  }
+  return view;
 }
 
 export async function runFlow(argv, options = {}) {
@@ -266,6 +326,6 @@ export async function runFlow(argv, options = {}) {
   return monitorFlow(command, args, options);
 }
 if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {
-  runFlow(process.argv.slice(2)).then(result => console.log(JSON.stringify(result, null, 2)))
+  runFlow(process.argv.slice(2)).then(result => console.log(JSON.stringify(flowOutput(result), null, 2)))
     .catch(error => { console.error(JSON.stringify({ error: error.message })); process.exitCode = 1; });
 }
