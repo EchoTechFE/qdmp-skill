@@ -207,7 +207,7 @@ claude mcp add --transport http qdmp-gitlab https://openapi.qiandao.com/gitlab/m
 claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/mcp
 ```
 
-> **注意：** MCP 服务需要在对应平台分别配置。Codex 使用 `codex mcp add`，Qoder 国内版使用 `qoderclicn mcp add` 或在 `mcp.json` 中声明。具体请参考各平台 MCP 文档。
+> **注意：** MCP 服务需要在实际宿主分别配置。工具参数、正式环境限制和副作用见 [后端 MCP 清单](skills/qdmp-skill/references/backend-mcp.md)。后端打包、上传与工具编排不依赖浏览器。
 
 ---
 
@@ -252,30 +252,37 @@ claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/m
 
 ### 真机扫码与体验版（CLI ≥0.1.32）
 
-在前端目录执行 `qdmp debug`，用千岛 App 扫码运行并在终端查看真机日志；手机需要能访问电脑局域网，Ctrl+C 结束。
+在前端目录执行 `qdmp-cli debug`，用千岛 App 扫码运行并在终端查看真机日志；手机需要能访问电脑局域网，Ctrl+C 结束。
 
-需要给体验人员使用时，先 `qdmp build`，再执行 `qdmp upload --experience -d "更新说明"`。CLI 自动获取本次版本号并设置体验版，无需手填版本号，也不会自动发布正式版。Agent 可使用 `--json` 读取二维码和结果。已有上传版本时，执行 `qdmp experience --version <实际版本号>` 即可切换体验版，无需重新构建上传。
+需要给体验人员使用时，先 `qdmp-cli build`，再执行 `qdmp-cli upload --experience -d "更新说明"`。CLI 自动获取本次版本号并设置体验版，无需手填版本号，也不会自动发布正式版。Agent 可使用 `--json` 读取二维码和结果。已有上传版本时，执行 `qdmp-cli experience --version <实际版本号>` 即可切换体验版，无需重新构建上传。
 
 可直接向 Agent 说“启动真机调试并展示二维码”“上传当前代码并设为体验版”或“把已上传的版本 12 设为体验版”（版本号替换为实际值）。完整说明见 [真机调试](skills/qdmp-skill/knowledge/development-guide.md#真机调试) 和 [设置体验版](skills/qdmp-skill/knowledge/development-guide.md#设置体验版)。
 
-### 部署发布
+### 全栈项目开发与部署
 
-```
-部署上传小程序
-```
+用 `qdmp-cli create <项目名>` 创建项目。已有项目按 [旧项目迁移](skills/qdmp-skill/knowledge/project-workflows.md#旧项目强制迁移) 处理。
+
+部署时，Agent 确认目标应用和发布范围，在对话中引导补齐缺失配置，再调用 CLI。CLI 执行构建和发布，Agent 核对线上版本、副本与健康结果。详见 [后端部署与验收](skills/qdmp-skill/knowledge/backend-production.md)。
+
+### 部署范围与前端正式上线
+
+Agent 按 backend/ 目录是否存在识别项目，再结合用户范围：纯前端只构建/上传前端，不要求 AppSecret、Go 或后端；全栈默认先完成后端发布与 Skill 验收，再上传前端。不存在纯后端小程序；明确仅后端时，只操作全栈项目的 backend/。空 backend/ 或配置缺失仍为全栈待完善，不能降级为纯前端；明确仅前端时，不要求后端构建或配置接入通过。具体工具链见 [部署分流](skills/qdmp-skill/knowledge/project-workflows.md#step-1-判断项目形态与部署范围)。
+
+`upload` 仅上传版本。需要正式前端上线时，还须按实际版本设置体验版并提审；当前 CLI 可用 `qdmp-cli review --version <实际版本号> --auto-publish --json` 选择审核通过后由平台发布。提审成功只证明已进入审核，最终上线以平台结果为准。
+
 
 ---
 
 ## 完整开发流程
 
 ```
-1. 配置环境 → 安装 Node.js、pnpm、qdmp-cli
-2. 创建项目 → qdmp-cli create myApp
-3. 安装依赖 → pnpm install
-4. 开发调试 → pnpm run dev
-5. 打包构建 → qdmp build（发布时必须使用 qdmp build）
-6. 登录账号 → Agent 使用 `qdmp login --agent --env prod` 展示登录链接和二维码图片；前台终端保留扫码、登录 URL、账号密码三种方式
-7. 上传部署 → 自动总结本次改动并执行 `qdmp-cli upload --description "<版本描述>"`
+1. 配置环境 → Node.js、Go、qdmp-cli；前端步骤另需 pnpm
+2. 创建项目 → qdmp-cli create myApp（默认完整全栈模板，也可显式 -t default）
+3. 配置与依赖 → 本地填写模板自带的 qdmp-config.json，CLI 直接读取；在实际前端目录安装依赖
+4. 开发调试 → 按前后端各自 README 启动和验证
+5. 后端正式发布 → backend deploy --description "<说明>" 内部构建、校验归档并直接发布，完成全部上线验收；--review 为可选审查
+6. 前端构建与登录 → 在 frontend/ 执行 qdmp-cli build，按需 qdmp-cli login --agent --env prod
+7. 前端上传 → 自动总结本次改动并执行 qdmp-cli upload --description "<版本描述>"
 ```
 
 ---

@@ -96,4 +96,4 @@ node <全新临时目录>/skills/qdmp-skill/scripts/ensure-current.mjs ensure --
 - 本地或平台不是 EMP：停止操作，仅允许关联 EMP 应用并使用 2.0 工程。
 - SPA/effuse/echo-effuse/effues 工程不受支持，不提供旧版开发、构建或上传路径。保留原工程，在独立的官方 2.0 模板中迁移业务并验证后再继续。
 - 本地开发、开发版本上传和体验版验证统一使用正式开放平台同一个 appId，无需额外配置应用 ID。
-- 在前端目录执行 getMe 核对应用；2.0 必须完成 qdmp build 的 EMP 编译。分别记录安装、构建和真机验证结果。
+- 在前端目录执行 getMe 核对应用；2.0 必须完成 qdmp-cli build 的 EMP 编译。分别记录安装、构建和真机验证结果。
