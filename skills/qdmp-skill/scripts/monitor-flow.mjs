@@ -7,11 +7,12 @@ import https from "node:https";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { checkDistribution, coldStartNotice } from "./monitor-preflight.mjs";
-import { flowCompatibility } from "./ensure-current.mjs";
+import { flowCompatibility, latestRelease } from "./ensure-current.mjs";
+import { hookFollowup, runtimeStatus } from "./monitor-runtime-status.mjs";
 
 const digest = value => crypto.createHash("sha256").update(typeof value === "string" || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest("hex");
 const transitions = {
-  awaiting_consent: ["authorize"], authorized: ["fetch"], entry_verified: ["inspect"],
+  awaiting_consent: ["authorize"], authorized: ["fetch", "fetch-install", "fetch-reuse"], entry_verified: ["inspect"],
   choice_ready: ["inspect", "execute"], check_failed: ["inspect"], action_confirmation_required: ["inspect", "confirm-action"], activation_reported: ["verify"],
   verification_pending: ["verify", "resume"], collecting: ["verify"],
   declined: [], needs_reconfirmation: ["inspect"], failed: ["verify", "resume"], executing: ["verify"]
@@ -39,9 +40,9 @@ function entryCheck(dir, release) {
   if (fs.lstatSync(entry).isSymbolicLink() || digest(fs.readFileSync(entry)) !== release.onboarding.sha256) throw new Error("onboarding checksum mismatch");
   return entry;
 }
-function run(entry, argv, s, options) {
+function run(entry, argv, s, options, timeout = ["enable", "update"].includes(argv[0]) ? 600000 : 180000) {
   if (options.run) return options.run(entry, argv, s);
-  const result = spawnSync(process.execPath, [entry, ...argv], { cwd: s.directory, encoding: "utf8", windowsHide: true, timeout: ["enable", "update"].includes(argv[0]) ? 600000 : 180000, maxBuffer: 4 * 1024 * 1024 });
+  const result = spawnSync(process.execPath, [entry, ...argv], { cwd: s.directory, encoding: "utf8", windowsHide: true, timeout, maxBuffer: 4 * 1024 * 1024 });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(String(result.stderr || result.stdout || `exit ${result.status}`).slice(0, 3000));
   return JSON.parse(result.stdout);
@@ -89,6 +90,10 @@ function verifyNotice(notice, s, release) {
 function safeChoice(notice, s, release, selected = null) {
   const choice = selected ? notice.choices?.find(c => c.action === selected) : notice.choices?.find(c => c.action === "install") || notice.choices?.find(c => c.action === "reuse");
   if (!choice) throw new Error("no authorized install/reuse choice; update or unknown state requires new disclosure");
+  if (s.install_only && choice.action !== "install") throw new Error("install-only flow requires a missing plugin verified by the host");
+  if (s.reuse_only && (choice.action !== "reuse" || !notice.status?.installation?.root)) {
+    throw new Error("reuse-only flow requires a compatible runtime verified by the host");
+  }
   const installed = notice.status?.installed_version;
   if (choice.action === "install" && notice.status?.plugin_state !== "missing") throw new Error("installation state changed");
   if (choice.action === "reuse" && (notice.status?.plugin_state !== "installed" || !notice.status?.compatible)) throw new Error("reuse requires a compatible installed version");
@@ -125,6 +130,9 @@ function hookInstruction(host, result, directory) {
   if (result.native_hooks_verified === true || project.state === "collecting") return "Native Hooks verified; production warehouse readback remains separate. No restart required.";
   const hooks = project.hooks || result.hooks;
   const workspace = `First confirm the chat's bound workspace is ${directory}; a shell command's cwd does not rebind the chat. `;
+  if (hookFollowup(project)?.action === "review") {
+    return workspace + "The host reports a Hook needs review. Follow references/hook-review.md for the installed IDE version and resume verification in the same chat after the user confirms.";
+  }
   if (hooks?.prompt_seen || hooks?.tool_seen) return workspace + `Native ${hooks.prompt_seen ? "prompt" : "tool"} evidence exists. Observe the missing ${hooks.prompt_seen ? "tool completion" : "prompt"} in that workspace, then verify. Missing one event does not prove a trust or restart problem. Production warehouse readback remains separate.`;
   const action = result.next_action || project.next_action;
   if (result.restart_required === true || action === "reload_host") return workspace + `The host reports a reload requirement. Restart ${host}, resume the flow and verify native prompt/tool events. Do not repeat business consent.`;
@@ -134,6 +142,16 @@ function hookInstruction(host, result, directory) {
 export async function monitorFlow(command, args = {}, options = {}) {
   const home = options.homeDir ?? os.homedir();
   const base = path.join(home, ".qdmp-skill", "monitor-flows");
+  if (command === "local-status" || command === "preview") {
+    const { host, cwd: directory } = args;
+    if (!path.isAbsolute(directory || "") || !["codex", "claude-code", "qoder"].includes(host)) throw new Error("absolute directory and supported host required");
+    const stat = fs.statSync(directory);
+    if (fs.realpathSync(directory) !== directory || !stat.isDirectory()) throw new Error("use the canonical absolute directory");
+    if (command === "local-status") return runtimeStatus(directory, host, home, checkDistribution().version, options.runRuntime);
+    const disclosure = coldStartNotice(args);
+    const preview_digest = digest({ disclosure, dev: stat.dev, ino: stat.ino });
+    return { directory, host, disclosure: { display: disclosure.display }, disclosure_digest: digest(disclosure), preview_digest };
+  }
   if (command === "list") {
     if (!path.isAbsolute(args.cwd || "") || !["codex", "claude-code", "qoder"].includes(args.host)) throw new Error("absolute directory and supported host required");
     const directory = fs.realpathSync(args.cwd);
@@ -151,6 +169,9 @@ export async function monitorFlow(command, args = {}, options = {}) {
     const directory = fs.realpathSync(args.cwd);
     if (directory !== args.cwd) throw new Error("use the canonical absolute directory before disclosing scope");
     const release = checkDistribution(); const id = crypto.randomUUID(); const stat = fs.statSync(directory);
+    if (args.preview && args.preview !== digest({ disclosure, dev: stat.dev, ino: stat.ino })) {
+      throw new Error("notice or directory changed; present the current notice before accepting a decision");
+    }
     const s = { schema: 1, id, state: "awaiting_consent", directory, host: args.host,
       manifest_digest: digest(release), disclosure_digest: digest(disclosure), directory_identity: { dev: stat.dev, ino: stat.ino }, created_at: new Date().toISOString(), history: [] };
     const dir = path.join(base, id); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -159,10 +180,25 @@ export async function monitorFlow(command, args = {}, options = {}) {
   }
   if (!/^[a-f0-9-]{36}$/.test(args.flow || "")) throw new Error("valid flow ID required");
   const dir = path.join(base, args.flow); const file = path.join(dir, "state.json");
-  if (command === "status") {
+  if (command === "status" || command === "probe") {
     // State commits are atomic renames. A snapshot needs no writable lock.
     const s = JSON.parse(fs.readFileSync(file, "utf8"));
     if (s.id !== args.flow || s.schema !== 1 || s.binding_digest !== digest(immutable(s))) throw new Error("flow binding corrupted");
+    if (command === "probe") {
+      if (s.state !== "collecting" || s.decision !== "approve" || !s.authorized_at) {
+        throw new Error("live probe requires a previously verified, explicitly authorized flow");
+      }
+      const release = bindingCheck(s);
+      const entry = entryCheck(dir, release);
+      const result = run(entry, ["status", ...queryArgs(s)], s, options, 5000);
+      if (result.project_root !== s.directory || result.host !== s.host || result.compatible !== true ||
+          typeof result.project?.granted !== "boolean" || typeof result.project.state !== "string") {
+        throw new Error("live monitoring status could not be verified for this directory and host");
+      }
+      return { live: true, id: s.id, directory: s.directory, host: s.host,
+        state: result.project.state, granted: result.project.granted,
+        next_action: result.project.next_action ?? result.next_action };
+    }
     const compatibility = flowCompatibility(s, checkDistribution(), dir);
     return { ...s, compatibility, allowed_actions: compatibility.current ? allowedActions(s) : [] };
   }
@@ -187,11 +223,23 @@ export async function monitorFlow(command, args = {}, options = {}) {
       if (args.digest !== s.disclosure_digest || !["approve", "decline"].includes(args.decision)) throw new Error("explicit decision and matching disclosure digest required");
       return next(args.decision === "approve" ? "authorized" : "declined", { decision: args.decision, authorized_at: args.decision === "approve" ? new Date().toISOString() : null });
     }
-    if (command === "fetch") {
+    if (["fetch", "fetch-install", "fetch-reuse"].includes(command)) {
+      const reuseOnly = command === "fetch-reuse";
+      const installOnly = command === "fetch-install";
+      if (reuseOnly || installOnly) {
+        if (reuseOnly && release.pre_download_notice.permitted_action !== "install_if_missing_or_reuse_compatible_version") {
+          throw new Error("original disclosure does not permit independent compatible reuse");
+        }
+        const published = await latestRelease(options);
+        if (digest(published.distribution) !== s.manifest_digest) {
+          throw new Error("published collection release no longer matches this flow");
+        }
+      }
+      const restrictions = { reuse_only: reuseOnly, install_only: installOnly };
       const stored = path.join(dir, "onboarding.mjs");
       if (fs.existsSync(stored)) {
         entryCheck(dir, release);
-        return next("entry_verified", { instruction: "Recovered the already downloaded, checksum-verified entry; original authorization is unchanged." });
+        return next("entry_verified", { ...restrictions, instruction: "Recovered the already downloaded, checksum-verified entry; original authorization is unchanged." });
       }
       const content = await (options.download ?? downloadPinned)(release.onboarding.url);
       if (!content.length || content.length > 20 * 1024 * 1024 || digest(content) !== release.onboarding.sha256) throw new Error("onboarding checksum/size mismatch; execution blocked");
@@ -199,7 +247,7 @@ export async function monitorFlow(command, args = {}, options = {}) {
       const entryFd = fs.openSync(temporary, "wx", 0o600);
       try { fs.writeFileSync(entryFd, content); fs.fsyncSync(entryFd); } finally { fs.closeSync(entryFd); }
       fs.renameSync(temporary, stored);
-      return next("entry_verified");
+      return next("entry_verified", restrictions);
     }
     const entry = entryCheck(dir, release);
     const inspect = () => {
@@ -221,11 +269,12 @@ export async function monitorFlow(command, args = {}, options = {}) {
         return next("verification_pending", { notice, choice: null, verification: notice.status, warehouse: "not_verified", instruction: "Existing authorization detected; verify without repeating activation." });
       }
       try {
-        const choice = safeChoice(notice, s, release);
+        const choice = safeChoice(notice, s, release, s.reuse_only ? "reuse" : s.install_only ? "install" : null);
         if (reuseNeedsApproval(choice, release)) return next("action_confirmation_required", { notice, action_digest: digest({ inventory: fingerprint(notice), choice }), proposed_action: "reuse", instruction: "Display the compatible installed version, directory and monitoring permissions, then obtain explicit approval for reusing this different version. No update or downgrade is permitted." });
         return next("choice_ready", { choice, notice, inventory_digest: fingerprint(notice), instruction: "The authorization is saved for this exact directory. Missing qdmp.json, appId or login does not invalidate it. Current runtimes allow anonymous activation. Only follow login requirements explicitly reported by a legacy runtime; retain this flow and continue business work without a second monitoring consent." });
       }
       catch (error) {
+        if (s.reuse_only || s.install_only) return next("needs_reconfirmation", { reason: error.message, notice });
         const update = notice.choices?.find(c => c.action === "update_and_enable") || notice.choices?.find(c => c.action === "update");
         if (update) {
           try { safeChoice(notice, s, release, update.action); }
@@ -293,8 +342,8 @@ export async function monitorFlow(command, args = {}, options = {}) {
 // Keep repeated CLI replies small enough for an Agent to see current evidence.
 // Full receipts, legal text and history remain in the private state file.
 export function flowOutput(result) {
-  if (result.flows) return result;
-  const keys = ["id", "state", "directory", "host", "allowed_actions", "disclosure_digest", "action_digest", "proposed_action", "choice", "reason", "diagnostic", "error_code", "phase", "instruction", "compatibility", "warehouse"];
+  if (result.flows || Object.hasOwn(result, "live") || result.preview_digest) return result;
+  const keys = ["id", "state", "directory", "host", "allowed_actions", "disclosure_digest", "action_digest", "proposed_action", "choice", "reason", "diagnostic", "error_code", "phase", "instruction", "compatibility", "warehouse", "reuse_only", "install_only"];
   const view = Object.fromEntries(keys.filter(key => result[key] !== undefined).map(key => [key, result[key]]));
   if (result.disclosure) view.disclosure = { display: result.disclosure.display };
   if (result.notice?.status) view.runtime = { installed_version: result.notice.status.installed_version,
@@ -307,6 +356,7 @@ export function flowOutput(result) {
     const status = result.verification;
     view.verification = { project_root: status.project_root, host: status.host, installed_version: status.installed_version,
       compatible: status.compatible, activation_requirements: status.activation_requirements, project: status.project, next_action: status.next_action,
+      hook_followup: hookFollowup(status.project),
       upload_endpoint: status.project?.collector?.endpoint || status.receipt?.upload_endpoint || status.receipt?.activation?.upload_endpoint,
       production_readback_verified: status.production_readback_verified ?? status.project?.production_readback_verified ?? false };
   }
@@ -315,7 +365,8 @@ export function flowOutput(result) {
 
 export async function runFlow(argv, options = {}) {
   const [command, ...tokens] = argv;
-  const accepted = ["begin", "list"].includes(command) ? new Set(["--cwd", "--host"])
+  const accepted = command === "begin" ? new Set(["--cwd", "--host", "--preview"])
+    : ["list", "preview", "local-status"].includes(command) ? new Set(["--cwd", "--host"])
     : ["authorize", "confirm-action"].includes(command) ? new Set(["--flow", "--decision", "--digest"]) : new Set(["--flow"]);
   const args = {};
   for (let i = 0; i < tokens.length; i++) {

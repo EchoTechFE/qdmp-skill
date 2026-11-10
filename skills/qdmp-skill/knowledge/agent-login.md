@@ -4,8 +4,8 @@
 
 ## 调用与展示
 
-1. 按用户指定或当前操作选择环境：生产 `prod`，开发 `dev`；没有指定时沿用 CLI 默认 `prod`。先检查 `qdmp login --help` 是否包含 `--agent`。旧版缺少该参数时说明需要更新 CLI，不能假装已提供图片登录。
-2. 单独执行 `qdmp login --agent --env prod`（开发改为 `dev`）。无需 TTY，无需选择登录方式。按下面的「工具执行方式」启动并读取输出，不要与上传等命令串联。该命令会一直等待用户登录；用同步调用等它结束，用户就拿不到登录入口。
+1. 按用户指定或当前操作选择环境：生产 `prod`，开发 `dev`；没有指定时沿用 CLI 默认 `prod`。先检查 `qdmp-cli login --help` 是否包含 `--agent`。旧版缺少该参数时说明需要更新 CLI，不能假装已提供图片登录。
+2. 单独执行 `qdmp-cli login --agent --env prod`（开发改为 `dev`）。无需 TTY，无需选择登录方式。按下面的「工具执行方式」启动并读取输出，不要与上传等命令串联。该命令会一直等待用户登录；用同步调用等它结束，用户就拿不到登录入口。
 3. stdout 为每行一条 JSON（NDJSON）。收到 `type: "ready"` 后立即向用户展示 `markdown` 中的链接和图片，不要等命令结束。CLI stdout 本身不会自动成为聊天图片，需要 Agent 在回复中渲染。
 
    展示格式（字段均取自本次真实返回值，不使用占位链接）：
@@ -34,7 +34,7 @@
 例如 Claude Code 的 Bash 参数（仅适用于该工具）：
 
 ```json
-{"command":"qdmp login --agent --env prod","run_in_background":true}
+{"command":"qdmp-cli login --agent --env prod","run_in_background":true}
 ```
 
 `timeout` 是命令的最长运行时间，不等于提前返回输出；不要仅设置短 `timeout`，也不要长时间同步等待。工具不支持保留后台进程或读取运行中输出时，说明限制，不假装已提供可用登录入口。
@@ -49,4 +49,4 @@
 - 网络错误不能证明已登录，也不能通过伪造链接或复用旧二维码解决。
 - 登录成功、超时、取消后，CLI 关闭回调、终止轮询并删除临时图片。不要提前删除图片或终止进程。
 
-普通终端仍可使用 `qdmp login --env <env>` 的三选一流程。CI 使用 `QDMP_TOKEN`；无用户在场的非交互命令保持快速失败，不自动进入登录等待。
+普通终端仍可使用 `qdmp-cli login --env <env>` 的三选一流程。CI 使用 `QDMP_TOKEN`；无用户在场的非交互命令保持快速失败，不自动进入登录等待。

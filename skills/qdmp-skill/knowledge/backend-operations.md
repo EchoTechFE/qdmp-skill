@@ -59,637 +59,38 @@
 
 ## 通用子流程: 读取项目配置
 
-配置分两个文件：
-
-- **`qdmp-config.json`**（项目根目录，即 `frontend/`、`backend/` 的上一级）：主配置源，包含 `appId`、`appSecret`、`runtime`，可选 `mongodb.uri`、`mongodb.database`（uri 不含 database，database 单独配置）。**含敏感信息（appSecret、数据库密码），不应提交到仓库。**
-- **`frontend/qdmp.json`**：保留 `appId`、`loader` 等非敏感配置，供前端构建/关联使用。
-
-确定 `projectRoot`：
-- 优先：根目录 `qdmp-config.json` → `projectRoot` 为其所在目录
-- 其次：`frontend/qdmp-config.json` → `projectRoot` 为 `frontend/` 的父目录
-- 再次（旧结构定位锚点）：`frontend/qdmp.json` 或根目录 `qdmp.json` → `projectRoot` 为该文件所在目录（或 `frontend/` 的父目录）
-- 最后：逐级向上查找父目录中的 `qdmp-config.json`
-
-读取字段：从 `qdmp-config.json` 读 `appId`、`appSecret`、`runtime`，可选读取 `mongodb.uri`、`mongodb.database`。
-
-### 前置：旧结构自动迁移（读取字段前必须先执行）
-
-在读取字段前，先判断是否为需要迁移的旧结构，命中则**静默自动迁移**后再继续读取。
-
-**旧配置文件定位**：按顺序取第一个存在的作为 `legacyConfig`：`frontend/qdmp.json` → 根目录 `qdmp.json`。
-
-**触发条件（三者全满足）**：
-1. 根目录 `qdmp-config.json` **不存在**；
-2. `legacyConfig` 存在；
-3. `legacyConfig` 含 `appSecret`（即旧的全量配置，而非已裁剪的 appId-only）。
-
-**任一不满足则跳过迁移**（保证幂等）：
-- 已有 `qdmp-config.json` → 已是新结构，直接读取；
-- `legacyConfig` 只有 `appId`、无 `appSecret` → 已迁移过，直接读取；
-- 完全没有任何配置 → 进入下方「无 qdmp-config.json」分支。
-
-**迁移动作**（静默执行，全部完成后一次性告知用户）：
-
-1. 将 `legacyConfig` 的**全量内容**写入根目录 `qdmp-config.json`（`appId`/`appSecret`/`runtime`/`mongodb` 原样保留）。
-2. 将 `legacyConfig`（若在根目录，则改写为 `frontend/qdmp.json`；若本就在 `frontend/`，原地改写）**移除 `appSecret`、`runtime`、`mongodb` 等后端字段，保留原有 `appId`、`loader` 及其他非敏感前端配置**。以下仅为原 loader 为 EMP 时的示例，不覆盖其他字段：
-   ```json
-   { "appId": "<原 appId>", "loader": "EMP" }
-   ```
-   若旧文件在根目录，分离后的前端配置文件应位于 `frontend/qdmp.json`；根目录不再保留 `qdmp.json`。
-3. 追加 `.gitignore`（见「通用子流程: 保护敏感配置」）：
-   ```bash
-   grep -qxF 'qdmp-config.json' {projectRoot}/.gitignore 2>/dev/null || echo 'qdmp-config.json' >> {projectRoot}/.gitignore
-   ```
-4. **密钥泄露风险检查**：检测旧配置是否已被 git 跟踪（`appSecret` 可能已进历史）：
-   ```bash
-   git -C {projectRoot} ls-files --error-unmatch frontend/qdmp.json qdmp.json 2>/dev/null
-   ```
-   - 有输出（旧文件曾被提交）→ 在完成提示中**额外警告**用户：`⚠️ 检测到旧配置文件曾被 git 跟踪，appSecret 可能已存在于提交历史中。.gitignore 对已跟踪文件无效，建议手动执行 git rm --cached 并考虑轮换 appSecret。`
-   - 无输出或非 git 仓库 → 跳过。
-
-**完成提示**（迁移后展示，B 类信息按需拼接）：
-```
-已将旧配置迁移到新结构：
-- qdmp-config.json（根目录）：appId、appSecret、runtime{、mongodb}
-- frontend/qdmp.json：保留原 appId、loader 等非敏感前端配置
-- 已将 qdmp-config.json 加入 .gitignore
-{可选：⚠️ 密钥泄露警告}
-```
-
-本节仅处理已确认的 2.0 工程配置布局。发现非 EMP 或 effuse/echo-effuse/effues 运行时时停止，不执行配置迁移或旧版发布；缺失 loader 时先核对模板和平台，不能默认为 EMP。
-
-迁移完成后，按新结构从 `qdmp-config.json` 读取字段，继续后续流程。
-
-**无 qdmp-config.json** 时（且不满足迁移条件，即无任何旧全量配置）：
-
-```yaml
-questions:
-  - question: "未找到 qdmp-config.json 配置文件，如何获取？"
-    header: "配置"
-    multiSelect: false
-    options:
-      - label: "创建 qdmp-config.json"
-        description: "在项目根目录创建配置文件模板，需要填入 appId 和 appSecret"
-      - label: "指定项目目录"
-        description: "在其他目录查找已有的 qdmp-config.json"
-```
-
-创建模板（写入根目录 `qdmp-config.json`）：
-```json
-{
-  "appId": "从平台获取的小程序 ID",
-  "appSecret": "从平台获取的小程序密钥",
-  "runtime": "go"
-}
-```
-
-同时在 `frontend/qdmp.json` 更新 `appId`，保留已有 loader 及其他非敏感前端配置。文件不存在时先核对模板和平台类型再创建；以下示例只适用于已确认的 2.0（EMP）项目：
-```json
-{
-  "appId": "从平台获取的小程序 ID",
-  "loader": "EMP"
-}
-```
-
-并确保项目 `.gitignore` 包含 `qdmp-config.json`（详见「通用子流程: 保护敏感配置」）。
-
-**appId 或 appSecret 缺失**：停止，提示用户从平台获取并填入。
-
-**关键变量**：
-- `projectRoot`：小程序根目录
-- `sourceDir`：`{projectRoot}/backend/`
-- `mongoUri`：`qdmp-config.json` 中 `mongodb.uri`（仅当存在 `mongodb` 字段时使用，操作 7 会自动写入默认值）
-- `mongoDatabase`：`qdmp-config.json` 中 `mongodb.database`（同上）
-
----
-
-## 通用子流程: 保护敏感配置
-
-`qdmp-config.json` 含 `appSecret` 与数据库密码，**必须避免进入仓库和任何上传包**：
-
-- 确保 `{projectRoot}/.gitignore` 存在且包含一行 `qdmp-config.json`；不存在则创建，已存在但缺该行则追加。
-- **后端打包**：`zip` 的是 `{sourceDir}`（即 `backend/`），`qdmp-config.json` 在其上一级，不会被打入；无需改排除清单。
-- **前端打包**：`qdmp build` / `qdmp-cli upload` 在 `frontend/` 目录内执行，`qdmp-config.json` 在其上一级，不会被打入。发布前须确认 `qdmp-config.json` 未被复制进 `frontend/`——若因误操作出现 `frontend/qdmp-config.json`，先移除再打包。
-- `frontend/qdmp.json` 保留 `appId`、`loader` 等非敏感配置，不含 `appSecret`、数据库配置，可正常提交。
-
----
-
-## 通用子流程: 仓库初始化（publish 共用）
-
-调用 `qdmp_gitlab_repo_exists(appId, appSecret)`：
-
-- **不存在** → 调用 `qdmp_gitlab_init_repo(appId, appSecret, appName, runtime)`，`appName` 取 `projectRoot` 目录名
-- **已存在** → 对比 `runtime`：
-  - 一致 → 跳过
-  - 不一致 → 重新初始化，告知用户 `runtime 已从 {旧} 切换为 {新}`
-
----
-
-## 通用子流程: 本地文件打包上传（publish/diff 共用）
-
-**参数**：`version`（publish 传实际版本号，diff 传 `temp-diff`）
-
-**Step 1**: 打包
-```bash
-cd {sourceDir} && zip -r /tmp/qdmp-{appId}.zip . \
-  -x '.git/*' 'node_modules/*' '__pycache__/*' 'venv/*' 'logs/*' \
-  -x '.env' '.env.*' '.secret' 'credentials.json' 'secrets.yaml' \
-  -x 'config.local.*' \
-  -x '*.key' '*.pem' '*.p12' '*.pfx' '*.log' '*.pyc' \
-  -x '.gitlab-ci.yml' '.gitignore' 'Dockerfile'
-```
-
-**Step 2**: 校验大小（必须 < 100MB）
-```bash
-stat -c%s /tmp/qdmp-{appId}.zip
-```
-
-**Step 3**: 上传（`baseURL` 默认 `https://openapi.qiandao.com`，若有 `.mcp.json` 则从 `qdmp-gitlab` URL 推导）
-```bash
-curl -s -X POST {baseURL}/gitlab-mcp/upload \
-  -F "appId={appId}" \
-  -F "appSecret={appSecret}" \
-  -F "version={version}" \
-  -F "file=@/tmp/qdmp-{appId}.zip"
-```
-
-响应 `{"message":"ok","size":...}` 为成功，否则停止。
-
-**Step 4**: 清理
-```bash
-rm /tmp/qdmp-{appId}.zip
-```
+按[项目形态与范围](./project-workflows.md#step-1-判断项目形态与部署范围)定位项目和目标环境。缺少配置时按[凭据引导](./backend-production.md#凭据引导与自动写入)补齐。本节使用项目根目录和其中的 `backend/`。
 
 ---
 
 ## 通用子流程: Pipeline 状态跟踪（publish/rollback 共用）
 
-循环调用 `qdmp_gitlab_pipeline_status(appId, appSecret, version)`，间隔 10 秒，最多 60 次：
+`qdmp_gitlab_pipeline_status` 在成功时会更新日志并自动合并分支，具有写入副作用。对已授权的发布或回滚，默认间隔 10 秒、最多 60 次跟踪；失败读取本次 `pipeline_logs`，超时保留版本和制品摘要，不重放 publish。
 
-- **成功** → 展示完成信息（publish：版本号+变更统计；rollback：`vX.Y.Z → vA.B.C`）
-- **失败** → 调用 `qdmp_gitlab_pipeline_logs` 获取日志，展示原因和排查建议
-- **超时** → 提示 Pipeline 仍在执行，可稍后通过 status 查看
+CLI deploy 成功仅返回 Pipeline 事实和 acceptance_required，不自动调用 Aliyun/K8s。Agent 继续使用宿主 MCP 收集实际部署版本、Job/副本和生产日志，并验证真实健康接口。成功判定按 [上线验收](./backend-production.md#上线验收与失败处理)：build 与 deploy Job 成功、两个新副本 Ready、再次查询的运行版本匹配，且已实现的健康和就绪接口通过。总状态 success、镜像 tag 或单个旧副本响应均不能单独证明上线完成。
 
 ---
 
 ## 通用子流程: Schema 代码生成（操作 7 / 后端代码变更共用）
 
-根据 `qdmp-schema.json` 和 `runtime`，在 `backend/models/` 下生成或更新 model 文件。
+`qdmp-schema.json` 是业务数据定义来源；修改前先读已有后端 README、配置加载和数据库入口，复用真实 API，不重复创建另一套数据库连接。
 
-**前提**：`qdmp-config.json` 中存在 `mongodb` 配置（操作 7 会确保写入默认值，此处必然存在）。
+1. 业务实际接入 MongoDB 持久化时，确认根 `qdmp-config.json` 已配置 MongoDB，缺少信息则按[凭据引导与自动写入](./backend-production.md#凭据引导与自动写入)询问用户并自动写入；生产数据库名等于 AppID。仅声明 Schema 或生成尚未使用的数据结构不要求提供数据库凭据。
+2. 模型接收后端已初始化的数据库对象或业务仓储接口；不要从模型直接读取主配置，也不要将 URI、密码或 AppSecret 写入源码常量。旧 Node 配置读取改为统一 helper，保持原数据语义，不复制旧源码中的硬编码凭据。
+3. Go 平台只编译 `main.go`，新模型放进明确导入的 package，接入真实启动和路由调用；不要依靠同目录额外 `init.go` 或仅 `go build .` 成功。Node 模型通过原 `index.js` 启动链真实加载，不因目录迁移改变业务模块。两者保留配置和就绪检查，新增必需索引初始化失败时不能报 ready。
+4. 根据 Schema 创建必要索引，记录迁移影响；禁止仅因 Schema 未列出就自动删除线上已有索引、集合或数据。破坏性变更先生成可审查迁移计划，按已有授权执行。
+5. 只存媒体引用与必要元数据，后端校验所有写入路径；业务重试和批量导入也遵守 [云服务使用规范](#云服务使用规范)。
+6. 运行针对性模型检查：Go 使用 `go test ./...`，Node 使用已有测试和配置 smoke；再用 `qdmp-cli backend package --json` 验证对应 runtime 的构建与配置投影。生成后报告实际新增/修改模型、索引与接入点，不展示配置值。
 
-**生成时**：从 `qdmp-config.json` 读取 `mongodb.uri` 和 `mongodb.database`，直接写入生成的代码中。写入的是线上地址，本地测试时由 test-deploy 自动替换为 `host.docker.internal:27017`，publish 时再自动恢复为线上地址。
-
-### Go
-
-`backend/models/{collection}.go`（示例 product）：
-```go
-package models
-
-import (
-    "time"
-    "go.mongodb.org/mongo-driver/mongo"
-)
-
-type Product struct {
-    ProductID   string    `bson:"productId" json:"productId"`
-    Title       string    `bson:"title" json:"title"`
-    Price       float64   `bson:"price" json:"price"`
-    Images      []string  `bson:"images" json:"images"`
-    Description string    `bson:"description,omitempty" json:"description,omitempty"`
-    Category    string    `bson:"category,omitempty" json:"category,omitempty"`
-    Status      string    `bson:"status" json:"status"`
-    CreatedBy   string    `bson:"createdBy,omitempty" json:"createdBy,omitempty"`
-    CreatedAt   time.Time `bson:"createdAt" json:"createdAt"`
-    UpdatedAt   time.Time `bson:"updatedAt" json:"updatedAt"`
-}
-
-func ProductCollection(db *mongo.Database) *mongo.Collection {
-    return db.Collection("products")
-}
-```
-
-`backend/db/mongo.go`（若不存在则创建，将 `qdmp-config.json` 中的配置直接写入）：
-```go
-package db
-
-import (
-    "context"
-    "fmt"
-    "log"
-    "time"
-    "go.mongodb.org/mongo-driver/bson"
-    "go.mongodb.org/mongo-driver/mongo"
-    "go.mongodb.org/mongo-driver/mongo/options"
-)
-
-var DB *mongo.Database
-
-const (
-    // ⚠️ Go MongoDB driver 要求：URI 包含 ? 时，? 前必须有 /database 路径
-    // 若 qdmp-config.json 中的 uri 为 mongodb://...@host:27017?opts，需拼接为 mongodb://...@host:27017/{database}?opts
-    mongoURI      = "{将 qdmp-config.json 的 mongodb.uri 中 ? 前插入 /{database}，如 .../echoXXX?... → .../echoXXX/echoXXX?...}"
-    mongoDatabase = "{从 qdmp-config.json 读取的 mongodb.database}"
-)
-
-func InitMongo() error {
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
-    client, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
-    if err != nil {
-        return err
-    }
-    DB = client.Database(mongoDatabase)
-    
-    // 启动时对齐索引
-    if err := syncIndexes(); err != nil {
-        log.Printf("Warning: failed to sync indexes: %v", err)
-    }
-    
-    return nil
-}
-
-func syncIndexes() error {
-    ctx := context.Background()
-    
-    // 从 qdmp-schema.json 读取索引定义（此处简化，实际需读取 schema 文件）
-    schemaIndexes := map[string][]IndexDef{
-        "products": {
-            {Name: "idx_product_id_uniq", Keys: bson.D{{Key: "productId", Value: 1}}, Unique: true},
-            {Name: "idx_created_at", Keys: bson.D{{Key: "createdAt", Value: -1}}},
-            {Name: "idx_user_status_time", Keys: bson.D{{Key: "createdBy", Value: 1}, {Key: "status", Value: 1}, {Key: "createdAt", Value: -1}}},
-        },
-    }
-    
-    for collName, indexes := range schemaIndexes {
-        coll := DB.Collection(collName)
-        
-        // 1. 获取现有索引
-        cursor, err := coll.Indexes().List(ctx)
-        if err != nil {
-            return err
-        }
-        var existingIndexes []bson.M
-        if err := cursor.All(ctx, &existingIndexes); err != nil {
-            return err
-        }
-        
-        existingNames := make(map[string]bool)
-        for _, idx := range existingIndexes {
-            name := idx["name"].(string)
-            if name != "_id_" {
-                existingNames[name] = true
-            }
-        }
-        
-        // 2. 创建 schema 中定义的索引
-        schemaNames := make(map[string]bool)
-        for _, idx := range indexes {
-            schemaNames[idx.Name] = true
-            if !existingNames[idx.Name] {
-                opts := options.Index().SetName(idx.Name)
-                if idx.Unique {
-                    opts.SetUnique(true)
-                }
-                _, err := coll.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: idx.Keys, Options: opts})
-                if err != nil {
-                    log.Printf("Warning: failed to create index %s: %v", idx.Name, err)
-                }
-            }
-        }
-        
-        // 3. 删除 schema 中不存在的索引
-        for name := range existingNames {
-            if !schemaNames[name] {
-                if _, err := coll.Indexes().DropOne(ctx, name); err != nil {
-                    log.Printf("Warning: failed to drop index %s: %v", name, err)
-                }
-            }
-        }
-    }
-    
-    return nil
-}
-
-type IndexDef struct {
-    Name   string
-    Keys   bson.D
-    Unique bool
-}
-```
-
-`backend/go.mod` 补充依赖（若不存在）：
-```
-require go.mongodb.org/mongo-driver v1.15.0
-```
-
-然后执行：
-```bash
-cd {sourceDir} && go mod tidy
-```
-
-### Node.js
-
-`backend/models/{collection}.js`（示例 product.js）：
-```js
-const { getDb } = require('../db/mongo');
-
-const COLLECTION = 'products';
-
-const ProductModel = {
-  collection: () => getDb().collection(COLLECTION),
-  async findAll(filter = {}) { return this.collection().find(filter).toArray(); },
-  async findById(productId) { return this.collection().findOne({ productId }); },
-  async create(data) {
-    const now = new Date();
-    const doc = { ...data, createdAt: now, updatedAt: now };
-    const result = await this.collection().insertOne(doc);
-    return { ...doc, _id: result.insertedId };
-  },
-  async update(productId, data) {
-    const now = new Date();
-    await this.collection().updateOne({ productId }, { $set: { ...data, updatedAt: now } });
-    return this.findById(productId);
-  },
-  async delete(productId) { return this.collection().deleteOne({ productId }); },
-};
-
-module.exports = ProductModel;
-```
-
-`backend/db/mongo.js`（若不存在则创建，将 `qdmp-config.json` 中的配置直接写入）：
-```js
-const { MongoClient } = require('mongodb');
-
-const mongoURI = '{从 qdmp-config.json 读取的 mongodb.uri}';
-const mongoDatabase = '{从 qdmp-config.json 读取的 mongodb.database}';
-
-let db;
-
-async function connectMongo() {
-  const client = new MongoClient(mongoURI);
-  await client.connect();
-  db = client.db(mongoDatabase);
-  
-  // 启动时对齐索引
-  await syncIndexes().catch(err => console.warn('Warning: failed to sync indexes:', err));
-}
-
-async function syncIndexes() {
-  // 从 qdmp-schema.json 读取索引定义（此处简化，实际需读取 schema 文件）
-  const schemaIndexes = {
-    products: [
-      { name: 'idx_product_id_uniq', key: { productId: 1 }, unique: true },
-      { name: 'idx_created_at', key: { createdAt: -1 } },
-      { name: 'idx_user_status_time', key: { createdBy: 1, status: 1, createdAt: -1 } }
-    ]
-  };
-  
-  for (const [collName, indexes] of Object.entries(schemaIndexes)) {
-    const coll = db.collection(collName);
-    
-    // 1. 获取现有索引
-    const existingIndexes = await coll.indexes();
-    const existingNames = new Set(
-      existingIndexes.filter(idx => idx.name !== '_id_').map(idx => idx.name)
-    );
-    
-    // 2. 创建 schema 中定义的索引
-    const schemaNames = new Set(indexes.map(idx => idx.name));
-    for (const idx of indexes) {
-      if (!existingNames.has(idx.name)) {
-        try {
-          await coll.createIndex(idx.key, { name: idx.name, unique: idx.unique || false });
-        } catch (err) {
-          console.warn(`Warning: failed to create index ${idx.name}:`, err.message);
-        }
-      }
-    }
-    
-    // 3. 删除 schema 中不存在的索引
-    for (const name of existingNames) {
-      if (!schemaNames.has(name)) {
-        try {
-          await coll.dropIndex(name);
-        } catch (err) {
-          console.warn(`Warning: failed to drop index ${name}:`, err.message);
-        }
-      }
-    }
-  }
-}
-
-function getDb() {
-  if (!db) throw new Error('MongoDB not initialized');
-  return db;
-}
-
-module.exports = { connectMongo, getDb };
-```
-
-`backend/package.json` 补充依赖（若不存在）：
-```json
-"mongodb": "^6.0.0"
-```
-
-然后执行：
-```bash
-cd {sourceDir} && npm install
-```
-
-### Python
-
-`backend/models/{collection}.py`（示例 product.py）：
-```python
-from datetime import datetime, timezone
-from db.mongo import get_db
-
-COLLECTION = 'products'
-
-def get_collection(): return get_db()[COLLECTION]
-def find_all(filter=None): return list(get_collection().find(filter or {}))
-def find_by_id(product_id): return get_collection().find_one({'productId': product_id})
-def create(data):
-    now = datetime.now(timezone.utc)
-    doc = {**data, 'createdAt': now, 'updatedAt': now}
-    result = get_collection().insert_one(doc)
-    doc['_id'] = result.inserted_id
-    return doc
-def update(product_id, data):
-    now = datetime.now(timezone.utc)
-    get_collection().update_one({'productId': product_id}, {'$set': {**data, 'updatedAt': now}})
-    return find_by_id(product_id)
-def delete(product_id): return get_collection().delete_one({'productId': product_id})
-```
-
-`backend/db/mongo.py`（若不存在则创建，将 `qdmp-config.json` 中的配置直接写入）：
-```python
-import logging
-from pymongo import MongoClient, ASCENDING, DESCENDING
-
-MONGO_URI = '{从 qdmp-config.json 读取的 mongodb.uri}'
-MONGO_DATABASE = '{从 qdmp-config.json 读取的 mongodb.database}'
-
-_db = None
-
-def init_mongo():
-    global _db
-    client = MongoClient(MONGO_URI)
-    _db = client[MONGO_DATABASE]
-    
-    # 启动时对齐索引
-    try:
-        _sync_indexes()
-    except Exception as e:
-        logging.warning(f'Warning: failed to sync indexes: {e}')
-
-def _sync_indexes():
-    # 从 qdmp-schema.json 读取索引定义（此处简化，实际需读取 schema 文件）
-    schema_indexes = {
-        'products': [
-            {'name': 'idx_product_id_uniq', 'key': [('productId', ASCENDING)], 'unique': True},
-            {'name': 'idx_created_at', 'key': [('createdAt', DESCENDING)]},
-            {'name': 'idx_user_status_time', 'key': [('createdBy', ASCENDING), ('status', ASCENDING), ('createdAt', DESCENDING)]},
-        ]
-    }
-    
-    for coll_name, indexes in schema_indexes.items():
-        coll = _db[coll_name]
-        
-        # 1. 获取现有索引
-        existing = {idx['name'] for idx in coll.list_indexes() if idx['name'] != '_id_'}
-        
-        # 2. 创建 schema 中定义的索引
-        schema_names = {idx['name'] for idx in indexes}
-        for idx in indexes:
-            if idx['name'] not in existing:
-                try:
-                    coll.create_index(idx['key'], name=idx['name'], unique=idx.get('unique', False))
-                except Exception as e:
-                    logging.warning(f"Warning: failed to create index {idx['name']}: {e}")
-        
-        # 3. 删除 schema 中不存在的索引
-        for name in existing:
-            if name not in schema_names:
-                try:
-                    coll.drop_index(name)
-                except Exception as e:
-                    logging.warning(f'Warning: failed to drop index {name}: {e}')
-
-def get_db():
-    if _db is None:
-        raise RuntimeError('MongoDB not initialized')
-    return _db
-```
-
-`backend/requirements.txt` 补充（若不存在）：
-```
-pymongo==4.7.3
-```
-
-完成后提示：
-```
-数据模型已生成完毕。
-
-  qdmp-schema.json  → 数据定义（所有后端代码的唯一数据来源）
-  backend/models/   → 各 collection 的操作封装
-  backend/db/       → 数据库连接初始化（配置已从 qdmp-config.json 写入）
-
-数据库连接信息已从 qdmp-config.json 读取并写入后端代码。
-如需修改连接信息，请更新 qdmp-config.json 后重新生成代码。
-```
+本地调试通过进程环境或项目已有受保护配置切换，禁止自动重写源码里的生产数据库地址；正式打包重新读取生产配置，不依赖把测试地址替换回去。
 
 ---
 
 ## 操作 1: publish（发版）
 
-**Step 1**: 读取项目配置
+按[后端正式发布与验收](./backend-production.md)确认范围、运行时、配置和授权，调用 CLI 执行。
 
-**Step 2**: 代码合规检查
-- 确认 `backend/` 存在且非空
-- 扫描端口号，必须为 8080，不是则自动修改
-- 检查敏感文件（`backend/.env` 等），有则警告
-- **Go**：有外部依赖时检查 `go.sum` 是否存在，不存在则停止提示执行 `go mod tidy`
-- **Node.js**：检查 `package-lock.json` 是否存在，不存在则停止提示执行 `npm install`
-- **Python**：检查 `requirements.txt` 中是否有与 Python 3.12 明显不兼容的版本约束，有则提示修正
-- **MongoDB URI 检查**（仅当 `qdmp-config.json` 存在 `mongodb` 字段时）：
-  - 在 `backend/db/` 下搜索 `MONGO_URI` / `mongoURI` 常量
-  - 若值包含 `localhost`、`127.0.0.1` 或 `host.docker.internal` → 自动替换为 `qdmp-config.json` 中的线上 URI
-  - 替换后提示：`数据库连接已恢复为线上配置`
-  - **Go runtime 专项检查**：Go 的 MongoDB driver 严格要求 URI 格式，若 URI 含 `?` 查询参数，则 `?` 前必须有 `/database` 路径，否则 driver 报 `must have a / before the query ?` 导致 Pod 启动即崩溃。
-    - 检测规则：URI 包含 `?` 且 `?` 之前没有第三个 `/`（即缺少 `/database` 段）→ **自动修复**：在 `?` 前插入 `/{mongoDatabase}`
-    - 错误格式：`mongodb://user:pass@host:27017?retryWrites=true`
-    - 正确格式：`mongodb://user:pass@host:27017/database?retryWrites=true`
-- **不检查** `.gitlab-ci.yml` 和 `Dockerfile`（由 MCP Server 自动生成）
-
-**Step 3**: 执行"仓库初始化"子流程
-
-**Step 3.5**: Pipeline 冲突检查（**强制，禁止跳过**）
-- 调用 `qdmp_gitlab_list_versions(appId, appSecret)` 获取最新版本号
-- 若存在最新版本，调用 `qdmp_gitlab_pipeline_status(appId, appSecret, latestVersion)` 检查其状态
-- 若状态为 `running` / `pending` / `waiting_for_resource`：**停止发版**，提示：
-  ```
-  ⚠️  当前版本 {version} 的 Pipeline 正在运行中（{status}），请等待其完成后再发版。
-  可通过「查看版本」或「查看日志」跟踪进度。
-  ```
-- 若状态为 `failed` / `success` / 无版本 → 继续
-
-**Step 4**: 获取版本号（必须交互确认，禁止自动决定）
-- 调用 `qdmp_gitlab_list_versions(appId, appSecret)`
-- 无历史版本 → 推荐 v1.0.0；有历史版本 → 推算 patch/minor/major 候选
-
-```yaml
-questions:
-  - question: "请指定版本号。\n\n当前最新: v1.2.3\n"
-    header: "版本号"
-    multiSelect: false
-    options:
-      - label: "v1.2.4"
-        description: "Patch +1（Bug 修复）"
-      - label: "v1.3.0"
-        description: "Minor +1（新功能）"
-      - label: "v2.0.0"
-        description: "Major +1（重大变更）"
-      - label: "自定义"
-        description: "手动输入 vX.Y.Z"
-```
-
-自定义时校验：格式 `vX.Y.Z`、不与已有版本重复、低于最新版本需二次确认。
-
-**Step 5**: 生成变更摘要
-- 执行"本地文件打包上传"（`version=temp-diff`）
-- 调用 `qdmp_gitlab_diff(appId, appSecret)` 展示变更统计
-
-**Step 6**: 填写发版说明（可跳过，跳过时基于 diff 自动生成）
-
-**Step 7**: 二次确认
-
-```yaml
-questions:
-  - question: "确认发版？\n\n版本: v1.2.4\n说明: 新增用户个人资料页面\n变更: 8 个文件 (+59 -17)"
-    header: "确认"
-    multiSelect: false
-    options:
-      - label: "确认发版"
-        description: "提交代码并触发构建部署"
-      - label: "取消"
-        description: "放弃本次发版"
-```
-
-**Step 8**: 执行发版
-- 执行"本地文件打包上传"（`version=实际版本号`）
-- 调用 `qdmp_gitlab_publish(appId, appSecret, version, description)`
-
-**Step 9**: 执行"Pipeline 状态跟踪"子流程
-
-**Step 10**: 展示发版结果
-
-```
-后端发版成功
-
-  版本:     v{version}
-  服务地址: https://{appId}.qiandaomp.com
-```
+全栈部署仅在后端通过验收后继续前端发布。
 
 ---
 
@@ -699,7 +100,7 @@ questions:
 
 **Step 2**: 并行调用
 - `qdmp_gitlab_list_versions(appId, appSecret)`
-- `qdmp_k8s_deployed_version(appId, appSecret)` → 标注 `◀ 运行中`
+- `qdmp_k8s_deployed_version(appId, appSecret)` → 标注 `◀ 部署镜像版本`，健康状态另行验收
 
 **Step 3**: 格式化展示
 ```
@@ -724,7 +125,7 @@ questions:
 
 **Step 3**: 调用 `qdmp_gitlab_list_versions`，AskUserQuestion 让用户选择目标版本（排除当前版本）
 
-**Step 4**: 二次确认，明确展示 `vX.Y.Z → vA.B.C`
+**Step 4**: 明确展示 `vX.Y.Z → vA.B.C`；目标和回滚授权已有明确证据时直接继续，缺少决定时在此取得一次确认
 
 **Step 5**: 调用 `qdmp_gitlab_rollback(appId, appSecret, version)`
 
@@ -753,7 +154,7 @@ options:
 
 时间范围：最近 30 分钟（推荐）/ 1 小时 / 24 小时 / 自定义
 
-**Step 4**: 调用 `qdmp_k8s_logs(appId, appSecret, type, duration)`
+**Step 4**: 调用 `qdmp_k8s_logs(appId, appSecret, environment="production", type, duration)`
 - 启动/运行日志 → `type="startup"`
 - 请求日志 → `type="all"`
 - 错误日志 → `type="error"`
@@ -779,7 +180,7 @@ options:
   状态: 已回滚（当前部署版本落后于最新版本）
 ```
 
-状态判断：一致 → "运行中（最新版本）"；落后 → "已回滚"；无部署 → "未部署"
+状态判断：版本一致仅表示镜像 tag 匹配；仍需 Job、Ready 和健康证据才能确认上线。运行版本落后时报告“运行版本与最新发布版本不同”，只有查明回滚记录才标记已回滚；无部署则标记未部署。
 
 > 服务访问地址固定为 `{appId}.qiandaomp.com`，无需额外查询。
 
@@ -787,211 +188,15 @@ options:
 
 ## 操作 6: test-deploy（本地后端测试环境）
 
-本地环境为 Debian 12 容器（已安装 Go、Node.js 或 Python）。
+本节仅启动本地进程，不上传生产包、不发版，也不向稳定模板添加开发环境部署规范或 FileStore 分支。
 
-**Step 1**: 读取项目配置
+1. 读取项目配置与后端 README，确认实际 runtime、入口及必需依赖。稳定 Go 模板从受保护配置读取运行字段，可用 `QDMP_CONFIG` 指向隔离配置，再在 `backend/` 执行 `go run main.go`；已有其他语言项目沿用已验证的启动脚本。
+2. 本地数据库使用隔离的测试凭据与数据库，通过进程环境或受保护本地配置注入。缺少安全的本地配置时先准备配置，不直接连接生产库写测试数据，不要求在聊天中发送 root 或业务密码，不自动创建/重置数据库用户。
+3. 禁止重写源代码中的 URI 常量、覆盖生产主配置或将临时秘密提交。生产模板的嵌入配置在源工作区始终为空；调试完成不需要把源码地址“恢复线上”。
+4. 检查 `8080` 监听及后端实际实现的健康接口。稳定模板使用 `/healthz` 和 `/readyz`；旧项目先确认真实路由，不猜 `/health`。缺依赖、就绪失败或进程退出时停止，不把端口打开当业务可用。
+5. 用宿主支持的后台执行能力启动并保留日志。明确记录地址、进程和退出方式；全量前端调试仅在后端成功后继续，不自动改写前端地址。仅工程已有受控本地代理且本次明确需要时使用其既有配置；默认模板仍从公开 AppID 推导正式后端域名。真机调试使用手机实际可达地址。
 
-**Step 2**: 运行时检测
-- 优先读 `qdmp-config.json` 中的 `runtime`
-- 未指定则扫描特征文件：`go.mod` → go，`package.json` → nodejs22，`requirements.txt`/`pyproject.toml` → python312
-- 都没匹配 → 提示用户在 `qdmp-config.json` 中显式指定
-
-**Step 3**: 入口文件检测与启动命令
-
-| Go | 启动命令 |
-|---|---|
-| 存在 `go.mod` | `go run .` |
-| 存在 `main.go` | `go run main.go` |
-
-| Node.js（优先级从高到低） | 启动命令 |
-|---|---|
-| `package.json` 有 `scripts.start` | `npm start` |
-| 有 `scripts.dev` | `npm run dev` |
-| 有 `main` 字段 | `node {main}` |
-| 存在 `index.js` / `app.js` / `server.js` | `node {file}` |
-
-| Python（优先级从高到低） | 启动命令 |
-|---|---|
-| `pyproject.toml` 有启动说明 | 使用项目已有命令 |
-| 存在 `app.py` | `python3 app.py` |
-| 存在 `server.py` | `python3 server.py` |
-| 存在 `manage.py` | `python3 manage.py runserver 0.0.0.0:8080` |
-
-**Step 4**: 数据库连接配置（仅当 `qdmp-config.json` 存在 `mongodb` 字段时执行）
-
-**Step 4.1**: 检查宿主机数据库是否可达
-
-容器内通过 `host.docker.internal:27017` 访问宿主机数据库。检查连通性：
-```bash
-timeout 5 bash -c 'cat < /dev/null > /dev/tcp/host.docker.internal/27017' 2>/dev/null
-```
-- 连接失败则停止，提示：
-```
-⚠️  无法连接到宿主机数据库 (host.docker.internal:27017)
-
-请确保宿主机数据库容器已启动：
-
-如果容器已存在（用 start-qdmp.sh 启动过）：
-  docker start mongodb
-
-如果容器不存在，重新创建：
-  docker run -d --name mongodb -p 27017:27017 \
-    -v mongodb-data:/data/db \
-    mongo:8.0
-
-如果需要自定义用户名密码：
-  docker run -d --name mongodb -p 27017:27017 \
-    -v mongodb-data:/data/db \
-    -e MONGO_INITDB_ROOT_USERNAME=admin \
-    -e MONGO_INITDB_ROOT_PASSWORD=yourpassword \
-    mongo:8.0
-```
-
-**Step 4.2**: 确保测试用户存在且权限正常
-
-从 `qdmp-config.json` 的 `mongodb.uri` 解析出 `username`、`password`，从 `mongodb.database` 读取 `database`。
-
-容器内无 `mongosh`，使用 Python 标准库直接通过 wire protocol 创建用户（无需安装任何额外软件）：
-
-```bash
-python3 - <<'EOF'
-import socket, struct
-
-def encode_cstring(s):
-    return s.encode() + b'\x00'
-
-def encode_doc(d):
-    body = b''
-    for k, v in d.items():
-        if isinstance(v, bool):
-            body += b'\x08' + encode_cstring(k) + struct.pack('B', 1 if v else 0)
-        elif isinstance(v, int):
-            body += b'\x10' + encode_cstring(k) + struct.pack('<i', v)
-        elif isinstance(v, str):
-            s = v.encode()
-            body += b'\x02' + encode_cstring(k) + struct.pack('<I', len(s)+1) + s + b'\x00'
-        elif isinstance(v, list):
-            arr = {str(i): item for i, item in enumerate(v)}
-            body += b'\x04' + encode_cstring(k) + encode_doc(arr)
-        elif isinstance(v, dict):
-            body += b'\x03' + encode_cstring(k) + encode_doc(v)
-    body += b'\x00'
-    return struct.pack('<I', len(body)+4) + body
-
-def build_op_msg(doc):
-    doc_bytes = encode_doc(doc)
-    payload = struct.pack('<I', 0) + b'\x00' + doc_bytes
-    total = 16 + len(payload)
-    header = struct.pack('<IIII', total, 1, 0, 2013)
-    return header + payload
-
-def recv_msg(sock):
-    header = b''
-    while len(header) < 4:
-        header += sock.recv(4 - len(header))
-    total = struct.unpack('<I', header)[0]
-    data = header
-    while len(data) < total:
-        data += sock.recv(total - len(data))
-    return data
-
-try:
-    s = socket.create_connection(('host.docker.internal', 27017), timeout=5)
-    msg = build_op_msg({
-        'createUser': '{username}',
-        'pwd': '{password}',
-        'roles': [{'role': 'dbOwner', 'db': '{database}'}],
-        '$db': '{database}'
-    })
-    s.sendall(msg)
-    resp = recv_msg(s)
-    s.close()
-    if b'already exists' in resp:
-        print('User already exists, skipping')
-    elif b'\xf0\x3f' in resp:
-        print('User created successfully')
-    else:
-        print('Failed, unexpected response:', resp.hex())
-        exit(1)
-except Exception as e:
-    print(f'Failed: {e}')
-    exit(1)
-EOF
-```
-
-如果数据库启用了认证（启动时设置了 `MONGO_INITDB_ROOT_USERNAME`），需要先完成 SASL 认证再执行 createUser。此时提示用户：
-```
-⚠️  数据库已启用认证，需要 root 账号来创建业务用户。
-请提供启动数据库时设置的 MONGO_INITDB_ROOT_USERNAME 和 MONGO_INITDB_ROOT_PASSWORD。
-```
-
-获取到 root 账号后，改用以下方式连接（通过 URI 传入认证信息，需后端项目有 `mongodb` npm 包时用 node，否则继续用 python3 带认证的 wire protocol）：
-
-Node.js 方式（后端为 Node.js 项目时优先使用）：
-```bash
-cd {sourceDir} && node -e "
-const { MongoClient } = require('mongodb');
-(async () => {
-  const client = new MongoClient('mongodb://{root_user}:{root_password}@host.docker.internal:27017/admin');
-  try {
-    await client.connect();
-    await client.db('{database}').command({
-      createUser: '{username}',
-      pwd: '{password}',
-      roles: [{ role: 'dbOwner', db: '{database}' }]
-    });
-    console.log('User created');
-  } catch(e) {
-    if (e.code === 51003 || /already exists/.test(e.message)) {
-      console.log('User already exists, skipping');
-    } else {
-      console.error('Failed:', e.message); process.exit(1);
-    }
-  } finally { await client.close(); }
-})();
-"
-```
-
-**Step 4.3**: 替换后端代码中的 MongoDB URI 为容器测试地址
-
-在 `backend/db/` 下搜索 `MONGO_URI` / `mongoURI` 常量，用 Edit 工具将值替换为：
-
-- **Go runtime**（⚠️ Go driver 要求 URI 含 `?` 时必须有 `/database` 路径）：
-  ```
-  mongodb://{username}:{password}@host.docker.internal:27017/{database}?authSource={database}
-  ```
-- **Node.js / Python runtime**：
-  ```
-  mongodb://{username}:{password}@host.docker.internal:27017?authSource={database}
-  ```
-
-username、password 从 `qdmp-config.json` 的 `mongodb.uri` 解析，database 从 `mongodb.database` 读取（代码中 `mongoDatabase` / `MONGO_DATABASE` 变量保持不变，仍读自 `qdmp-config.json`）。
-
-**Step 5**: 清理 8080 端口
-```bash
-lsof -ti :8080 && kill -9 $(lsof -ti :8080) || true
-```
-
-**Step 6**: 环境变量文件检测（优先 `.env.local`，其次 `.env.test`）
-
-**Step 7**: 后台启动服务（`run_in_background: true`）
-
-**Step 8**: 健康检查（等待 5 秒后检查，最多 5 次，间隔 2 秒）
-
-先从本地路由确认检查接口及成功响应，再向本地服务发起请求；没有专用检查接口时，仅检查 8080 端口是否监听，并标注“进程已监听，业务接口尚未验证”。HTTP 404/405 不视为健康检查通过，立即停止该路径的轮询并核对路由。不得将猜测路径的探测用于线上云服务，遵守 [云服务使用规范](#云服务使用规范)。
-
-失败时提示：
-```
-⚠️  服务启动超时（15 秒内未响应）
-可能原因：启动较慢、未监听 8080、启动失败、依赖未安装
-```
-
-**Step 9**: 自动替换前端 `BACKEND_BASE` 为 `/api`
-- 在 `frontend/` 下搜索含 `BACKEND_BASE` 的文件
-- 用 Edit 工具替换值为 `/api`
-- 找不到则提示用户手动配置
-
-**Step 10**: 展示结果（后端地址、运行时、数据库状态、环境变量状态、BACKEND_BASE 替换结果）
+报告真实启动与就绪结果及配置来源，不输出密钥；正式上线始终返回 [生产打包与发布](./backend-production.md)。
 
 ---
 
@@ -999,36 +204,9 @@ lsof -ti :8080 && kill -9 $(lsof -ti :8080) || true
 
 **存储前置约束（所有建模流程均适用）**：先读 [云服务使用规范](#云服务使用规范)。禁止将图片、视频、音频等媒体内容以二进制、Base64、Data URL 或拆分内容等形式写入千岛云数据库；只保存 OSS / 对象存储资源引用和必要元数据。该约束覆盖从 PRD 直接生成、新增、修改和重新设计模型，以及后端写入校验。
 
-**前置 0：读取项目配置**——先执行「通用子流程: 读取项目配置」（含旧结构自动迁移），确保已存在根目录 `qdmp-config.json`。这一步不可跳过：旧结构项目在此完成迁移后，下方的 `mongodb` 字段检查才作用于正确的文件。
+**前置 0：读取项目配置**——先执行「通用子流程: 读取项目配置」（必要时一次性初始化主配置），确保已存在根目录 `qdmp-config.json`。这一步不可跳过：下方的 MongoDB 检查只作用于本次真实主配置，不读取其他项目配置。
 
-**前置检查**：检查 `qdmp-config.json` 是否存在 `mongodb` 字段。不存在则 AskUserQuestion 询问数据库密码：
-
-```yaml
-questions:
-  - question: "数据建模需要配置数据库。请提供数据库密码（如果还没有，请到 https://open.qiandao.com 获取）"
-    header: "数据库配置"
-    multiSelect: false
-    options:
-      - label: "我有密码"
-        description: "输入数据库密码"
-      - label: "我还没有，先去获取"
-        description: "前往千岛开放平台获取数据库配置"
-```
-
-- 选择"我有密码" → 用户输入密码后，向根目录 `qdmp-config.json` 合并写入 `mongodb` 字段（保留已有的 `appId`/`appSecret`/`runtime`，`{appId}` 和 `{password}` 替换为实际值）：
-
-```json
-{
-  "mongodb": {
-    "uri": "mongodb://{appId}:{password}@{appId}.mongodb.rds.qiandaomp.com:27017?retryWrites=true&authSource={appId}",
-    "database": "{appId}"
-  }
-}
-```
-
-写入后提示：`已写入数据库配置。如需使用其他配置，请修改 qdmp-config.json 后重新执行。`
-
-- 选择"我还没有，先去获取" → 停止操作，提示：`请前往 https://open.qiandao.com 获取数据库配置后，重新执行数据建模。`
+**前置检查**：先确认本次只是设计 Schema，还是将模型实际接入数据库。仅声明集合而业务尚未使用时，可以继续建模，不强制配置 MongoDB。实际接入 MongoDB 时，主配置须完整启用数据库；省略/null/双空视为未配置，按[凭据引导与自动写入](./backend-production.md#凭据引导与自动写入)向用户获取缺失信息并自动合并配置，不生成猜测的主机或认证信息。生产 `database` 必须等于 AppID；已有其他数据库方案先核对该工程部署契约。不把凭据复制进生成代码。
 
 然后继续 Step 0。
 
@@ -1164,7 +342,7 @@ questions:
 ### 流程 C: 重新设计（首次建模或完全重做）
 
 **⚠️ 重要说明**：
-- 重新设计会覆盖 `qdmp-schema.json` 和 `backend/models/`、`backend/db/` 目录
+- 重新设计先生成 `qdmp-schema.json` 与模型变更供审查；保留现有数据库初始化、生产配置和业务接入点，不整体覆盖 `backend/db/` 或模板入口
 - **数据库中的实际数据不会被删除**，但如果新设计中删除了某些对象或字段，对应的数据将无法通过新代码访问
 - 如果 `backend/routes/` 或 `backend/services/` 中有依赖旧 model 的业务代码，会根据新的数据模型自动调整这些代码
 
@@ -1305,7 +483,7 @@ questions:
 - 若已有复合索引以该字段开头，则单字段索引可省略（最左前缀覆盖）
 - `unique: true` 的索引无论如何保留（唯一约束语义不可替代）
 
-例如：已有 `(createdBy, status, createdAt)` → `createdBy` 单字段索引删除；`productId` 唯一索引保留。
+例如：拟生成的候选索引已有 `(createdBy, status, createdAt)` 时，可从候选定义中省略 `createdBy` 单字段索引；`productId` 唯一索引保留。此规则只整理生成计划，不删除数据库现有索引。
 
 **不建索引**：低区分度字段（布尔、2-3个枚举值）单独建索引、很少作为查询条件的字段。
 
@@ -1318,13 +496,13 @@ questions:
 - 长度不超过 64 字符
 - 冲突处理：若关键词重名但字段定义不同，追加 6 位哈希后缀（如 `idx_user_status_a1b2c3`），哈希来源为索引定义的规范化字符串（字段+方向+unique）
 
-**索引自动对齐机制**（启动时执行）：
-1. 读取数据库中已有索引（`listIndexes`）
-2. 和 schema 定义对比：
-   - schema 有、数据库没有 → `createIndex`
-   - schema 没有、数据库有（且不是 `_id` 默认索引）→ `dropIndex`
-   - 两边都有但定义不同（字段、方向、unique 变了）→ 先 `dropIndex` 再 `createIndex`
-3. 失败处理：任何步骤失败只打印警告日志，不阻断服务启动
+**索引检查与显式迁移**：
+
+1. 读取数据库已有索引并与本次 Schema 对比，生成可审查的变更计划；首次创建必要索引必须受启动/部署流程控制并具备有界超时。
+2. Schema 未列出的线上索引继续保留；同名但字段、方向或唯一性不同的索引标记为迁移冲突，禁止启动时自动 drop / 重建。
+3. 删除、替换索引或变更唯一约束前，核对已有数据、查询影响、回退方案和用户授权，通过独立显式迁移执行；不能将“重新设计模型”当作删除线上索引的授权。
+4. 唯一约束和业务正确性必需索引创建或验证失败时，启动失败或保持 `/readyz` 未就绪，禁止仅打印 warning 后接流量。可选性能索引的失败可按经过审查的降级策略处理，不能冒充完整验收。
+5. 记录脱敏后的迁移版本、索引名称、成功或失败状态；不在日志中输出连接串、完整业务数据或凭据。
 
 在 `qdmp-schema.json` 中用 `indexes` 字段记录：
 ```json

@@ -22,7 +22,7 @@ qdmp-cli list
 
 ### 三类旧入口的诊断与自动更新
 
-从 1.1.13 起，每次触发主 Skill 时先运行 `scripts/ensure-current.mjs ensure`。四个 Skill 可分别独立安装，因此各自携带 `references/skill-release.json` 标识版本，插件仍由三端 `plugin.json` 标识，不再另外写版本收据。只认 `EchoTechFE/qdmp-skill` 已发布且非预发布的 `vX.Y.Z`，忽略同仓库的 Telemetry Release；不把 main 分支或开发版本当成稳定发布。
+从 1.1.13 起，可用 `scripts/ensure-current.mjs ensure` 检查并维护安装。当前版本在授权后准备下载、用户要求升级或确需修复时按需使用，日常查询先只读检查收集状态。四个 Skill 可分别独立安装，因此各自携带 `references/skill-release.json` 标识版本，插件仍由三端 `plugin.json` 标识，不再另外写版本收据。只认 `EchoTechFE/qdmp-skill` 已发布且非预发布的 `vX.Y.Z`，忽略同仓库的 Telemetry Release；不把 main 分支或开发版本当成稳定发布。
 
 “用户级独立安装的 Skill”指直接安装到用户 Skills 目录中的副本；“通过插件安装的 Skill”由 QDMP 插件提供。两者是同一套公开发布内容的不同安装渠道，不是个人版与公开版的区别；同一宿主可能同时存在两种渠道的副本。
 
@@ -46,7 +46,7 @@ node <Skill>/scripts/ensure-current.mjs diagnose --host codex --cwd <真实工�
 node <Skill>/scripts/ensure-current.mjs ensure --host codex --cwd <真实工作目录> --skill-dir <Skill>
 ```
 
-软件更新不等于同意监控：该入口不运行 Telemetry 安装、激活、采集同意或 Hook 信任命令。监控插件仍按独立引导的实际版本和动作取得确认；软件更新不会扩大项目目录或数据范围。已完成软件更新返回 `reload_required`，先重新加载实际宿主并读取新 Skill，再处理当前目录状态；不能继续执行内存中的旧入口。
+软件更新不等于同意收集：该入口不运行 Telemetry 安装、激活、采集同意或 Hook 信任命令。收集插件仍按独立引导的实际版本和动作取得确认；软件更新不会扩大项目目录或数据范围。已完成软件更新返回 `reload_required`，先重新加载实际宿主并读取新 Skill，再处理当前目录状态；不能继续执行内存中的旧入口。
 
 Codex 插件从正式标签的完整已校验快照安装，只对本次命令覆盖市场来源，用户长期跟踪的官方来源保持不变。安装后校验整个插件包，包括 MCP、Hook、声明、脚本和 Skill，仅排除宿主生成的 `.git`、`.codex-marketplace-install.json`、`.in_use`。Claude Code/Qoder 插件返回 `immutable_plugin_update_not_supported`，不从移动的 main 分支自动安装；两端用户级独立安装的 Skill 仍可自动更新。Qoder Desktop 无 CLI 时，仅以自己的 user registry 明确无 qdmp 来确认插件未安装，不借用其他 IDE 清单。
 
@@ -54,7 +54,7 @@ Codex 插件从正式标签的完整已校验快照安装，只对本次命令�
 
 部分渠道成功、其他渠道失败时返回 `partial_update`，并单独报告 `reload_required`。重新加载成功的渠道不能消除失败渠道的问题；此时 `proceed_monitoring=false`，不能以“重启即可”冒充更新完成。
 
-以下情况停止自动变更相应渠道并返回 `manual_required`：自定义/本地开发市场、固定 ref、禁用插件、多个活动安装范围、非 user 范围、符号链接、安装状态不明、CLI 不支持更新。没有安装的渠道不自动安装。网络不可用返回 `release_check_failed`，不执行过期监控引导，但不阻断原业务和已授权运行时。
+以下情况停止自动变更相应渠道并返回 `manual_required`：自定义/本地开发市场、固定 ref、禁用插件、多个活动安装范围、非 user 范围、符号链接、安装状态不明、CLI 不支持更新。没有安装的渠道不自动安装。网络不可用返回 `release_check_failed`，不执行过期收集引导，但不阻断原业务和已授权运行时。
 
 线上版本检查优先通过 GitHub API 查询稳定 Release，并从选中的同一标签读取清单，不依赖移动分支。每个请求最多两次尝试，单次（含响应体）最多 4 秒，整次查询共享 15 秒总时限；只重试网络异常、超时及临时 HTTP 错误。清单 API 发生可重试故障时才回退到同仓库同标签的官方 raw 地址；401/403/404、限流、无效 JSON/清单或 TLS 证书错误不靠换源绕过。遵守 Retry-After，等待要求超出短重试上限时直接停止。`latest.lookup` 或失败时 `release_lookup` 记录阶段、主机、尝试次数、耗时和错误码，不记录响应内容、登录信息或任务输入。检查失败不使用磁盘旧清单冒充线上最新版本，也不触发软件变更或采集授权。
 
@@ -86,7 +86,7 @@ node <全新临时目录>/skills/qdmp-skill/scripts/ensure-current.mjs ensure --
 
 引导文件先写临时文件并校验，再提交为正式入口。如果下载已提交而 flow 状态写入中断，下次 fetch 会验证已有文件的 SHA-256 并恢复 `entry_verified`，不重复下载或询问授权；哈希不符则停止，不覆盖现场。
 
-验收需分别记录：当前宿主、实际加载目录、QDMP 版本、监控固定版本/哈希、旧 flow 处理结果、是否需要重新加载。软件维护通过不代表真实 Hook 或生产落库通过。
+验收需分别记录：当前宿主、实际加载目录、QDMP 版本、收集固定版本/哈希、旧 flow 处理结果、是否需要重新加载。软件维护通过不代表真实 Hook 或生产落库通过。
 
 ## 已有工程
 
@@ -96,4 +96,4 @@ node <全新临时目录>/skills/qdmp-skill/scripts/ensure-current.mjs ensure --
 - 本地或平台不是 EMP：停止操作，仅允许关联 EMP 应用并使用 2.0 工程。
 - SPA/effuse/echo-effuse/effues 工程不受支持，不提供旧版开发、构建或上传路径。保留原工程，在独立的官方 2.0 模板中迁移业务并验证后再继续。
 - 本地开发、开发版本上传和体验版验证统一使用正式开放平台同一个 appId，无需额外配置应用 ID。
-- 在前端目录执行 getMe 核对应用；2.0 必须完成 qdmp build 的 EMP 编译。分别记录安装、构建和真机验证结果。
+- 在前端目录执行 getMe 核对应用；2.0 必须完成 qdmp-cli build 的 EMP 编译。分别记录安装、构建和真机验证结果。

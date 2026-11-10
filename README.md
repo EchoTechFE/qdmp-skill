@@ -33,21 +33,21 @@ skills/
 
 ### 已安装旧版的升级与诊断
 
-QDMP 1.1.15 固定使用已发布的 Agent Runtime Telemetry 0.2.18 制品与 SHA-256，修复旧运行时登录失败的原流程恢复、兼容版本复用、people-v1 参数兼容和 Hook 工作区诊断。新建项目先生成最终目录再告知监控；更新软件不扩大现有采集授权。
+QDMP 1.1.15 固定使用已发布的 Agent Runtime Telemetry 0.2.18 制品与 SHA-256，修复旧运行时登录失败的原流程恢复、兼容版本复用、people-v1 参数兼容和 Hook 工作区诊断。新建项目先生成最终目录再告知收集；更新软件不扩大现有采集授权。
 
 QDMP 1.1.14 补充 [云服务使用规范](skills/qdmp-skill/knowledge/backend-operations.md#云服务使用规范)：禁止媒体文件内容写入云数据库，接口不存在时停止重试与轮询，避免触发 WAF 封禁。该版本正式发布后，更新并重新加载 Skill 才能应用这些规则。
 
-QDMP 1.1.13 按实际宿主检查已有安装，自动更新用户级独立安装的 Skill；插件仅在支持固定发布目标时自动更新，否则转人工处理。同版本也校验内容，并识别并存副本和旧监控流程。独立安装与插件安装只是同一公开版本的不同安装渠道，更新不会改变采集授权。旧客户端需先正常升级一次；1.1.13 正式发布后才能使用其标签升级。操作、限制及恢复方法见 [升级说明](skills/qdmp-skill/references/upgrade.md#三类旧入口的诊断与自动更新)。
+QDMP 1.1.13 按实际宿主检查已有安装，自动更新用户级独立安装的 Skill；插件仅在支持固定发布目标时自动更新，否则转人工处理。同版本也校验内容，并识别并存副本和旧收集流程。独立安装与插件安装只是同一公开版本的不同安装渠道，更新不会改变采集授权。旧客户端需先正常升级一次；1.1.13 正式发布后才能使用其标签升级。操作、限制及恢复方法见 [升级说明](skills/qdmp-skill/references/upgrade.md#三类旧入口的诊断与自动更新)。
 
-### 项目监控插件的安装边界
+### 项目收集插件的安装边界
 
-QDMP 仅提供可选监控的提示和调用指引，不内置监控安装器、Bootstrap MCP 或上报脚本，也不改变原有开发、登录、部署流程。安装、目录授权、更新、三宿主适配、拒绝结果上报及持续采集均由独立的 `agent-runtime-telemetry` 维护。需要授权时只展示第 1 节授权短文案及完整说明链接，用户作出一次明确选择后，Agent 连续执行范围内的步骤；当前运行时采集不要求登录；旧运行时明确要求的登录和宿主安全确认仍需用户完成。
+QDMP 仅提供可选收集的提示和调用指引，不内置收集安装器、Bootstrap MCP 或上报脚本，也不改变原有开发、登录、部署流程。安装、目录授权、更新、三宿主适配、拒绝结果上报及持续采集均由独立的 `agent-runtime-telemetry` 维护。需要授权时只展示第 1 节授权短文案及完整说明链接，用户作出明确选择后，Agent 委派子 Agent 安装、补齐依赖或修复，并复验收集状态；没有子 Agent 时由主 Agent 执行。超出已有许可时只确认新增的软件动作；当前运行时采集不要求登录；旧运行时明确要求的登录和宿主安全确认仍需用户完成。
 
-[Skill 内分发清单](skills/qdmp-skill/references/telemetry-distribution.json) 保存固定发布入口、SHA-256 和 telemetry 生成的 `pre_download_notice`（用于内部校验的告知数据与法律原文，绑定两个制品哈希和版本）。冷启动只展示状态机生成的 `display` 短文案及完整说明链接并取得一次明确确认，再下载/校验/执行独立 onboarding；实际动作超出授权范围时停止重新确认。拒绝下载或宿主拦截时不下载工具、不上报拒绝事件，也不影响业务。业务授权不能替代宿主执行审批。`onboarding: null` 或本地告知缺失表示入口不可用，不能先联网补文案。详见 [监控指引](skills/qdmp-skill/references/skill-data-consent.md)。
+[Skill 内分发清单](skills/qdmp-skill/references/telemetry-distribution.json) 保存固定发布入口、SHA-256 和 telemetry 生成的 `pre_download_notice`（用于内部校验的告知数据与法律原文，绑定两个制品哈希和版本）。冷启动只展示状态机生成的 `display` 短文案及完整说明链接并取得一次明确确认，再下载/校验/执行独立 onboarding；实际动作超出授权范围时停止重新确认。拒绝下载或宿主拦截时不下载工具、不上报拒绝事件，也不影响业务。业务授权不能替代宿主执行审批。`onboarding: null` 或本地告知缺失表示入口不可用，不能先联网补文案。详见 [收集指引](skills/qdmp-skill/references/skill-data-consent.md)。
 
 `skills/qdmp-skill/references/telemetry-distribution.json` 是本仓库唯一的分发清单，发布维护和安装后运行都使用这一份，不再保留仓库根副本。早期根清单服务于现已移除的 QDMP Bootstrap；迁移到 Skill 内是为了支持独立安装 Skill，不是为了维护两份配置。运行时只按实际 Skill 安装路径读取，不读取用户工作目录。
 
-新指引支持一次同意后复用已确认的兼容版本，以及旧版登录前置失败的同流程恢复；旧清单仍保留其原授权范围。people-v1 参数只能由包含对应告知的新清单启用，不能手工给旧授权增加该参数。新建项目先由 CLI 创建最终目录，再启动该目录的监控告知。Hook 验证先核对聊天工作区和缺失事件，等待验证不阻塞业务。
+新指引支持一次同意后复用已确认的兼容版本，以及旧版登录前置失败的同流程恢复；旧清单仍保留其原授权范围。people-v1 参数只能由包含对应告知的新清单启用，不能手工给旧授权增加该参数。新建项目先由 CLI 创建最终目录，再启动该目录的收集告知。Hook 验证先核对聊天工作区和缺失事件，等待验证不阻塞业务。
 
 待 telemetry 新版本实际发布后，将该次发布产出的完整 `dist/telemetry-distribution.json` 原样更新到上述唯一文件；版本、两个制品 URL/SHA-256 与发布告知一起更新，不手工拼接文案或修改哈希。该发布产物属于 telemetry 构建输出，不是 QDMP 的第二份维护源。更新后执行：
 
@@ -211,7 +211,7 @@ claude mcp add --transport http qdmp-gitlab https://openapi.qiandao.com/gitlab/m
 claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/mcp
 ```
 
-> **注意：** MCP 服务需要在对应平台分别配置。Codex 使用 `codex mcp add`，Qoder 国内版使用 `qoderclicn mcp add` 或在 `mcp.json` 中声明。具体请参考各平台 MCP 文档。
+> **注意：** MCP 服务需要在实际宿主分别配置。工具参数、正式环境限制和副作用见 [后端 MCP 清单](skills/qdmp-skill/references/backend-mcp.md)。后端打包、上传与工具编排不依赖浏览器。
 
 ---
 
@@ -256,30 +256,37 @@ claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/m
 
 ### 真机扫码与体验版（CLI ≥0.1.32）
 
-在前端目录执行 `qdmp debug`，用千岛 App 扫码运行并在终端查看真机日志；手机需要能访问电脑局域网，Ctrl+C 结束。
+在前端目录执行 `qdmp-cli debug`，用千岛 App 扫码运行并在终端查看真机日志；手机需要能访问电脑局域网，Ctrl+C 结束。
 
-需要给体验人员使用时，先 `qdmp build`，再执行 `qdmp upload --experience -d "更新说明"`。CLI 自动获取本次版本号并设置体验版，无需手填版本号，也不会自动发布正式版。Agent 可使用 `--json` 读取二维码和结果。已有上传版本时，执行 `qdmp experience --version <实际版本号>` 即可切换体验版，无需重新构建上传。
+需要给体验人员使用时，先 `qdmp-cli build`，再执行 `qdmp-cli upload --experience -d "更新说明"`。CLI 自动获取本次版本号并设置体验版，无需手填版本号，也不会自动发布正式版。Agent 可使用 `--json` 读取二维码和结果。已有上传版本时，执行 `qdmp-cli experience --version <实际版本号>` 即可切换体验版，无需重新构建上传。
 
 可直接向 Agent 说“启动真机调试并展示二维码”“上传当前代码并设为体验版”或“把已上传的版本 12 设为体验版”（版本号替换为实际值）。完整说明见 [真机调试](skills/qdmp-skill/knowledge/development-guide.md#真机调试) 和 [设置体验版](skills/qdmp-skill/knowledge/development-guide.md#设置体验版)。
 
-### 部署发布
+### 全栈项目开发与部署
 
-```
-部署上传小程序
-```
+用 `qdmp-cli create <项目名>` 创建项目。已有项目按 [旧项目迁移](skills/qdmp-skill/knowledge/project-workflows.md#旧项目强制迁移) 处理。
+
+部署时，Agent 确认目标应用和发布范围，在对话中引导补齐缺失配置，再调用 CLI。CLI 执行构建和发布，Agent 核对线上版本、副本与健康结果。详见 [后端部署与验收](skills/qdmp-skill/knowledge/backend-production.md)。
+
+### 部署范围与前端正式上线
+
+Agent 按 backend/ 目录是否存在识别项目，再结合用户范围：纯前端只构建/上传前端，不要求 AppSecret、Go 或后端；全栈默认先完成后端发布与 Skill 验收，再上传前端。不存在纯后端小程序；明确仅后端时，只操作全栈项目的 backend/。空 backend/ 或配置缺失仍为全栈待完善，不能降级为纯前端；明确仅前端时，不要求后端构建或配置接入通过。具体工具链见 [部署分流](skills/qdmp-skill/knowledge/project-workflows.md#step-1-判断项目形态与部署范围)。
+
+`upload` 仅上传版本。需要正式前端上线时，还须按实际版本设置体验版并提审；当前 CLI 可用 `qdmp-cli review --version <实际版本号> --auto-publish --json` 选择审核通过后由平台发布。提审成功只证明已进入审核，最终上线以平台结果为准。
+
 
 ---
 
 ## 完整开发流程
 
 ```
-1. 配置环境 → 安装 Node.js、pnpm、qdmp-cli
-2. 创建项目 → qdmp-cli create myApp
-3. 安装依赖 → pnpm install
-4. 开发调试 → pnpm run dev
-5. 打包构建 → qdmp build（发布时必须使用 qdmp build）
-6. 登录账号 → Agent 使用 `qdmp login --agent --env prod` 展示登录链接和二维码图片；前台终端保留扫码、登录 URL、账号密码三种方式
-7. 上传部署 → 自动总结本次改动并执行 `qdmp-cli upload --description "<版本描述>"`
+1. 配置环境 → Node.js、Go、qdmp-cli；前端步骤另需 pnpm
+2. 创建项目 → qdmp-cli create myApp（默认完整全栈模板，也可显式 -t default）
+3. 配置与依赖 → 本地填写模板自带的 qdmp-config.json，CLI 直接读取；在实际前端目录安装依赖
+4. 开发调试 → 按前后端各自 README 启动和验证
+5. 后端正式发布 → backend deploy --description "<说明>" 内部构建、校验归档并直接发布，完成全部上线验收；--review 为可选审查
+6. 前端构建与登录 → 在 frontend/ 执行 qdmp-cli build，按需 qdmp-cli login --agent --env prod
+7. 前端上传 → 自动总结本次改动并执行 qdmp-cli upload --description "<版本描述>"
 ```
 
 ---
