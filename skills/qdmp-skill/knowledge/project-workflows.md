@@ -292,69 +292,13 @@ rg -n "BACKEND_BASE" <frontendDir> -g '*.js' -g '*.ts' -g '*.vue'
 - 默认模板使用 `getBackendBase()` 时，核对公开 AppID 与实际正式服务，不添加不存在的 `BACKEND_BASE`。
 - 已有本地地址（`/api` 或 `localhost`）时，核对既有代理和目标可达性；不自动将正式地址切到 `/api`。
 
-#### 部署步骤
+#### 启动项目内的前端开发命令
 
-直接运行原生 Taro 命令前，先在项目根目录执行 `qdmp-cli config sync --json` 导出公开字段，再进入 `frontend/`；根式旧项目必须先迁移。
+先在项目根执行 `qdmp-cli config sync --json` 导出公开字段，再进入 `frontend/`，按该项目的 README 与 `package.json` 运行实际 EMP 开发脚本。确认已有进程确实属于当前项目后再复用；使用宿主支持的后台能力记录进程和输出，并以实际构建或监听结果验收。
 
-检查前端 dev server 是否已在监听 10086：
-```bash
-ss -tlnp | grep ':10086'
-```
+仅需要本地 EMP 构建或 watch 时，使用项目的 EMP 脚本，不另起 H5 服务。用户明确要求网页预览或本地代理时，才使用项目已经配置的入口，不改系统 nginx 或全局端口。报告实际已启动的服务、地址和待验证项。
 
-- 已监听 → 跳过（watch 模式自动 reload）
-- 未监听 → **必须使用 `run_in_background: true` 后台启动**，不得以"长期运行进程"为由拒绝执行：
-  ```bash
-  BROWSER=none pnpm run dev
-  ```
-  启动后轮询等待最多 30 秒：
-  ```bash
-  for i in $(seq 1 15); do ss -tlnp | grep ':10086' && break; sleep 2; done
-  ```
-
-#### nginx 配置与启动
-
-```bash
-rm -f /etc/nginx/sites-enabled/default
-```
-
-写入 `/etc/nginx/conf.d/qdmp-dev.conf`：
-```nginx
-server {
-    listen 80;
-    location /api/ {
-        proxy_pass http://localhost:8080/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-    location / {
-        proxy_pass http://localhost:10086/;
-        proxy_set_header Host $host;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-```
-
-```bash
-pgrep nginx > /dev/null 2>&1 && nginx -s reload || nginx
-```
-
-展示结果（**强制约束：必须以此完整模板输出，不得用摘要或状态列表代替；若流程中途发生任何修复/重启，完成后必须重新输出此完整模板**）：
-```
-本地测试环境已就绪
-
-  前端 dev server: http://localhost:10086
-  后端 API:        http://localhost:8080
-  nginx 统一入口:  http://localhost:80
-    /      → 前端 dev server
-    /api/  → 后端 API
-
-宿主机访问（需 docker 已映射端口 -p 8888:80）:
-  http://localhost:8888
-```
-
-用户要求真机调试时，按 [真机调试指南](./development-guide.md#真机调试) 执行 `qdmp-cli debug`；已有本次改动的 EMP 编译产物可用 `qdmp-cli debug --no-build`。收到二维码后使用千岛 App 扫码，保持 CLI 进程运行。
+真机扫码与设备日志独立走[真机调试](./development-guide.md#真机调试)的 `qdmp-cli debug`，不以网页预览代替。
 
 ---
 
@@ -384,7 +328,7 @@ pgrep nginx > /dev/null 2>&1 && nginx -s reload || nginx
 
 实际前端目录 `frontendDir` 固定为 `{projectRoot}/frontend`，后续读取配置、构建和上传均使用该目录；根旧 `qdmp.json` 仍存在时先迁移，不回退根目录构建。
 
-先按[凭据引导](./backend-production.md#凭据引导与自动写入)补齐本次所需配置。全栈部署先测试后端，再执行 `qdmp-cli backend deploy --description "<本次说明>" --json`。后端通过[上线验收](./backend-production.md#上线验收与失败处理)后，再构建和上传前端。
+仅前端缺少目标环境的公开 AppID 时，在对话中询问并补齐根配置。范围包含后端时，按[凭据引导](./backend-production.md#凭据引导与自动写入)和[正式发布](./backend-production.md#正式发布与-master-合并)处理。全栈发布在后端通过验收后再构建和上传前端。
 
 ### Step 2: PRD 与代码一致性检查
 

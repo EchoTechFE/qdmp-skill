@@ -826,7 +826,7 @@ qdmp-cli debug --host 192.168.1.20 --port 9000
 
 手机必须能够访问运行 CLI 的机器及端口，通常连接同一局域网；不要把 `localhost` 当作手机可访问的电脑地址。Agent 若运行在隔离容器或云端，先确认手机可达；不可达时说明需要在开发者本机运行，不能把容器内部二维码称为可用真机入口。业务接口的域名和环境沿用项目配置，不自动部署后端或替换为浏览器代理 `/api`。
 
-Agent 使用 `qdmp-cli debug --json` 读取 NDJSON；需要对话内展示图片时加 `--qr-output <新的绝对PNG路径>`，确保父目录存在且文件不存在。收到 `ready` 后立即展示 `deepLink` 和实际 `qrImagePath`（或宿主支持的 `qrDataUrl`），保持后台进程运行并读取 `device-connected`、`device-info`、`log`、`device-disconnected`、`error`、`stopped` 事件。不要等待长期进程结束才展示二维码；`ready` 只说明服务就绪，不能当作手机已运行成功。JSON 模式不会交互登录；明确缺少登录态时，按 [Agent 对话登录](./agent-login.md) 执行 `qdmp-cli login --agent --env <prod|dev>`，完成后重试原命令。登录和操作必须使用同一环境；默认 `prod` 读取 `qdmp.json.appId`，显式 `--env dev` 读取 `devAppId`。设置体验版也遵循这一环境与登录规则。
+Agent 使用 `qdmp-cli debug --json` 读取 NDJSON；需要对话内展示图片时加 `--qr-output <新的绝对PNG路径>`，确保父目录存在且文件不存在。收到 `ready` 后立即展示 `deepLink` 和实际 `qrImagePath`（或宿主支持的 `qrDataUrl`），保持后台进程运行并读取 `device-connected`、`device-info`、`log`、`device-disconnected`、`error`、`stopped` 事件。不要等待长期进程结束才展示二维码；`ready` 只说明服务就绪，不能当作手机已运行成功。JSON 模式不会交互登录；明确缺少登录态时，按 [Agent 对话登录](./agent-login.md) 执行 `qdmp-cli login --agent --env <prod|dev>`，完成后重试原命令。登录和操作必须使用同一环境；默认 `prod` 使用根主配置的 `appId`，显式 `--env dev` 使用目标环境的 `devAppId`。设置体验版也遵循这一环境与登录规则。
 
 常见失败：无应用开发权限时核对登录账号和平台协作者权限；扫码连接失败时检查 Wi-Fi、所选网卡、端口与防火墙；`--no-build` 提示缺少产物时重新运行 `qdmp-cli debug` 完成构建。重启会产生新的构建快照，使用本次返回的二维码重新扫码。
 

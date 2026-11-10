@@ -8,6 +8,83 @@ import { fileURLToPath } from "node:url";
 const skill = fileURLToPath(new URL("../skills/qdmp-skill/", import.meta.url));
 const hash = x => crypto.createHash("sha256").update(x).digest("hex");
 
+test("first notice is read-only and binds the displayed notice and directory before consent", async t => {
+  const f = await fixture(t);
+  const api = await import(path.join(skill, "scripts/monitor-flow.mjs"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "qdmp-preview-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const args = { cwd: f.cwd, host: "codex" };
+  const preview = await api.monitorFlow("preview", args, { homeDir: home });
+  assert.match(preview.disclosure.display, /是否允许我们收集/);
+  assert.match(preview.disclosure.display, /使用数据说明链接/);
+  assert.match(preview.disclosure.display, /工具调用参数及结果/);
+  assert.doesNotMatch(preview.disclosure.display, /监控/);
+  assert.deepEqual(fs.readdirSync(home), []);
+  await assert.rejects(api.monitorFlow("begin", { ...args, preview: "wrong" }, { homeDir: home }), /notice or directory changed/);
+  assert.deepEqual(fs.readdirSync(home), []);
+  const flow = await api.monitorFlow("begin", { ...args, preview: preview.preview_digest }, { homeDir: home });
+  assert.equal(flow.disclosure.display, preview.disclosure.display);
+  assert.equal(flow.disclosure_digest, preview.disclosure_digest);
+  assert.equal(flow.state, "awaiting_consent");
+});
+
+test("local status checks exact workspace through the managed runtime without touching old flows", async t => {
+  const f = await fixture(t);
+  const api = await import(path.join(skill, "scripts/monitor-flow.mjs"));
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "qdmp-runtime-")));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const args = { cwd: f.cwd, host: "codex" };
+  const runtime = path.join(home, ".agent-runtime-telemetry", "runtime");
+  const root = path.join(runtime, "0.2.1");
+  const entry = path.join(root, "bin", "art.mjs");
+  const oldFlow = path.join(home, ".qdmp-skill", "monitor-flows", "old-flow");
+  fs.mkdirSync(oldFlow, { recursive: true });
+  fs.writeFileSync(path.join(oldFlow, "state.json"), "old flow must not be read or changed");
+  assert.equal((await api.monitorFlow("local-status", args, { homeDir: home })).state, "runtime_unavailable");
+  const consentDir = path.join(home, ".agent-runtime-telemetry", "consent");
+  fs.mkdirSync(consentDir, { recursive: true });
+  fs.writeFileSync(path.join(consentDir, `${hash(f.cwd).slice(0, 32)}.json`), JSON.stringify({
+    project_root: f.cwd, status: "granted", accepted: true, agreement_version: "1.0", accepted_at: new Date().toISOString()
+  }));
+  const stored = await api.monitorFlow("local-status", args, { homeDir: home });
+  assert.equal(stored.stored_consent, "granted");
+  assert.equal(stored.live, false);
+  assert.equal(stored.granted, undefined);
+  fs.mkdirSync(path.dirname(entry), { recursive: true });
+  fs.writeFileSync(path.join(runtime, "installed.json"), JSON.stringify({ version: "0.2.1", source: "/not-executed" }));
+  fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ version: "0.2.1", name: "agent-runtime-telemetry" }));
+  fs.writeFileSync(entry, "");
+  const status = { project_root: f.cwd, host: "codex", state: "collector_repair_required", granted: true, private_field: "not returned" };
+  const runRuntime = (command, argv, options) => {
+    assert.equal(command, process.execPath);
+    assert.deepEqual(argv, [entry, "project-status", "--cwd", f.cwd, "--host", "codex", "--exact-workspace"]);
+    assert.equal(options.timeout, 4000);
+    return { status: 0, stdout: JSON.stringify(status) };
+  };
+  const result = await api.monitorFlow("local-status", args, { homeDir: home, runRuntime });
+  assert.equal(result.live, true);
+  assert.equal(result.granted, true);
+  assert.equal(result.state, status.state);
+  assert.equal(result.bundled_version_newer, true);
+  assert.match(result.repair_guidance, /已有收集授权.*上报状态待核验/);
+  assert.equal(result.private_field, undefined);
+  status.error = "fetch failed";
+  const unreachable = await api.monitorFlow("local-status", args, { homeDir: home, runRuntime });
+  assert.equal(unreachable.state, "collector_unreachable");
+  assert.equal(unreachable.granted, true);
+  assert.match(unreachable.repair_guidance, /无法连接本机收集服务/);
+  assert.doesNotMatch(unreachable.repair_guidance, /监控|升级|重新授权/);
+  assert.equal(unreachable.error, undefined);
+  delete status.error;
+  status.state = "collecting";
+  assert.equal((await api.monitorFlow("local-status", args, { homeDir: home, runRuntime })).repair_guidance, undefined);
+  status.state = "disabled";
+  assert.equal((await api.monitorFlow("local-status", args, { homeDir: home, runRuntime })).repair_guidance, undefined);
+  status.project_root = path.dirname(f.cwd);
+  assert.equal((await api.monitorFlow("local-status", args, { homeDir: home, runRuntime })).state, "unknown");
+  assert.equal(fs.readFileSync(path.join(oldFlow, "state.json"), "utf8"), "old flow must not be read or changed");
+});
+
 for (const host of ["codex", "claude-code", "qoder"]) {
   test(`${host}: cold install, native verification and no mutation replay`, async t => {
     const f = await fixture(t, host); const s = await f.ready();
@@ -85,7 +162,7 @@ async function fixture(t, host = "codex", identityNotice = null, permittedAction
   if (permittedAction) manifest.pre_download_notice.permitted_action = permittedAction;
   fs.writeFileSync(manifestFile, JSON.stringify(manifest));
   const api = await import(path.join(installed, "scripts/monitor-flow.mjs"));
-  let mode = "missing", granted = false, hook = "hooks_pending", mutate = x => x, installs = 0, calls = 0, downloads = 0;
+  let mode = "missing", granted = false, hook = "hooks_pending", trust, mutate = x => x, installs = 0, calls = 0, downloads = 0;
   const notice = () => {
     const choice = { action: mode === "missing" ? "install" : "reuse", target_version: manifest.version,
       expected_version: mode === "missing" ? null : manifest.version,
@@ -105,7 +182,8 @@ async function fixture(t, host = "codex", identityNotice = null, permittedAction
     if (argv[0] === "help") return { usage: "--exact-workspace" };
     if (argv[0] === "notice") return notice();
     if (["enable", "update"].includes(argv[0])) { installs++; mode = "installed"; granted = true; return { status: { state: "hooks_pending" }, next_action: host === "codex" ? "review_host_hooks" : "reload_host", restart_required: host !== "codex" }; }
-    if (argv[0] === "status") return { project_root: cwd, host, installed_version: manifest.version, compatible: true, project: { granted, state: hook, next_action: host === "codex" ? "review_host_hooks" : "verify_host_hooks" } };
+    if (argv[0] === "status") return { project_root: cwd, host, installed_version: manifest.version, compatible: true, project: { granted, state: hook,
+      hook_diagnostics: { trust_status: trust }, next_action: host === "codex" ? "review_host_hooks" : "verify_host_hooks" } };
     throw new Error("unexpected subprocess");
   } };
   const start = () => api.monitorFlow("begin", { cwd, host }, options);
@@ -113,8 +191,34 @@ async function fixture(t, host = "codex", identityNotice = null, permittedAction
   const approve = s => action(s, "authorize", { decision: "approve", digest: s.disclosure_digest });
   const ready = async () => { const s = await start(); await approve(s); await action(s, "fetch"); await action(s, "inspect"); return s; };
   return { root, cwd, installed, manifestFile, manifest, content, api, options, start, action, approve, ready,
-    counts: () => ({ installs, calls, downloads }), setMode: x => { mode = x; }, setHook: x => { hook = x; }, mutate: fn => { mutate = fn; } };
+    counts: () => ({ installs, calls, downloads }), setMode: x => { mode = x; }, setHook: x => { hook = x; },
+    setTrust: x => { trust = x; }, mutate: fn => { mutate = fn; } };
 }
+
+test("explicit Hook review resumes the same flow without activating or authorizing again", async t => {
+  const f = await fixture(t);
+  const s = await f.ready();
+  await f.action(s, "execute");
+  const unknown = await f.action(s, "verify");
+  assert.equal(f.api.flowOutput(unknown).verification.hook_followup.action, "diagnose");
+  assert.doesNotMatch(unknown.instruction, /needs review/);
+
+  f.setTrust("modified");
+  const pending = await f.action(s, "verify");
+  assert.equal(pending.id, s.id);
+  assert.equal(f.api.flowOutput(pending).verification.hook_followup.action, "review");
+  assert.match(pending.instruction, /same chat/);
+
+  f.setTrust("trusted");
+  const trusted = await f.action(s, "verify");
+  assert.equal(f.api.flowOutput(trusted).verification.hook_followup.action, "observe");
+  f.setHook("collecting");
+  const done = await f.action(s, "verify");
+  assert.equal(done.state, "collecting");
+  assert.equal(done.disclosure_digest, s.disclosure_digest);
+  assert.equal(done.history.filter(x => x.action === "authorize").length, 1);
+  assert.equal(f.counts().installs, 1);
+});
 test("happy cold start enforces every step and distinguishes Hook from warehouse proof", async t => {
   const f = await fixture(t); const s = await f.start();
   assert.match(s.disclosure.legal, /^\s*# Agent 授权询问文案/);
@@ -141,6 +245,67 @@ test("happy cold start enforces every step and distinguishes Hook from warehouse
   assert.equal(done.state, "collecting"); assert.equal(done.warehouse, "not_verified");
   assert.equal(f.counts().installs, 1);
   await assert.rejects(f.action(s, "execute"), /invalid transition/);
+});
+
+test("published reuse path retains consent and never falls back to installation", async t => {
+  const f = await fixture(t, "codex", null, "install_if_missing_or_reuse_compatible_version");
+  const s = await f.start();
+  await f.approve(s);
+  f.options.latestRelease = async () => ({ distribution: { ...f.manifest, version: "9.0.0" } });
+  await assert.rejects(f.action(s, "fetch-reuse"), /no longer matches/);
+  assert.equal(f.counts().downloads, 0);
+  f.options.latestRelease = async () => ({ distribution: f.manifest });
+  assert.equal((await f.action(s, "fetch-reuse")).reuse_only, true);
+  assert.equal((await f.action(s, "inspect")).state, "needs_reconfirmation");
+  assert.equal(f.counts().installs, 0);
+  await assert.rejects(f.action(s, "execute"), /invalid transition/);
+  f.setMode("installed");
+  assert.equal((await f.action(s, "inspect")).choice.action, "reuse");
+  assert.equal((await f.action(s, "execute")).state, "activation_reported");
+  assert.equal((await f.action(s, "verify")).state, "verification_pending");
+});
+
+test("published first-install path rejects a changed pin and never uses an installed plugin", async t => {
+  const f = await fixture(t);
+  const s = await f.start();
+  await f.approve(s);
+  f.options.latestRelease = async () => ({ distribution: { ...f.manifest, version: "9.0.0" } });
+  await assert.rejects(f.action(s, "fetch-install"), /no longer matches/);
+  assert.equal(f.counts().downloads, 0);
+  f.options.latestRelease = async () => ({ distribution: f.manifest });
+  assert.equal((await f.action(s, "fetch-install")).install_only, true);
+  f.setMode("installed");
+  assert.equal((await f.action(s, "inspect")).state, "needs_reconfirmation");
+  await assert.rejects(f.action(s, "execute"), /invalid transition/);
+  assert.equal(f.counts().installs, 0);
+  f.setMode("missing");
+  assert.equal((await f.action(s, "inspect")).choice.action, "install");
+  assert.equal((await f.action(s, "execute")).state, "activation_reported");
+});
+
+test("startup probe uses only live status for an authorized flow and leaves its receipt unchanged", async t => {
+  const f = await fixture(t);
+  const flow = await f.ready();
+  await assert.rejects(f.action(flow, "probe"), /previously verified/);
+  await f.action(flow, "execute");
+  f.setHook("collecting");
+  await f.action(flow, "verify");
+
+  const receipt = path.join(f.options.homeDir, ".qdmp-skill", "monitor-flows", flow.id, "state.json");
+  const before = fs.readFileSync(receipt, "utf8");
+  const counts = f.counts();
+  const queried = [];
+  const options = { ...f.options, run(entry, argv, state) {
+    queried.push(argv);
+    return { ...f.options.run(entry, argv, state), project: { granted: false, state: "revoked" } };
+  } };
+  const result = await f.api.runFlow(["probe", "--flow", flow.id], options);
+  assert.equal(result.granted, false);
+  assert.equal(result.state, "revoked");
+  assert.deepEqual(queried, [["status", "--cwd", f.cwd, "--host", "codex", "--exact-workspace"]]);
+  assert.deepEqual(f.api.flowOutput(result), result);
+  assert.equal(fs.readFileSync(receipt, "utf8"), before);
+  assert.deepEqual(f.counts(), { ...counts, calls: counts.calls + 1 });
 });
 test("empty or incomplete project keeps directory authorization until activation", async t => {
   const f = await fixture(t); const s = await f.ready();

@@ -1,7 +1,7 @@
 ---
 name: qdmp-skill
 description: "千岛小程序开发助手（外部版），用于前后端开发、云服务接口调用与排查、云数据库与数据建模、心愿单、OSS 图片/视频 POST 上传、手机号授权、WebView 域名配置、数据验收、部署、真机扫码调试和设置体验版。涉及千岛云服务 404、接口不存在、频繁重试或 WAF 封 IP 时也使用。"
-allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
+allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Agent,
                 mcp__qdmp-gitlab__qdmp_gitlab_list_versions, mcp__qdmp-gitlab__qdmp_gitlab_get_version,
                 mcp__qdmp-gitlab__qdmp_gitlab_diff, mcp__qdmp-gitlab__qdmp_gitlab_publish,
                 mcp__qdmp-gitlab__qdmp_gitlab_pipeline_status, mcp__qdmp-gitlab__qdmp_gitlab_pipeline_logs,
@@ -13,6 +13,19 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 # 千岛小程序开发助手（外部版）
 
 帮助开发者快速创建、开发、调试和部署千岛小程序。发布范围、顺序、审查及验收规则由本 Skill 维护；Agent 按规则编排，CLI 执行模板、构建、上传和 MCP 调用并返回事实，MCP/API 服务由平台实现。完整前后端流程由 Agent 串联，不由某一条后端命令自动完成。
+
+## 启动先查收集状态
+
+每次触发先对实际宿主和目标目录做一次只读状态检查，优先于业务路由。新项目的最终目录尚未生成或将被替换时，在创建成功后检查该目录。宿主取实际的 `codex`、`claude-code` 或 `qoder`，目录使用真实绝对路径。
+如果当前 shell 的 PATH 找不到 `node`，先核对宿主或 Node 版本管理器（如 NVM）已有的 Node，用实际可执行文件运行脚本，无需安装或改全局配置。
+
+- 收集 MCP 可用时，先对实际目录调用 `project_status`（`exact_workspace=true`），核对返回的目录和宿主。不可用或结果无法确认时，执行 `node <实际 Skill 目录>/scripts/monitor-flow.mjs local-status --cwd <实际绝对目录> --host <实际宿主>`。本地检查只读，独立于旧流程。
+- 已关闭、拒绝或撤回时尊重原决定。已授权且 Hook 待验证或用户刚确认审查时，优先走[按宿主版本审查与复验](./references/hook-review.md)。宿主明确要求审查时直接给出实际界面入口；用户确认后在原会话复验，沿用目录授权。其余已授权、状态正常且无已知缺项或新版证据时直接继续，跳过历史流程和授权提问。
+- 当前目录已确认授权且发现依赖缺失、收集待修复或有新版证据（如 `bundled_version_newer`），或刚记录了明确同意时，按[子 Agent 安装与修复](./references/monitor-flow.md#子-agent-安装与修复)委派一个子 Agent 完成授权范围内的动作并复验。无需用户另说“修复”。超出原授权只由主 Agent 确认具体动作。用户明确要求只读时只检查和报告；无子 Agent 能力时主 Agent 接手。对话中的状态与修复提示统一使用“收集”。
+- `stored_consent=granted` 表示目录有本地授权记录但无法确认当前状态。仅委派只读诊断，避免重复告知；变更前核对当前授权和动作许可。
+- 其余未确认授权时，用同一脚本的 `list --cwd <目录> --host <宿主>` 检查历史。已有拒绝则继续；已有执行、旧授权或状态不明时，不把它当成首次使用，按[启动分流与恢复](./references/monitor-flow.md#启动分流与恢复)处理。
+- 确认为首次告知时，立即运行同一脚本的 `preview --cwd <目录> --host <宿主>`。把返回的 **`disclosure.display` 原样发到对话**，然后再做业务操作。可用宿主的提问工具（把完整文案作为问题），或直接发送用户可见的助理消息；终端输出、工具结果和“已展示”摘要都不算。若当前只能发最终回复，把完整告知放在该回复并等待下一轮。无需先联网或写文件。未明确决定时不激活，发出告知后原任务可继续。收到真实决定后按[调用顺序](./references/monitor-flow.md#调用顺序)记录，明确同意才委派。
+- 主动查询、开启或关闭采集时，读取[收集用户控制](./references/skill-data-consent.md#命令职责与用户控制)。
 
 ## 知识库
 
@@ -35,16 +48,6 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 | [skill-data-consent.md](./references/skill-data-consent.md) | Skill 运行数据采集授权文案、项目范围和用户控制入口                                      |
 
 ---
-
-## 强烈建议开启运行监控
-
-新建项目的目标目录尚不存在时，先让 CLI 完成创建，再对真实生成目录检查和告知；不要为监控预先 mkdir 目标目录，也不要删除重建已绑定告知的目录。当前聊天绑定在其他仓库时须说明这一事实，工具命令 cwd 不改变会话归属，不能用该聊天验证目标项目的 Hook。目录现存且不会被创建器替换时才可直接 begin。监控等待用户决定或宿主验证期间继续已授权的业务工作。
-
-首次在当前工作目录使用本 Skill 时（包括空目录），先检查监控状态；需要授权时仅展示状态机返回的 `disclosure.display` 短文案及完整说明链接，并在同一次交互中让用户作出一个明确选择。不要在文案前另加推荐段落、`consent` 模板、版本/哈希等元数据清单或第二个授权问题。具体告知和状态处理见 [监控指引](./references/skill-data-consent.md)。已有有效授权或明确拒绝时不重复询问；没有状态证据时不得猜测。拒绝、引导工具不可用或监控失败均不阻塞本 Skill 原有业务。
-
-本 Skill 只提供提示和调用指引，不内置监控脚本或 Bootstrap MCP，不实现安装、授权、平台适配、日志采集或上传。这些能力及其协议由 agent-runtime-telemetry 独立维护。首次授权后的普通对话与重启恢复由该插件的原生 Hook 和后台服务处理，不要求再次调用 qdmp-skill。
-
-冷启动展示状态机返回的 `disclosure.display`，其中包含完整说明链接；`consent` 模板、固定下载来源/版本、当前目录等 `disclosure` 字段用于内部绑定和校验，不再重复展示。用户明确确认后才下载、校验并执行外部 onboarding。核对中央入口返回的动作与已授权范围一致后自动继续，不重复询问相同业务授权。范围变化则重新确认；宿主执行审批不能绕过。具体步骤见监控指引，不能将工具成功或无上下文的“同意”视为授权。
 
 ## 规范依赖
 
@@ -71,43 +74,11 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill,
 
 ## 启动步骤（每次 skill 触发时必须先执行）
 
-### 软件版本与实际加载来源
-
-先执行软件维护入口，`--skill-dir` 必须是本次实际加载的 Skill 目录，宿主必须明确使用 `codex` / `claude-code` / `qoder`，不能用另一 IDE 的清单判断当前 IDE：
-
-```bash
-node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿主> --cwd <实际绝对工作目录> --skill-dir <实际 Skill 目录>
-```
-
-入口只维护当前宿主已有的官方安装，不更新或激活 Telemetry、不变更采集同意或 Hook 信任。`reload_required` 时先重新加载实际宿主并读取新 Skill；`proceed_monitoring=false` 时说明具体阻塞原因，不执行监控引导，原业务可继续。不能以重启代替失败处理或重放旧引导。三端更新能力、安装范围、旧客户端升级及备份恢复见 [升级说明](./references/upgrade.md#三类旧入口的诊断与自动更新)。
-
-### 启动前置：当前目录的监控推荐与授权指引
-
-**没有 telemetry MCP 是首次安装的正常状态，不是“监控入口不可用”。** 先读取本 Skill 的 `references/skill-data-consent.md` 和 `references/telemetry-distribution.json`，再决定以下分支；禁止通过在业务目录 `find *telemetry*` / `find *monitor*` 无结果来判定不可安装。
-
-1. 有 telemetry MCP：只读检查当前目录状态；已有效授权或明确拒绝按状态处理。
-2. 无 MCP、或需要首次安装/当前目录激活：使用 [脚本状态机](./references/monitor-flow.md)，先查已有流程，再开始新告知：
-
-   ```bash
-   node <实际 Skill 绝对目录>/scripts/monitor-flow.mjs list --cwd <实际绝对工作目录> --host codex
-   node <实际 Skill 绝对目录>/scripts/monitor-flow.mjs begin --cwd <实际绝对工作目录> --host codex
-   ```
-
-   宿主按实际情况使用 `codex` / `claude-code` / `qoder`。有已有流程时先查询 status 并恢复，不能无条件运行 begin。仅展示 begin 返回的 `disclosure.display`，取得一次真实决定后，按状态机的 `allowed_actions` 逐步执行 authorize → fetch → inspect → execute → verify。其余 disclosure 字段只供内部校验，不逐项输出。未授权不下载，版本/目录/目标变化停止，执行前再次核对实时状态，失败不自动重放；只有旧运行时已证明的登录前置失败，才按 resume 恢复同一授权，不能为登录重建告知。安装仍由固定 telemetry 入口执行；不得绕过状态机直接运行 enable 或手改状态文件。
-
-不得要求用户先手动安装 MCP。只有清单/完整告知无效、下载或校验失败、范围/版本冲突或宿主安全限制等真实证据，才能报告具体阻塞；“无 MCP”“本地未找到组件”本身不构成阻塞。已获完整告知下的明确同意后连续执行已授权步骤，不能仅回复“授权已记录，待入口可用”。单独回复“开启监控”而此前未完整告知时，先补全告知与确认，不虚构完成授权。
-
-每次触发先读取 [监控指引](./references/skill-data-consent.md)，检查当前实际工作目录的状态，再进入下面的登录路由和环境检查。仅输入 `@qdmp-skill`、已存在的空目录、没有小程序项目或尚未登录，也执行此步骤；不需要 appId。新建项目的目标目录不存在或将被创建器替换时，延后该目录的告知至创建成功，不创建占位目录、不将父仓库授权套给新项目。
-
-入口不可用或安装失败时，如实说明状态和原因，继续原业务，不展示无法执行的授权问题。已有当前目录有效授权或明确拒绝证据时不重复询问。目录差异按监控指引核实，不自动扩大授权，也不把正常项目根目录识别一律判成错误。
-
-“可选”指用户可拒绝监控，不代表可以省略状态检查。只有当前目录已有有效授权或明确拒绝的状态证据时才跳过询问；其他目录的授权、全局已安装插件或缺少 MCP 工具均不能代替此证据。需要授权时仅展示 `disclosure.display`，并一次性询问是否同意安装并开启当前目录监控与正式上报；用户明确选择后不再重复问同一业务授权。没有回复、暂不决定或要求继续业务时，不启用监控、不视为明确拒绝，并按原业务流程继续。不能把监控选择变成开发、账号查询或登录的必答前置。入口或清单不可用时明确说明“监控引导尚不可用”及原因，再继续原业务；不替用户同意，不启动监控。
-
 **登录优先路由**：用户要求登录、查询当前账号，或命令提示需要登录时，先读 [Agent 对话登录](./knowledge/agent-login.md)。查询当前账号应先执行 `qdmp-cli getMe --env <env>`，只有明确需要登录时才发起登录，不把网络或应用配置错误当成未登录。此类任务不需要项目选择、创建项目或 PRD 检查；收到登录入口后先在对话展示，不要等待用户登录完成才回复。
 
 ### 第零步：环境依赖检查
 
-完成上述监控指引处理后，在执行开发业务操作前，必须先确认开发环境就绪：
+完成启动时的收集状态检查后，在执行开发业务操作前，必须先确认开发环境就绪：
 
 先用 `node --version` 核对 [CLI 运行时要求](./docs/使用指南.md#前置条件)；运行时不兼容时使用受支持的环境，不自动修改用户全局 Node。历史项目源码兼容不放宽新版 CLI 的运行时要求。
 
@@ -140,6 +111,8 @@ pnpm --version 2>/dev/null
 ### 第一步：项目定位与选择
 
 能通过项目根的 `qdmp-config.json` 或旧项目的根 `qdmp.json` 定位到当前或用户指定的已有项目时，直接进入第二步。`package.json` 缺失属于迁移完整性问题，不能改变旧项目分类。小程序项目始终包含前端；“仅后端”表示只操作全栈项目的 `backend/`。
+
+若仅找到同级的 `frontend/qdmp.json` 与 `frontend/package.json`，将 `frontend/` 的父目录作为候选根，用 `qdmp-cli config migrate --check --json` 核对布局和缺项。
 
 无法定位项目且本次需要选择项目时，只在用户指定的目录内查找。用户未指定时，使用当前工作区。示例中的路径替换为实际的搜索目录：
 ```bash
