@@ -18,7 +18,7 @@ claude mcp add --transport http qdmp-aliyun https://openapi.qiandao.com/aliyun/m
 
 Codex 的对应入口为 `codex mcp add qdmp-gitlab --url https://openapi.qiandao.com/gitlab/mcp` 和 `codex mcp add qdmp-aliyun --url https://openapi.qiandao.com/aliyun/mcp`；Qoder 使用其 MCP 配置入口。注册前检查当前宿主已有配置，避免重复创建。无需登录浏览器来完成这些后端调用。
 
-所有工具的公共必填参数是 `appId: string`、`appSecret: string`，取自项目根目录受保护的真实 `qdmp-config.json`，可从 root/backend 定位或显式 --config 指定。模板自带的 AppID、AppSecret 为空，填写真实凭据前不可调用上传/发布。下表仅列额外字段；`?` 表示可选。实际宿主可能将 MCP 服务名中的 `-` 规范化为 `_`，按实际提供的工具标识调用。
+所有工具的公共必填参数是 `appId: string`、`appSecret: string`，取自项目根目录受保护的 `qdmp-config.json`，可从 root/backend 定位或显式 --config 指定。部署预检返回 `ready` 后才调用上传或发布。下表仅列额外字段；`?` 表示可选。实际宿主可能将 MCP 服务名中的 `-` 规范化为 `_`，按实际提供的工具标识调用。
 
 ## 工具清单
 

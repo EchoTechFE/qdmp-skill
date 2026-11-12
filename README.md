@@ -282,7 +282,7 @@ Agent 按 backend/ 目录是否存在识别项目，再结合用户范围：纯�
 ```
 1. 配置环境 → Node.js、Go、qdmp-cli；前端步骤另需 pnpm
 2. 创建项目 → qdmp-cli create myApp（默认完整全栈模板，也可显式 -t default）
-3. 配置与依赖 → 本地填写模板自带的 qdmp-config.json，CLI 直接读取；在实际前端目录安装依赖
+3. 配置与依赖 → 部署预检自动补齐所需配置；在实际前端目录安装依赖
 4. 开发调试 → 按前后端各自 README 启动和验证
 5. 后端正式发布 → backend deploy --description "<说明>" 内部构建、校验归档并直接发布，完成全部上线验收；--review 为可选审查
 6. 前端构建与登录 → 在 frontend/ 执行 qdmp-cli build，按需 qdmp-cli login --agent --env prod

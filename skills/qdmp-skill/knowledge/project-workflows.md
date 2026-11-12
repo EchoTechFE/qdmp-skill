@@ -2,11 +2,7 @@
 
 ## 流程一：创建项目
 
-### Step 1: 在后台创建小程序
-
-引导用户访问 [千岛开放平台](https://open.qiandao.com) 创建小程序并提供 AppID。项目创建后，按[凭据引导与自动写入](./backend-production.md#凭据引导与自动写入)获取本次需要的 AppSecret 和数据库信息，由 Agent 自动写入受保护的根主配置。
-
-### Step 2: 使用 CLI 创建稳定前后端模板
+### Step 1: 使用 CLI 创建稳定前后端模板
 
 使用 `qdmp-cli create <项目名>` 创建项目。创建成功后确认项目包含根 `qdmp-config.json`、`frontend/` 和 `backend/`。创建结果不符合预期时，核对实际 CLI 与模板来源。已有旧项目按下方迁移步骤处理。
 
@@ -14,11 +10,11 @@
 
 检查 `frontend/` 的实际 loader、构建链和依赖，确认使用 EMP。发现 effuse、echo-effuse 或 effues 的有效引用时，先迁移真实依赖和构建链，再验证；仅修改 loader 不算完成。检查通过后在 `frontend/` 执行 `pnpm install`。
 
-### Step 3: 填写受保护配置
+### Step 2: 按需绑定开放平台小程序
 
-按[凭据引导](./backend-production.md#凭据引导与自动写入)补齐本次配置。前端只需目标环境的公开应用身份，补齐后使用 `qdmp-cli build` 验证。
+仅本地初始化可以先创建目录和代码。需要平台身份来构建、调试或部署时，按[部署预检](#部署预检与确认)先查登录。用户可以使用已有应用，也可在开放平台申请，审核通过后提供 AppID。前端只需目标环境的公开应用身份，补齐后使用 `qdmp-cli build` 验证。
 
-### Step 4: 验证后端模板
+### Step 3: 验证后端模板
 
 仅本次涉及后端时，按[后端构建检查](./backend-production.md#构建与内部归档校验)验证。打包产物含配置，按秘密制品保护。
 
@@ -328,7 +324,27 @@ rg -n "BACKEND_BASE" <frontendDir> -g '*.js' -g '*.ts' -g '*.vue'
 
 实际前端目录 `frontendDir` 固定为 `{projectRoot}/frontend`，后续读取配置、构建和上传均使用该目录；根旧 `qdmp.json` 仍存在时先迁移，不回退根目录构建。
 
-仅前端缺少目标环境的公开 AppID 时，在对话中询问并补齐根配置。范围包含后端时，按[凭据引导](./backend-production.md#凭据引导与自动写入)和[正式发布](./backend-production.md#正式发布与-master-合并)处理。全栈发布在后端通过验收后再构建和上传前端。
+全栈发布在后端通过验收后再构建和上传前端。
+
+### 部署预检与确认
+
+在项目根目录运行 `qdmp-cli deploy prepare --scope <frontend|backend|fullstack> --json`。生产部署的登录、预检、上传、体验版和提审使用同一个生产 AppID；预检 API 固定为 `https://api.qiandao.com`。按 JSON 的 `status` 分流，只有 `ready` 表示准备完成。对话只展示当前状态、下一步和需要确认的影响，不转发预检原始 JSON、凭据页面链接或手填配置步骤。
+
+| 预检状态 | 处理 |
+| --- | --- |
+| `auth_required` | 运行 `qdmp-cli login --agent`，按[对话登录](./agent-login.md)展示真实登录链接和二维码。登录成功后复跑预检。 |
+| `app_id_required` | 展示返回的开放平台和申请链接。用户可申请小程序，审核通过后复制 AppID，也可使用已注册的小程序。用宿主对话框收集 AppID，带 `--app-id <用户提供的值>` 复跑预检。 |
+| `app_unavailable` / `app_not_ready` | 展示目标应用链接和实际状态，引导核对 AppID、审核状态或 EMP 类型。用户完成处理后复检一次。 |
+| `app_permission_required` / `app_secret_permission_required` | 说明当前账号无法完成部署准备，请由应用所有者继续。 |
+| `configuration_required` | 保留本次范围及新增 AppID。用户已授权部署时加 `--apply`，否则点击部署动作后再加。对话报告「正在自动补齐部署配置」。 |
+| `database_configuration_required` | 核对实际数据源。需要用户选择时只展示数据源选项。托管数据源用 `--database managed-mongodb` 复检，自有数据源用 `--database external`，沿用既有业务配置。 |
+| `managed_database_not_ready` | 告知「数据库服务尚未就绪，部署已暂停」。等服务就绪后复检一次。 |
+| `managed_credentials_confirmation_required` | 明示可能初始化或重置现有密码。用「确认下发或重置凭据并部署」作为动作，用户点击后才加 `--apply --initialize-managed-mongodb`。该动作与部署一起确认即可。 |
+| `managed_credentials_unconfirmed` | 告知「自动配置结果未确认，部署已暂停」。保留结果并停止重复写入。 |
+
+完成本地检查，且应用和部署范围已明确时，用宿主真实选择工具渲染「上传前端」「部署后端」或「部署并上传」中的实际动作，以及「暂不部署」。若本次包括正式前端上线，把「提交审核及审核通过后发布」写进按钮说明；普通上传只描述上传。Codex 使用可用的 `request_user_input_async` 或 `request_user_input`，Claude Code 使用 `AskUserQuestion`，其他宿主使用其实际提供的等价选择控件。等待真实点击结果，保留原环境、AppID、项目目录和范围，确认后复检并继续同一次任务。暂不部署或无明确选择时结束部署分支。宿主缺少选择控件时如实说明，并展示可执行入口或用该宿主支持的确认方式。
+
+预检已明确缺少的 AppID 可以输入文字；部署授权走上述可点击选项。用户已经明确授权同一目标、范围及动作时，沿用现有授权。若发现需要初始化或重置托管 MongoDB 凭据，只确认新增的凭据动作。
 
 ### Step 2: PRD 与代码一致性检查
 
@@ -410,7 +426,7 @@ questions:
 
 #### 前置检查 2：小程序关联检查
 
-CLI 直接读取根主配置的公开字段；getMe、上传和提审不以前端副本手动同步为前置。主配置损坏或所选环境身份缺失时停止，不回退旧身份。执行 `qdmp-cli getMe` 核对账号、目标应用与实际 loader；编译产物身份不属于当前主配置对应环境的有效身份映射时重新构建。EMP 源码、依赖和构建链必须真实匹配，主配置写成 EMP 不代表已完成旧源码迁移。
+CLI 直接读取根主配置的公开字段。生产 AppID 缺失时返回部署预检。执行 `qdmp-cli getMe` 核对账号、目标应用与实际 loader；编译产物身份不匹配时重新构建。EMP 源码、依赖和构建链必须真实匹配。
 
 > 纯前端同样要求根 `qdmp-config.json + frontend/`，前端命令只取公开字段并使用 CLI 登录态，不要求 AppSecret 或后端 runtime。根式旧项目先迁移，不能因此初始化后端或要求补齐新的后端凭据。
 
@@ -475,7 +491,7 @@ qdmp-cli getMe
 ```
 
 - 已返回当前用户 → 跳过登录，继续 Step 4.5。
-- 提示未登录、登录失效或 Token 失效 → Agent 对话按 [Agent 对话登录](./agent-login.md) 调用 `qdmp-cli login --agent --env <env>` 并立即展示链接和图片；收到成功事件后重试原命令。用户前台终端仍提供三选一登录流程。
+- 提示未登录、登录失效或 Token 失效 → Agent 对话按 [Agent 对话登录](./agent-login.md) 调用 `qdmp-cli login --agent` 并立即展示链接和图片；收到成功事件后继续原流程。用户前台终端仍提供三选一登录流程。
 - 其他错误（例如 `qdmp.json`/`appId` 缺失、网络错误）→ 先报告并修复原始错误，不要误判为需要登录。
 
 CLI 会提供以下三种登录方式：
