@@ -336,15 +336,18 @@ rg -n "BACKEND_BASE" <frontendDir> -g '*.js' -g '*.ts' -g '*.vue'
 | `app_id_required` | 展示返回的开放平台和申请链接。用户可申请小程序，审核通过后复制 AppID，也可使用已注册的小程序。用宿主对话框收集 AppID，带 `--app-id <用户提供的值>` 复跑预检。 |
 | `app_unavailable` / `app_not_ready` | 展示目标应用链接和实际状态，引导核对 AppID、审核状态或 EMP 类型。用户完成处理后复检一次。 |
 | `app_permission_required` / `app_secret_permission_required` | 说明当前账号无法完成部署准备，请由应用所有者继续。 |
-| `configuration_required` | 保留本次范围及新增 AppID。用户已授权部署时加 `--apply`，否则点击部署动作后再加。对话报告「正在自动补齐部署配置」。 |
-| `database_configuration_required` | 核对实际数据源。需要用户选择时只展示数据源选项。托管数据源用 `--database managed-mongodb` 复检，自有数据源用 `--database external`，沿用既有业务配置。 |
-| `managed_database_not_ready` | 告知「数据库服务尚未就绪，部署已暂停」。等服务就绪后复检一次。 |
-| `managed_credentials_confirmation_required` | 明示可能初始化或重置现有密码。用「确认下发或重置凭据并部署」作为动作，用户点击后才加 `--apply --initialize-managed-mongodb`。该动作与部署一起确认即可。 |
+| `configuration_required` | 保留本次范围及新增 AppID。用户已授权部署时加 `--apply`，否则点击部署动作后再加。等待确认时说明「确认后将自动补齐部署配置」；执行时报告「正在自动补齐部署配置」。 |
+| `database_configuration_required` | 用户已选择托管数据源，或明确要求查找、申请千岛的 MongoDB 时，立即带 `--database managed-mongodb` 复跑只读预检，沿用本次 AppID 和范围。只读查询直接执行。已选自有数据源时用 `--database external`，沿用既有业务配置。只有数据源仍不明确时才展示选择。 |
+| `managed_database_not_ready` | 只依据 CLI 返回的状态给出对应下一步：`NotFound` 才指引用户在千岛开放平台的对应小程序下申请；`Pending` / `Provisioning` 等实例就绪；`Failed` 提示核对实例异常。用户处理后复检一次。 |
+| `managed_database_unavailable` | 告知数据库状态暂不可查询，部署已暂停。按返回状态向平台核对接口。 |
+| `managed_credentials_confirmation_required` | `Running` 只证明实例就绪。平台首次下发凭据与重置密码共用一个写接口，无法从该状态判断是否已有密码。用同一个「补齐配置并部署」动作说明可能重置现有密码、影响正在使用旧密码的服务；授权已涵盖该影响时，直接加 `--apply --initialize-managed-mongodb`，CLI 调用接口并保存，不再询问。 |
 | `managed_credentials_unconfirmed` | 告知「自动配置结果未确认，部署已暂停」。保留结果并停止重复写入。 |
 
 完成本地检查，且应用和部署范围已明确时，用宿主真实选择工具渲染「上传前端」「部署后端」或「部署并上传」中的实际动作，以及「暂不部署」。若本次包括正式前端上线，把「提交审核及审核通过后发布」写进按钮说明；普通上传只描述上传。Codex 使用可用的 `request_user_input_async` 或 `request_user_input`，Claude Code 使用 `AskUserQuestion`，其他宿主使用其实际提供的等价选择控件。等待真实点击结果，保留原环境、AppID、项目目录和范围，确认后复检并继续同一次任务。暂不部署或无明确选择时结束部署分支。宿主缺少选择控件时如实说明，并展示可执行入口或用该宿主支持的确认方式。
 
-预检已明确缺少的 AppID 可以输入文字；部署授权走上述可点击选项。用户已经明确授权同一目标、范围及动作时，沿用现有授权。若发现需要初始化或重置托管 MongoDB 凭据，只确认新增的凭据动作。
+在本轮工具列表中确认选择工具可调用，再直接调用它。只有调用成功才报告按钮已展示。界面快照、Markdown 和终端输出都不能创建聊天确认控件。若工具不可用或调用失败，告知当前对话无法显示按钮，只询问对已选动作的确认。AppID 或应用状态阻塞时先处理阻塞；`configuration_required` 本身可进入确认，配置在确认后自动补齐。
+
+预检已明确缺少的 AppID 可以输入文字；部署授权走上述可点击选项。先完成只读预检，再展示一次部署动作，让用户同时看到本次操作及其影响。沿用同一目标和范围的现有授权。AppSecret 获取和本地保存随部署执行，无须额外确认；本地 MongoDB 配置已齐全时 CLI 直接复用，跳过数据库 API。只有预检明确返回凭据操作可能重置密码、且现有授权没有涵盖这一影响时，才补充确认。不能根据空配置、AppID 是否新输入或接口错误推断首次开通，也不引导用户复制凭据或手填配置。
 
 ### Step 2: PRD 与代码一致性检查
 
