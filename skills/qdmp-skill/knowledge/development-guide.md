@@ -810,7 +810,7 @@ pnpm run dev
 
 ### 真机调试
 
-要求 CLI **0.1.32 或更高稳定版**，仅支持 EMP。先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`；不足时按升级说明更新。确认本地和平台应用均为 EMP、当前账号具有应用开发权限后，在包含 `qdmp.json` 的前端目录执行（也支持根目录下存在 `frontend/qdmp.json` 的项目）：
+要求 CLI **0.1.32 或更高稳定版**，仅支持 EMP。先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`，自动检查并更新到 npm latest。确认本地和平台应用均为 EMP、当前账号具有应用开发权限后，在包含 `qdmp.json` 的前端目录执行（也支持根目录下存在 `frontend/qdmp.json` 的项目）：
 
 ```bash
 qdmp-cli debug
@@ -832,7 +832,7 @@ Agent 使用 `qdmp-cli debug --json` 读取 NDJSON；需要对话内展示图片
 
 ### 设置体验版
 
-要求 CLI **0.1.32 或更高稳定版**，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`。根据用户指定的是当前代码还是已上传版本选择以下入口，保持应用和环境一致。
+要求 CLI **0.1.32 或更高稳定版**，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`。根据用户指定的是当前代码还是已上传版本选择以下入口，保持应用和环境一致。
 
 #### 上传当前代码并设为体验版
 

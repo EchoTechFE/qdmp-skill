@@ -455,7 +455,7 @@ qdmp-cli upload --help | grep -q -- '--description'
 ```
 
 - 支持 → 继续上传。
-- 不支持 → 执行 `npm install -g qdmp-cli@latest`，然后再次检查。
+- 不支持 → 执行 `npm install -g qdmp-cli@latest --include=optional`，然后再次检查。
 - 升级后仍不支持 → 停止上传并报告错误，严禁退回无描述上传。
 
 **Step 4.3：构建**

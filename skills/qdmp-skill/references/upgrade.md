@@ -7,7 +7,7 @@
 先记录 node --version、qdmp-cli --version、npm prefix -g 和实际命令路径（macOS/Linux 用 command -v qdmp-cli，Windows 用 where qdmp-cli）。多套 NVM 环境可能各有旧安装，在实际开发环境更新：
 
 ```bash
-npm install -g qdmp-cli@0.1.32 --include=optional
+npm install -g qdmp-cli@latest --include=optional
 qdmp-cli --version
 qdmp-cli list
 ```
@@ -22,7 +22,7 @@ qdmp-cli list
 
 ### 三类旧入口的诊断与自动更新
 
-从 1.1.13 起，可用 `scripts/ensure-current.mjs ensure` 检查并维护安装。当前版本在授权后准备下载、用户要求升级或确需修复时按需使用，日常查询先只读检查收集状态。四个 Skill 可分别独立安装，因此各自携带 `references/skill-release.json` 标识版本，插件仍由三端 `plugin.json` 标识，不再另外写版本收据。只认 `EchoTechFE/qdmp-skill` 已发布且非预发布的 `vX.Y.Z`，忽略同仓库的 Telemetry Release；不把 main 分支或开发版本当成稳定发布。
+每次触发主 Skill 都先运行 `scripts/ensure-current.mjs ensure` 检查并维护安装。只读任务用 `diagnose`。旧版已安装客户端需先从原渠道更新到带此启动规则的正式版。四个 Skill 可分别独立安装，因此各自携带 `references/skill-release.json` 标识版本，插件仍由三端 `plugin.json` 标识，不再另外写版本收据。只认 `EchoTechFE/qdmp-skill` 已发布且非预发布的 `vX.Y.Z`，忽略同仓库的 Telemetry Release；不把 main 分支或开发版本当成稳定发布。
 
 “用户级独立安装的 Skill”指直接安装到用户 Skills 目录中的副本；“通过插件安装的 Skill”由 QDMP 插件提供。两者是同一套公开发布内容的不同安装渠道，不是个人版与公开版的区别；同一宿主可能同时存在两种渠道的副本。
 

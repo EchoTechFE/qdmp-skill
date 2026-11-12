@@ -14,10 +14,15 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 
 帮助开发者快速创建、开发、调试和部署千岛小程序。发布范围、顺序、审查及验收规则由本 Skill 维护；Agent 按规则编排，CLI 执行模板、构建、上传和 MCP 调用并返回事实，MCP/API 服务由平台实现。完整前后端流程由 Agent 串联，不由某一条后端命令自动完成。
 
+## 启动先检查 Skill 更新
+
+每次触发先运行 `node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿主> --cwd <实际工作目录> --skill-dir <实际 Skill 目录>`。宿主用 `codex`、`claude-code` 或 `qoder`，目录均用现有的绝对路径。只读任务改用 `diagnose`。PATH 找不到 Node 时用实际宿主或版本管理器提供的 Node 可执行文件。检查目标由 GitHub 当前已发布的最新稳定 QDMP Release 决定。
+
+返回 `reload_required=true` 时，提示用户重新加载实际宿主或开启新会话，然后用新版 Skill 恢复当前任务。其余更新问题按 [原渠道更新说明](./references/upgrade.md#三类旧入口的诊断与自动更新) 报告。未完成更新且 `proceed_monitoring=false` 时，可查询收集状态并继续原业务，暂停执行旧收集引导。
+
 ## 启动先查收集状态
 
-每次触发先对实际宿主和目标目录做一次只读状态检查，优先于业务路由。新项目的最终目录尚未生成或将被替换时，在创建成功后检查该目录。宿主取实际的 `codex`、`claude-code` 或 `qoder`，目录使用真实绝对路径。
-如果当前 shell 的 PATH 找不到 `node`，先核对宿主或 Node 版本管理器（如 NVM）已有的 Node，用实际可执行文件运行脚本，无需安装或改全局配置。
+完成启动更新检查后，对实际宿主和目标目录做一次只读状态检查，优先于业务路由。新项目的最终目录尚未生成或将被替换时，在创建成功后检查该目录。宿主取实际的 `codex`、`claude-code` 或 `qoder`，目录使用真实绝对路径。
 
 - 收集 MCP 可用时，先对实际目录调用 `project_status`（`exact_workspace=true`），核对返回的目录和宿主。不可用或结果无法确认时，执行 `node <实际 Skill 目录>/scripts/monitor-flow.mjs local-status --cwd <实际绝对目录> --host <实际宿主>`。本地检查只读，独立于旧流程。
 - 已关闭、拒绝或撤回时尊重原决定。已授权且 Hook 待验证或用户刚确认审查时，优先走[按宿主版本审查与复验](./references/hook-review.md)。宿主明确要求审查时直接给出实际界面入口；用户确认后在原会话复验，沿用目录授权。其余已授权、状态正常且无已知缺项或新版证据时直接继续，跳过历史流程和授权提问。
@@ -82,25 +87,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 
 先用 `node --version` 核对 [CLI 运行时要求](./docs/使用指南.md#前置条件)；运行时不兼容时使用受支持的环境，不自动修改用户全局 Node。历史项目源码兼容不放宽新版 CLI 的运行时要求。
 
-```bash
-# 检查 qdmp-cli 是否可用
-qdmp-cli --version 2>/dev/null
-```
-
-- **命令成功**（输出版本号） → 开发、创建或前端构建/上传前，运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`，要求 CLI 为最新版。旧版本按 [升级说明](./references/upgrade.md) 更新并复检，不仅凭命令存在放行。全栈项目中的仅后端操作、账号查询和登录不受该前端版本门槛限制。
-- **命令失败**（command not found 或报错） → 执行自动安装：
-
-```bash
-npm install -g qdmp-cli
-```
-
-安装完成后再次验证：
-```bash
-qdmp-cli --version 2>/dev/null
-```
-
-- **验证通过** → 按上述任务范围执行版本检查后继续第一步
-- **仍然失败** → 停止流程，向用户报告错误信息，提示可能原因（npm 未安装、网络问题、权限不足等），并建议用户手动排查后重试。**严禁在 qdmp-cli 不可用的状态下执行创建项目或发布操作。**
+本次要执行任何 CLI 业务命令时，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`。脚本查询官方 npm 的 `latest`，安装缺失的 CLI 或更新当前 Node/npm 环境的旧全局安装，验证通过后再执行原命令。失败时报告原因并暂停依赖 CLI 的操作。登录与账号查询同样适用此检查，无需执行项目依赖检查。
 
 仅创建项目、前端开发或前端构建时检查 pnpm；全栈项目中的仅后端初始化、打包、上传和正式部署不检查、不安装 pnpm，也不依赖浏览器：
 ```bash
@@ -194,7 +181,7 @@ questions:
 
 ## 操作路由
 
-用户明确要求“真机调试 / 手机扫码运行”或“上传体验版 / 设置体验版”时，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`，再按意图读取 [真机调试](./knowledge/development-guide.md#真机调试) 或 [设置体验版](./knowledge/development-guide.md#设置体验版)。这两类请求是前端操作，不自动部署后端。普通上传仍保持原有行为。
+用户明确要求“真机调试 / 手机扫码运行”或“上传体验版 / 设置体验版”时，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`，再按意图读取 [真机调试](./knowledge/development-guide.md#真机调试) 或 [设置体验版](./knowledge/development-guide.md#设置体验版)。这两类请求是前端操作，不自动部署后端。普通上传仍保持原有行为。
 
 部署前确认目标和范围，核对实际使用的 CLI 是否支持本次命令。缺配置时按[凭据引导](./knowledge/backend-production.md#凭据引导与自动写入)在对话询问并自动写入。已有部署授权时，配置补齐后按[发布与验收](./knowledge/backend-production.md#正式发布与-master-合并)继续。
 
@@ -357,7 +344,7 @@ Agent 对话中需要登录或用户要求登录时，先读 [Agent 对话登录
 | 问题             | 解决方案                                                                                    |
 | ---------------- | ------------------------------------------------------------------------------------------- |
 | 依赖安装 401/404 | 配置 npm Token                                                                              |
-| qdmp-cli 未找到  | `npm install -g qdmp-cli`                                                                   |
+| qdmp-cli 未找到  | `npm install -g qdmp-cli@latest --include=optional`                                                                   |
 | pnpm 未找到      | `npm install -g pnpm`                                                                       |
 | 登录命令一直等待 | 在支持用户输入的前台交互终端执行；也可选择手动登录 URL，完成后 CLI 会自动继续 |
 | 图片 403         | index.html 加 `<meta name="referrer" content="no-referrer">`                                |
