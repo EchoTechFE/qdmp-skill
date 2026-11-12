@@ -79,7 +79,8 @@ export function ensureLatestCli({ runningRoot, runNpm = npm } = {}) {
     // A fresh cache prevents npm from falling back to stale registry metadata.
     const cache = fs.mkdtempSync(path.join(os.tmpdir(), "qdmp-cli-latest-"));
     try {
-      const version = JSON.parse(runNpm(["view", packageSpec, "version", "--json", ...online, `--cache=${cache}`], 20_000));
+      const value = JSON.parse(runNpm(["view", packageSpec, "version", "--json", ...online, `--cache=${cache}`], 20_000));
+      const version = Array.isArray(value) && value.length === 1 ? value[0] : value;
       if (typeof version !== "string" || !stable.test(version)) throw new Error("npm latest 未返回有效的正式版本");
       return version;
     } finally {
