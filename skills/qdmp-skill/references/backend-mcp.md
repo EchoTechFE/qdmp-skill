@@ -1,6 +1,6 @@
 # 后端正式发布 MCP 工具契约
 
-本清单记录 QDMP 后端发布工具的参数与调用边界。MCP/API 服务由平台实现，CLI 可调用它们并返回事实；本 Skill 维护编排、审查和验收规则，不复制 MCP Server 实现，也不依赖浏览器或 workflow 的安装。CLI 仓库的 utils/backendMcp.js 与 utils/backendDeploy.js 是发布/Pipeline 客户端，不是 MCP/API 服务实现；CLI deploy 不自动调用 Aliyun/K8s，运行版本、日志与上线证据由 Agent 依 Skill 通过宿主 MCP 收集。运行时先检查工具可用性和实际 schema；缺失时报告具体工具，不虚构成功。
+本清单记录 QDMP 后端发布工具的参数与调用边界。MCP/API 服务由平台实现，CLI 负责调用并返回事实，Skill 负责编排、审查和验收。生产验收使用 `qdmp-cli backend inspect --version <本次发布版本> --json`，由 CLI 调用本清单中的固定正式端点，返回脱敏证据。Agent 不通过临时脚本或宿主工具参数转发生产 AppSecret。运行时先检查命令可用性，证据缺失时保留未验证状态。
 
 ## 连接与凭据
 
