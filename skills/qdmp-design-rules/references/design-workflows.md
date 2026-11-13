@@ -38,9 +38,10 @@ questions:
 
 设计输入：
 
-- 读取 `doc/prd.md`；没有 PRD 时按用户描述的核心功能。
+- 读取 `{projectRoot}/doc/prd.md` 和它链接的相关专题。入口缺失时优先查找同一项目的旧 PRD，例如根 `PRD.md`、`docs/` 或 `frontend/doc/` 下的需求文档，排除归档和其他小程序。确无有效 PRD 时按用户描述的核心功能。设计流程只读取需求，不另建或迁移 PRD。
 - 使用 Step 1 收集的参考产品、参考图或品牌色。
 - 若已有 `DESIGN.md`，必须让新页面延续既有设计系统。
+- 涉及列表、图片密集页、多页流程或弹层时，按 [EMP 页面与组件优化](./frontend-optimization.md) 确定首屏数据、千岛组件、加载时机及旧宿主备用入口，再定稿。
 
 HTML 落地约束：
 
@@ -129,8 +130,8 @@ questions:
 1. 按 HTML 屏幕逐页生成 `src/pages/<name>/index.vue` 和 `index.config.js`。
 2. 在 `app.config.js` 注册路由。
 3. 复用 `app.css` token 和公共组件类；缺少的可复用元素先补到 `app.css` 和 `DESIGN.md`。
-4. 起 dev server 渲染，确认无编译或控制台错误。
-5. 环境支持截图时，用 375x812 移动视口和 HTML 原稿并排比对，改到观感看不出差别。
+4. 运行项目 EMP 构建，按 [EMP 事件与真机验收](../../qdmp-skill/knowledge/emp-events.md) 在千岛 App 验证交互。
+5. 有真机截图时与 HTML 原稿并排比对。H5 预览可用于视觉核对，交互验收以目标宿主为准。
 6. 执行审查流程，合并重复样式，移除未使用组件类。
 7. 列出已移植页面。
 
@@ -151,7 +152,7 @@ questions:
 
 所有页面都遵守：
 
-- 写法守 [taro-code-spec.md](taro-code-spec.md)。
+- 写法守 [taro-code-spec.md](taro-code-spec.md)，涉及交互时执行 [EMP 事件与真机验收](../../qdmp-skill/knowledge/emp-events.md)。
 - 会复用的新元素沉淀为 `app.css` 公共类并同步 `DESIGN.md`。
 - 只出现一次的局部几何可写页面 `<style>`。
 - 不直接在 Taro 里凭空排陌生构图。
@@ -179,3 +180,5 @@ questions:
 ```
 
 主 agent 根据审查结果修复。未通过则修复后重审，直到通过。
+
+涉及交互时另核对 EMP 构建和目标真机证据。视觉审查通过只报告视觉结果。

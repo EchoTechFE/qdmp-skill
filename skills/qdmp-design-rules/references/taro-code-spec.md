@@ -20,12 +20,12 @@ token 和公共组件类都在 `app.css`（`page` 变量 + `.card` / `.btn-prima
 
 - 布局用 Flexbox（Taro 对 Grid 支持有限）。
 - 可点击元素加 `.tap-active` class（已在 app.css 定义）。
-- 按钮用 `<view>` + `@click` 模拟，不用 `<Button>`（编译多层会破坏布局）。
+- 普通动作使用项目已验证的可点击组件或 `<view>`。依赖宿主原生能力时保留该能力所需的组件（例如手机号授权的原生 `button`）。事件绑定与验收统一见 [EMP 事件与真机验收](../../qdmp-skill/knowledge/emp-events.md)。
 - **`taro-view-core` 默认 `display:block`**：一行多列布局必须显式 `display:flex`；右侧值用 `margin-left:auto` 或固定宽度列，否则列对不齐。
 - **数字 / 货币不换行**：容器加 `white-space:nowrap`，必要时 `flex-shrink:0`，否则会被挤到换行。
 - **固定底部 CTA**：`position:fixed` 的按钮，滚动容器留 `padding-bottom`（≥ CTA 高度 + 安全区），否则盖住内容。
 - **小容器内文字居中**：badge / pill 内文字仅靠 padding 不居中，显式 `display:flex; align-items:center`（按需加 `justify-content:center`）。
-- **禁用 `scrollIntoView`**：iframe / 预览环境会搅乱外层滚动；用 `element.scrollTop` 或 `scrollTo`。
+- **滚动定位**：按目标 EMP 宿主和项目组件支持的 `scroll-view` 属性或页面滚动 API 实现，在真机验证。DOM 的 `element.scrollTop` 等写法留在 HTML 设计稿或真实 H5 的平台适配层。
 - **用具名 class，别用元素选择器**：`<text>`→`taro-text-core`、`<view>`→`taro-view-core`，`.x span` / `.x svg` / `p` 这类元素选择器不匹配、样式不生效；每个要样式的元素都挂具名 class（`.tab__t` / `.tab__ic`）。
 
 ### 动效

@@ -18,6 +18,9 @@ const transitions = {
   declined: [], needs_reconfirmation: ["inspect"], failed: ["verify", "resume"], executing: ["verify"]
 };
 const legacyLoginFailure = value => /QDMP_LOGIN_REQUIRED|开启数据采集前需要登录千岛/.test(value || "");
+const transientInventoryFailure = status => status?.plugin_state === "unknown"
+  && status.phase === "installation_inventory"
+  && ["ETIMEDOUT", "EAI_AGAIN", "ECONNRESET"].includes(status.error_code);
 const allowedActions = s => (transitions[s.state] || []).filter(action => action !== "resume"
   || s.choice?.action === "reuse" && !s.execution_result && legacyLoginFailure(s.reason));
 const immutable = s => ({ schema: s.schema, id: s.id, directory: s.directory, host: s.host,
@@ -125,8 +128,16 @@ function safeChoice(notice, s, release, selected = null) {
   return choice;
 }
 
-function hookInstruction(host, result, directory) {
+function hookInstruction(host, result, directory, sessionWorkspaceMatch) {
   const project = result.project || result.status || {};
+  if (sessionWorkspaceMatch === false) {
+    const workspace = `The current chat workspace differs from ${directory}. The directory status does not verify capture from this chat. `;
+    const review = hookFollowup(project)?.action === "review"
+      ? "The host reports a Hook needs review; use references/hook-review.md in the same chat. " : "";
+    const reload = !review && (result.restart_required === true || (result.next_action || project.next_action) === "reload_host")
+      ? "The host reports that it needs a reload; resume the same chat and flow afterward. " : "";
+    return workspace + review + reload + "Continue business work in the same chat and keep the existing authorization. A shell cwd change cannot bind the chat to this project. Follow references/hook-review.md for runtime support and verification.";
+  }
   if (result.native_hooks_verified === true || project.state === "collecting") return "Native Hooks verified; production warehouse readback remains separate. No restart required.";
   const hooks = project.hooks || result.hooks;
   const workspace = `First confirm the chat's bound workspace is ${directory}; a shell command's cwd does not rebind the chat. `;
@@ -142,6 +153,14 @@ function hookInstruction(host, result, directory) {
 export async function monitorFlow(command, args = {}, options = {}) {
   const home = options.homeDir ?? os.homedir();
   const base = path.join(home, ".qdmp-skill", "monitor-flows");
+  let sessionWorkspace;
+  if (Object.hasOwn(args, "session-workspace")) {
+    const supplied = args["session-workspace"];
+    if (command !== "verify" || !path.isAbsolute(supplied || "") || !fs.statSync(supplied).isDirectory()) {
+      throw new Error("verify requires an absolute directory for --session-workspace");
+    }
+    sessionWorkspace = fs.realpathSync(supplied);
+  }
   if (command === "local-status" || command === "preview") {
     const { host, cwd: directory } = args;
     if (!path.isAbsolute(directory || "") || !["codex", "claude-code", "qoder"].includes(host)) throw new Error("absolute directory and supported host required");
@@ -150,7 +169,7 @@ export async function monitorFlow(command, args = {}, options = {}) {
     if (command === "local-status") return runtimeStatus(directory, host, home, checkDistribution().version, options.runRuntime);
     const disclosure = coldStartNotice(args);
     const preview_digest = digest({ disclosure, dev: stat.dev, ino: stat.ino });
-    return { directory, host, disclosure: { display: disclosure.display }, disclosure_digest: digest(disclosure), preview_digest };
+    return { directory, host, disclosure: { display: disclosure.display, presentation: disclosure.presentation }, disclosure_digest: digest(disclosure), preview_digest };
   }
   if (command === "list") {
     if (!path.isAbsolute(args.cwd || "") || !["codex", "claude-code", "qoder"].includes(args.host)) throw new Error("absolute directory and supported host required");
@@ -176,7 +195,7 @@ export async function monitorFlow(command, args = {}, options = {}) {
       manifest_digest: digest(release), disclosure_digest: digest(disclosure), directory_identity: { dev: stat.dev, ino: stat.ino }, created_at: new Date().toISOString(), history: [] };
     const dir = path.join(base, id); fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     s.binding_digest = digest(immutable(s)); write(path.join(dir, "state.json"), s);
-    return { ...s, allowed_actions: allowedActions(s), disclosure, instruction: "Show only disclosure.display as the user-facing authorization copy, including its full-notice link. Do not print disclosure.consent or other fields separately. Ask for one explicit decision, then record it with authorize and this disclosure_digest; do not ask again when the inspected action remains within the authorized scope." };
+    return { ...s, allowed_actions: allowedActions(s), disclosure, instruction: "Show only disclosure.display as the user-facing authorization copy, including its full-notice link. Do not print disclosure.consent or other fields separately. Present 同意 as the recommended option and 暂不开启 as the alternative. Record only the user’s submitted decision with authorize and this disclosure_digest; do not ask again when the inspected action remains within the authorized scope." };
   }
   if (!/^[a-f0-9-]{36}$/.test(args.flow || "")) throw new Error("valid flow ID required");
   const dir = path.join(base, args.flow); const file = path.join(dir, "state.json");
@@ -259,10 +278,16 @@ export async function monitorFlow(command, args = {}, options = {}) {
     };
     if (command === "inspect") {
       let notice;
-      try { notice = inspect(); }
+      try {
+        notice = inspect();
+        // Only retry a read-only query. An existing check_failed flow may
+        // perform a single explicit recheck after its environment is repaired.
+        if (s.state !== "check_failed" && transientInventoryFailure(notice.status)) notice = inspect();
+      }
       catch (error) {
         if (/mismatch|checksum|scope|exact directory support/.test(error.message)) throw error;
-        return next("check_failed", { reason: error.message, instruction: "Read-only inspection failed. Retry inspect after resolving the error; retain existing consent and never install from unknown state." });
+        return next("check_failed", { reason: error.message, error_code: error.code, phase: error.phase,
+          instruction: "Read-only inspection failed. Retry inspect after resolving the error; retain existing consent and never install from unknown state." });
       }
       if (notice.status?.plugin_state === "unknown") return next("check_failed", { notice, diagnostic: notice.status.diagnostic, error_code: notice.status.error_code, phase: notice.status.phase, instruction: "Installation check failed, not missing or refused. Retry inspect; do not request monitoring consent again." });
       if (notice.status?.project?.granted === true && notice.status?.plugin_state === "installed" && notice.status?.compatible) {
@@ -313,8 +338,14 @@ export async function monitorFlow(command, args = {}, options = {}) {
     }
     if (command === "execute") {
       let notice;
-      try { notice = inspect(); } catch (error) { return next("check_failed", { reason: error.message }); }
-      if (notice.status?.plugin_state === "unknown") return next("check_failed", { diagnostic: notice.status.diagnostic, notice });
+      try { notice = inspect(); } catch (error) {
+        if (/mismatch|checksum|scope|exact directory support/.test(error.message)) throw error;
+        return next("check_failed", { reason: error.message, error_code: error.code, phase: error.phase });
+      }
+      if (notice.status?.plugin_state === "unknown") {
+        return next("check_failed", { diagnostic: notice.status.diagnostic, error_code: notice.status.error_code, phase: notice.status.phase, notice,
+          instruction: "Installation check failed before execution. Restore read-only inspection and retry inspect on this flow; existing consent remains valid." });
+      }
       if (fingerprint(notice) !== s.inventory_digest) return next("needs_reconfirmation", { reason: "live installation/authorization/options changed" });
       const choice = safeChoice(notice, s, release, s.choice?.action);
       if (s.resuming_authorization_id && notice.status?.receipt?.authorization_id !== s.resuming_authorization_id) return next("needs_reconfirmation", { reason: "pending authorization changed; inspect without replay" });
@@ -326,14 +357,40 @@ export async function monitorFlow(command, args = {}, options = {}) {
         if (!argv.includes("--artifact-url")) argv.push("--artifact-url", release.artifact_url);
         const result = run(entry, argv, s, options);
         return next("activation_reported", { execution_result: result, instruction: hookInstruction(s.host, result, s.directory) });
-      } catch (error) { return next("failed", { reason: error.message, instruction: "Verify live state; never auto-replay an ambiguous mutation. A proven legacy pre-consent login failure on reuse may resume the same flow after login; do not repeat consent or version approval." }); }
+      } catch (error) {
+        // Keep the original error and authorization even if status itself is
+        // unavailable. A failed installer can have already changed the host.
+        next("failed", { reason: error.message,
+          instruction: "Verify live state; never auto-replay an ambiguous mutation. A proven legacy pre-consent login failure on reuse may resume the same flow after login; do not repeat consent or version approval." });
+        try {
+          const live = run(entry, ["status", ...queryArgs(s)], s, options, 30000);
+          if (live.project_root === s.directory && live.host === s.host) {
+            s.verification = live;
+            s.warehouse = "not_verified";
+            write(file, s);
+          }
+        } catch {
+          // Leave the pinned flow available for read-only verification.
+        }
+        return { ...s, allowed_actions: allowedActions(s) };
+      }
     }
     if (command === "verify") {
       const result = run(entry, ["status", ...queryArgs(s)], s, options);
+      if (result.project_root !== s.directory || result.host !== s.host) throw new Error("live runtime scope/version mismatch");
+      if (["executing", "failed"].includes(s.state) && ["missing", "unknown", "disabled"].includes(result.plugin_state)) {
+        return next(s.state, { verification: result, warehouse: "not_verified",
+          instruction: "Installation has no verified active runtime. Diagnose the host and pinned entry read-only. Do not replay the previous mutation or ask for the same consent again." });
+      }
       const expected = s.choice?.action === "reuse" ? s.choice.expected_version : s.notice?.status?.installed_version && !s.choice ? s.notice.status.installed_version : release.version;
-      if (result.project_root !== s.directory || result.host !== s.host || result.installed_version !== expected || !result.compatible) throw new Error("live runtime scope/version mismatch");
+      if (result.installed_version !== expected || !result.compatible) throw new Error("live runtime scope/version mismatch");
       const collecting = result.project?.granted === true && result.project?.state === "collecting";
-      return next(collecting ? "collecting" : "verification_pending", { verification: result, warehouse: "not_verified", instruction: hookInstruction(s.host, result, s.directory) });
+      // Workspace supplied by the host context is diagnostic only. It neither
+      // changes scope nor proves which session emitted a project's Hooks.
+      const fold = value => process.platform === "win32" ? value.toLowerCase() : value;
+      const sessionWorkspaceMatch = sessionWorkspace === undefined ? undefined : fold(sessionWorkspace) === fold(s.directory);
+      return next(collecting ? "collecting" : "verification_pending", { verification: result, warehouse: "not_verified",
+        session_workspace_match: sessionWorkspaceMatch, instruction: hookInstruction(s.host, result, s.directory, sessionWorkspaceMatch) });
     }
     throw new Error("unsupported flow command");
   } finally { fs.closeSync(fd); fs.unlinkSync(lock); }
@@ -343,9 +400,9 @@ export async function monitorFlow(command, args = {}, options = {}) {
 // Full receipts, legal text and history remain in the private state file.
 export function flowOutput(result) {
   if (result.flows || Object.hasOwn(result, "live") || result.preview_digest) return result;
-  const keys = ["id", "state", "directory", "host", "allowed_actions", "disclosure_digest", "action_digest", "proposed_action", "choice", "reason", "diagnostic", "error_code", "phase", "instruction", "compatibility", "warehouse", "reuse_only", "install_only"];
+  const keys = ["id", "state", "directory", "host", "allowed_actions", "decision", "authorized_at", "disclosure_digest", "action_digest", "proposed_action", "choice", "reason", "diagnostic", "error_code", "phase", "instruction", "compatibility", "warehouse", "reuse_only", "install_only"];
   const view = Object.fromEntries(keys.filter(key => result[key] !== undefined).map(key => [key, result[key]]));
-  if (result.disclosure) view.disclosure = { display: result.disclosure.display };
+  if (result.disclosure) view.disclosure = { display: result.disclosure.display, presentation: result.disclosure.presentation };
   if (result.notice?.status) view.runtime = { installed_version: result.notice.status.installed_version,
     compatible: result.notice.status.compatible, activation_requirements: result.notice.status.activation_requirements };
   if (result.state === "action_confirmation_required") view.notice = {
@@ -355,7 +412,10 @@ export function flowOutput(result) {
   if (result.verification) {
     const status = result.verification;
     view.verification = { project_root: status.project_root, host: status.host, installed_version: status.installed_version,
-      compatible: status.compatible, activation_requirements: status.activation_requirements, project: status.project, next_action: status.next_action,
+      compatible: status.compatible, plugin_state: status.plugin_state, diagnostic: status.diagnostic,
+      error_code: status.error_code, phase: status.phase, activation_requirements: status.activation_requirements,
+      project: status.project, next_action: status.next_action,
+      ...(result.session_workspace_match !== undefined && { session_workspace_match: result.session_workspace_match }),
       hook_followup: hookFollowup(status.project),
       upload_endpoint: status.project?.collector?.endpoint || status.receipt?.upload_endpoint || status.receipt?.activation?.upload_endpoint,
       production_readback_verified: status.production_readback_verified ?? status.project?.production_readback_verified ?? false };
@@ -367,6 +427,7 @@ export async function runFlow(argv, options = {}) {
   const [command, ...tokens] = argv;
   const accepted = command === "begin" ? new Set(["--cwd", "--host", "--preview"])
     : ["list", "preview", "local-status"].includes(command) ? new Set(["--cwd", "--host"])
+    : command === "verify" ? new Set(["--flow", "--session-workspace"])
     : ["authorize", "confirm-action"].includes(command) ? new Set(["--flow", "--decision", "--digest"]) : new Set(["--flow"]);
   const args = {};
   for (let i = 0; i < tokens.length; i++) {

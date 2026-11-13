@@ -20,13 +20,10 @@
 
 ## 1. SVG：内联保留，几何尺寸别翻倍
 
-**Taro H5 能直接渲染内联 `<svg>`**（环形图的 `<circle stroke-dasharray>`、`<path>` 图标都正常，已实测）。图表、图标把 HTML 里的内联 SVG 原样搬过来，别替换成单字圆圈 / emoji 占位符。
+先复用项目已确认能在 EMP 渲染的同类图标。HTML 内联 SVG 保留为视觉参照；只有目标组件与 EMP 实测支持时才采用内联形式，否则用通过真机验收的组件或资源保留原图形。
 
 - ⚠️ **几何 / 尺寸保持原值，别按 ×2/750 翻倍**：SVG 的 `width` / `height` / `viewBox` / `d` / `stroke-dasharray` 是属性、**不走 pxtransform**，翻倍会实打实渲染成 2 倍大（实测：图标 `width="18"` 被错翻成 `36`、整个大一圈）。原样照搬即可。
-- **`<text>` 进 `<svg>` 要用 `v-html`**：SVG 里的 `<text>`（轴标签、数值）会被 Taro 编译成 `taro-text-core` 而不渲染、标签消失 → 用 `v-html` 把这段当字符串注入：`<g v-html="...">`。动态 path 图标同理：
-  ```html
-  <svg viewBox="0 0 20 20" fill="none" width="21" height="21" v-html="item.iconPath"></svg>
-  ```
+- 有 SVG 文字标签或动态 path 时单独核对编译和真机渲染。不要凭 H5 的 `v-html` 注入成功就认定 EMP 可用。
 - **颜色走 token**：`stroke` / `fill` 用 `var(--*)`，不写死 hex。
 
 ---
@@ -49,8 +46,8 @@ token 和共享组件流程四已建在 `app.css`，移植**主要是拼装 + �
 
 ## 3. 交互与跳转
 
-- 事件统一 **`@click`**，**不用 `@tap`**——`@tap` 在 Taro H5 是合成事件，嵌套 / 滚动结构里会丢点击、handler 不触发；`@click` 是原生 DOM 事件，稳。
-- 设计页的屏间互链 `<a href="<屏名>.html">` → `<view @click>` + `Taro.navigateTo({ url: 'pages/<名>/index' })`。
+- 按 [EMP 事件与真机验收](../../qdmp-skill/knowledge/emp-events.md) 迁移 HTML 交互，验证 Vue handler 是否在目标宿主触发。
+- 设计页的屏间互链移植为小程序组件点按，调用项目的导航封装，目标使用 `app.config.js` 已注册的页面路由。
 - 列表用 `v-for`；HTML 里 JS 动态生成的 DOM，移植成 `v-for` + 响应式数据。纯展示页用静态占位数据，不调用后端。
 
 ---
@@ -65,8 +62,8 @@ token 和共享组件流程四已建在 `app.css`，移植**主要是拼装 + �
 
 每个页面移植后：
 
-1. 注册路由（`app.config.js`）→ `pnpm run dev` → 渲染，确认无编译 / 控制台报错，且样式全走 token / 组件类（无硬编码 hex/px、复用组件类而非复制样式）。
-2. **环境支持截图时**：mobile 视口（375×812）截图（有入场动画先等 ≥500ms 落定），和 HTML 原稿并排逐项比对，有出入对照本手册修，**改到与原稿看不出差别为止**。
-3. **环境不支持截图时**：逐项核对前面各节是否落实（SVG 内联 / 尺寸、`var()` token、`@click`、框架差异），并提示用户截图无法自动比对、建议人工核对视觉。
+1. 注册路由（`app.config.js`）后运行项目的 EMP 构建。核对 SVG 和尺寸、`var()` token、组件类复用和事件编译结果。
+2. 有可用截图时用真机画面和 HTML 原稿并排比对。已有 H5 预览只核对视觉；无截图时记录待人工比对的页面。
+3. 在千岛 App 逐项验收改动的点击、输入、跳转和宿主能力。未能完成真机验证时按 [EMP 事件与真机验收](../../qdmp-skill/knowledge/emp-events.md) 记录待验项。
 
 底线：移植后的 Taro 页面，视觉上应和 HTML 原稿**看不出差别**。看出差别 = 移植没完成。

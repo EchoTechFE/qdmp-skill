@@ -27,7 +27,11 @@ allowed-tools: [Read, Grep, Glob, Bash]
 | 页面设计、设计确认、增量页面开发、审查 | [design-workflows.md](./references/design-workflows.md) |
 | 生成或反向提取 `DESIGN.md`，同步 `app.css` token/组件类 | [design-spec.md](./references/design-spec.md) |
 | 编写或审查 Taro Vue/CSS、维护 `app.css` token/组件类 | [taro-code-spec.md](./references/taro-code-spec.md) |
+| 修改、审查或排查前端业务、移植交互、真机验收 | [EMP 事件与真机验收](../qdmp-skill/knowledge/emp-events.md) |
 | 把 `design/*.html` 移植成 Taro 页面 | [port-guide.md](./references/port-guide.md) 和 [taro-code-spec.md](./references/taro-code-spec.md) |
+| 前端组件选型、接口分页 UI、懒加载、预加载、弹层及性能审查 | [EMP 页面与组件优化](./references/frontend-optimization.md) |
+
+独立安装目录不同、相对链接不可用时，通过实际载入的 `qdmp-skill` 查找 `knowledge/emp-events.md`。尚未包含该页的旧版组合，新增 EMP Vue 点按用 `@tap`，保留已在目标 EMP 验证过的 `@click`，并通过实际 EMP 构建及千岛真机验收。
 
 ## 使用前检查
 
@@ -46,7 +50,7 @@ allowed-tools: [Read, Grep, Glob, Bash]
 - **禁止使用 `:root` 定义 CSS 变量**：小程序编译目标不识别 `:root`，生成、移植和 Review 时都不得在任何小程序样式文件中保留 `:root { --*: ... }`；全局 token 必须定义在 `app.css` 的 `page { ... }` 中。HTML 设计稿也使用实际根容器 class 承载变量，避免移植时带入 `:root`。
 - 写 Taro 时优先复用 token 和具名 class；不要用元素选择器，不要散落硬编码颜色、字号、圆角、阴影。
 - 需要复用的新元素先沉淀为 `app.css` 公共类并同步 `DESIGN.md`；只出现一次的几何布局可留在页面局部样式。
-- 移植完成后必须渲染验真；能截图就和 HTML 原稿并排比对，改到观感看不出差别。
+- 移植完成后用项目 EMP 构建验证，并在千岛真机验收交互。截图可和 HTML 原稿并排比对，视觉比对和交互结果分别报告。
 
 ## 与主 qdmp skill 的关系
 

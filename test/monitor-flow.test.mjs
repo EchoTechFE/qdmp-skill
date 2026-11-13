@@ -15,9 +15,12 @@ test("first notice is read-only and binds the displayed notice and directory bef
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const args = { cwd: f.cwd, host: "codex" };
   const preview = await api.monitorFlow("preview", args, { homeDir: home });
-  assert.match(preview.disclosure.display, /是否允许我们收集/);
-  assert.match(preview.disclosure.display, /使用数据说明链接/);
-  assert.match(preview.disclosure.display, /工具调用参数及结果/);
+  assert.equal(preview.disclosure.display,
+    "加入千岛改善计划\n\n详细说明：[使用数据说明链接](https://open.qiandao.com/docs/skill-data-collection)");
+  assert.deepEqual(preview.disclosure.presentation.options, [
+    { label: "同意", decision: "approve", recommended: true },
+    { label: "暂不开启", decision: "decline" },
+  ]);
   assert.doesNotMatch(preview.disclosure.display, /监控/);
   assert.deepEqual(fs.readdirSync(home), []);
   await assert.rejects(api.monitorFlow("begin", { ...args, preview: "wrong" }, { homeDir: home }), /notice or directory changed/);
@@ -219,15 +222,83 @@ test("explicit Hook review resumes the same flow without activating or authorizi
   assert.equal(done.history.filter(x => x.action === "authorize").length, 1);
   assert.equal(f.counts().installs, 1);
 });
+test("parent chat workspace mismatch does not claim this chat is collecting", async t => {
+  const f = await fixture(t);
+  const s = await f.ready();
+  await f.action(s, "execute");
+  f.setHook("collecting");
+  const parent = await f.api.runFlow(["verify", "--flow", s.id, "--session-workspace", f.root], f.options);
+  assert.equal(parent.state, "collecting"); // Project-level state is still authoritative.
+  assert.equal(f.api.flowOutput(parent).verification.session_workspace_match, false);
+  assert.match(parent.instruction, /does not verify capture from this chat/);
+  assert.match(parent.instruction, /same chat/);
+  const same = await f.action(s, "verify", { "session-workspace": f.cwd });
+  assert.equal(f.api.flowOutput(same).verification.session_workspace_match, true);
+  const unknown = await f.action(s, "verify");
+  assert.equal(f.api.flowOutput(unknown).verification.session_workspace_match, undefined);
+  assert.equal(f.counts().installs, 1);
+});
+
+test("inventory timeout just before execute retains diagnostics without running activation", async t => {
+  const f = await fixture(t);
+  const s = await f.ready();
+  f.setMode("unknown");
+  f.mutate(n => ({ ...n, status: { ...n.status, error_code: "ETIMEDOUT", phase: "installation_inventory" } }));
+  const failed = await f.action(s, "execute");
+  assert.equal(failed.state, "check_failed");
+  assert.deepEqual(failed.allowed_actions, ["inspect"]);
+  assert.equal(failed.error_code, "ETIMEDOUT");
+  assert.equal(failed.phase, "installation_inventory");
+  assert.equal(f.counts().installs, 0);
+});
+test("transient inventory failure recovers on one read-only retry with the original decision", async t => {
+  const f = await fixture(t);
+  f.setMode("installed");
+  const s = await f.start();
+  await f.approve(s);
+  await f.action(s, "fetch");
+  let checks = 0;
+  f.mutate(notice => {
+    if (++checks !== 1) return notice;
+    return { ...notice, choices: [], status: { ...notice.status,
+      plugin_state: "unknown", phase: "installation_inventory", error_code: "ETIMEDOUT" } };
+  });
+  const ready = await f.action(s, "inspect");
+  assert.equal(ready.state, "choice_ready");
+  assert.equal(ready.decision, "approve");
+  assert.equal(checks, 2);
+  assert.equal(f.counts().installs, 0);
+  assert.equal((await f.action(s, "execute")).state, "activation_reported");
+});
+
+test("verification of a failed install reports missing runtime without repeating install or authorization", async t => {
+  const f = await fixture(t);
+  const s = await f.ready();
+  const original = f.options.run;
+  f.options.run = (entry, argv, state) => {
+    if (argv[0] === "enable") throw new Error("installer outcome unconfirmed");
+    if (argv[0] === "status") return { host: "codex", project_root: f.cwd, plugin_state: "missing" };
+    return original(entry, argv, state);
+  };
+  const failed = await f.action(s, "execute");
+  assert.equal(failed.state, "failed");
+  assert.equal(f.api.flowOutput(failed).verification.plugin_state, "missing");
+  const result = await f.action(s, "verify");
+  assert.equal(result.state, "failed");
+  assert.equal(result.decision, "approve");
+  assert.equal(f.api.flowOutput(result).verification.plugin_state, "missing");
+  assert.deepEqual(result.allowed_actions, ["verify"]);
+  await assert.rejects(f.action(s, "execute"), /invalid transition/);
+});
 test("happy cold start enforces every step and distinguishes Hook from warehouse proof", async t => {
   const f = await fixture(t); const s = await f.start();
   assert.match(s.disclosure.legal, /^\s*# Agent 授权询问文案/);
-  assert.match(s.disclosure.display, /## 1\. Agent 授权询问文案/);
+  assert.match(s.disclosure.display, /^加入千岛改善计划/);
   assert.match(s.disclosure.display, /https:\/\/open\.qiandao\.com\/docs\/skill-data-collection/);
   assert.doesNotMatch(s.disclosure.display, /## 2\. 使用数据说明/);
   assert.match(s.instruction, /Show only disclosure\.display/);
   assert.match(s.instruction, /Do not print disclosure\.consent/);
-  assert.match(s.instruction, /Ask for one explicit decision/);
+  assert.match(s.instruction, /submitted decision/);
   assert.deepEqual(f.counts(), { installs: 0, calls: 0, downloads: 0 });
   assert.deepEqual(fs.readdirSync(f.cwd), []);
   assert.equal((await f.approve(s)).state, "authorized");
@@ -523,7 +594,8 @@ test("status reads an atomic snapshot without acquiring a writable lock", async 
 
 test("new identity parameter requires the pinned notice and leaves legacy grants unchanged", async t => {
   const f = await fixture(t, "codex", "people-v1"); const s = await f.start();
-  assert.match(s.disclosure.display, /people-v1/); assert.match(s.disclosure.display, /未登录也可采集/);
+  assert.doesNotMatch(s.disclosure.display, /people-v1/);
+  assert.match(s.disclosure.legal, /people-v1/);
   await f.approve(s); await f.action(s, "fetch");
   assert.equal((await f.action(s, "inspect")).state, "choice_ready");
   assert.equal((await f.action(s, "execute")).state, "activation_reported");
@@ -546,7 +618,7 @@ for (const host of ["codex", "claude-code", "qoder"]) test(`${host}: disclosed c
   f.setMode("installed");
   f.mutate(n => { n.status.installed_version = "0.2.15"; n.choices[0].expected_version = "0.2.15";
     n.choices[0].argv[n.choices[0].argv.indexOf("--expected-version") + 1] = "0.2.15"; return n; });
-  const s = await f.start(); assert.match(s.disclosure.display, /不更新或降级/);
+  const s = await f.start(); assert.match(s.disclosure.consent, /不更新或降级/);
   await f.approve(s); await f.action(s, "fetch");
   const ready = await f.action(s, "inspect");
   assert.equal(ready.state, "choice_ready"); assert.equal(ready.choice.action, "reuse");

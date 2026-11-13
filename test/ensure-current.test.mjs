@@ -5,6 +5,7 @@ import os from "node:os";
 import crypto from "node:crypto";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { recoverPending } from "../skills/qdmp-skill/scripts/recover-update.mjs";
 import { ensureCurrent, auditInstallation, flowCompatibility, compare, main, latestRelease, hostInvocation } from "../skills/qdmp-skill/scripts/ensure-current.mjs";
 
@@ -354,4 +355,18 @@ test("process exit mid-update keeps discovery entry and standalone recovery rest
   const result = recoverPending(data.home); assert.equal(result.state, "restored");
   assert.equal(JSON.parse(fs.readFileSync(path.join(data.personal, "references/skill-release.json"))).version, "1.1.11");
   assert.equal(fs.existsSync(path.join(data.home, ".qdmp-skill/skill-update.lock")), false);
+});
+
+test("maintenance entry points execute through an aliased directory", t => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "qdmp-entry-test-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const alias = path.join(home, "scripts");
+  const scripts = fileURLToPath(new URL("../skills/qdmp-skill/scripts/", import.meta.url));
+  fs.symlinkSync(scripts, alias, "junction");
+
+  for (const [script, error] of [["ensure-current.mjs", /explicit supported host/], ["recover-update.mjs", /Usage/]]) {
+    const run = spawnSync(process.execPath, [path.join(alias, script), "diagnose"], { encoding: "utf8" });
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, error);
+  }
 });

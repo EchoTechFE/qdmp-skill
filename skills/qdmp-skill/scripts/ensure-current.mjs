@@ -446,5 +446,5 @@ export async function main(argv) {
   }
   return ensureCurrent(mode, args, options);
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2))
+if (process.argv[1] && fs.existsSync(process.argv[1]) && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2))
   .then(r => console.log(JSON.stringify(r, null, 2))).catch(e => { console.error(JSON.stringify({ error: e.message })); process.exitCode = 1; });

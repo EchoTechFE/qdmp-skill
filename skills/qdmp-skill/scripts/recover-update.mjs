@@ -100,7 +100,7 @@ function recoverLocked(home) {
   fs.renameSync(journalFile, path.join(path.dirname(journal.entries[0].backup), `recovery-${journal.id}.json`));
   return { state: journal.phase === "committed" ? "committed" : "restored", backup: path.dirname(journal.entries[0].backup) };
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (process.argv[1] && fs.existsSync(process.argv[1]) && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { if (process.argv.length !== 2) throw new Error("Usage: node recover-update.mjs"); console.log(JSON.stringify(recoverPending())); }
   catch (error) { console.error(JSON.stringify({ error: error.message })); process.exitCode = 1; }
 }

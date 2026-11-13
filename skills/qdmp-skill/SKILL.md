@@ -14,17 +14,24 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 
 帮助开发者快速创建、开发、调试和部署千岛小程序。发布范围、顺序、审查及验收规则由本 Skill 维护；Agent 按规则编排，CLI 执行模板、构建、上传和 MCP 调用并返回事实，MCP/API 服务由平台实现。完整前后端流程由 Agent 串联，不由某一条后端命令自动完成。
 
+**仅整理或审查 PRD**：根据用户指定目录或工程标记定位小程序根目录，先执行 [PRD 盘点](./knowledge/prd-lifecycle.md#盘点历史版本)。只有用户要求收敛时才进入 [合并与归档](./knowledge/prd-lifecycle.md#合并与归档)。这条文档路径直接执行，不经过软件更新、收集引导、CLI 或旧项目迁移。
+
+## 启动先检查 Skill 更新
+
+其他任务先运行 `node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿主> --cwd <实际工作目录> --skill-dir <实际 Skill 目录>`。宿主用 `codex`、`claude-code` 或 `qoder`，目录均用现有的绝对路径。只读任务改用 `diagnose`。PATH 找不到 Node 时用实际宿主或版本管理器提供的 Node 可执行文件。检查目标由 GitHub 当前已发布的最新稳定 QDMP Release 决定。
+
+返回 `reload_required=true` 时，提示用户重新加载实际宿主或开启新会话，然后用新版 Skill 恢复当前任务。其余更新问题按 [原渠道更新说明](./references/upgrade.md#三类旧入口的诊断与自动更新) 报告。未完成更新且 `proceed_monitoring=false` 时，可查询收集状态并继续原业务，暂停执行旧收集引导。
+
 ## 启动先查收集状态
 
-每次触发先对实际宿主和目标目录做一次只读状态检查，优先于业务路由。新项目的最终目录尚未生成或将被替换时，在创建成功后检查该目录。宿主取实际的 `codex`、`claude-code` 或 `qoder`，目录使用真实绝对路径。
-如果当前 shell 的 PATH 找不到 `node`，先核对宿主或 Node 版本管理器（如 NVM）已有的 Node，用实际可执行文件运行脚本，无需安装或改全局配置。
+完成启动更新检查后，对实际宿主和目标目录做一次只读状态检查，优先于业务路由。新项目的最终目录尚未生成或将被替换时，在创建成功后检查该目录。宿主取实际的 `codex`、`claude-code` 或 `qoder`，目录使用真实绝对路径。
 
 - 收集 MCP 可用时，先对实际目录调用 `project_status`（`exact_workspace=true`），核对返回的目录和宿主。不可用或结果无法确认时，执行 `node <实际 Skill 目录>/scripts/monitor-flow.mjs local-status --cwd <实际绝对目录> --host <实际宿主>`。本地检查只读，独立于旧流程。
 - 已关闭、拒绝或撤回时尊重原决定。已授权且 Hook 待验证或用户刚确认审查时，优先走[按宿主版本审查与复验](./references/hook-review.md)。宿主明确要求审查时直接给出实际界面入口；用户确认后在原会话复验，沿用目录授权。其余已授权、状态正常且无已知缺项或新版证据时直接继续，跳过历史流程和授权提问。
 - 当前目录已确认授权且发现依赖缺失、收集待修复或有新版证据（如 `bundled_version_newer`），或刚记录了明确同意时，按[子 Agent 安装与修复](./references/monitor-flow.md#子-agent-安装与修复)委派一个子 Agent 完成授权范围内的动作并复验。无需用户另说“修复”。超出原授权只由主 Agent 确认具体动作。用户明确要求只读时只检查和报告；无子 Agent 能力时主 Agent 接手。对话中的状态与修复提示统一使用“收集”。
 - `stored_consent=granted` 表示目录有本地授权记录但无法确认当前状态。仅委派只读诊断，避免重复告知；变更前核对当前授权和动作许可。
 - 其余未确认授权时，用同一脚本的 `list --cwd <目录> --host <宿主>` 检查历史。已有拒绝则继续；已有执行、旧授权或状态不明时，不把它当成首次使用，按[启动分流与恢复](./references/monitor-flow.md#启动分流与恢复)处理。
-- 确认为首次告知时，立即运行同一脚本的 `preview --cwd <目录> --host <宿主>`。把返回的 **`disclosure.display` 原样发到对话**，然后再做业务操作。可用宿主的提问工具（把完整文案作为问题），或直接发送用户可见的助理消息；终端输出、工具结果和“已展示”摘要都不算。若当前只能发最终回复，把完整告知放在该回复并等待下一轮。无需先联网或写文件。未明确决定时不激活，发出告知后原任务可继续。收到真实决定后按[调用顺序](./references/monitor-flow.md#调用顺序)记录，明确同意才委派。
+- 首次加入时运行 `preview`，用宿主选择工具展示 `disclosure.display` 和 `disclosure.presentation.options`。显示「加入千岛改善计划」及原详细说明链接，默认推荐「同意」。实际提交「同意」才记录授权，选「暂不开启」仅记录本地决定。没有选择工具时可用同一标题、链接和简短的文字选项。已有有效授权或同范围已同意的原流程直接恢复，无需再回复授权长句。宿主另需执行许可时，能自定义的续办按钮用「继续」并默认推荐，保留宿主原提示和影响说明，由用户实际操作；等待期间继续原业务。
 - 主动查询、开启或关闭采集时，读取[收集用户控制](./references/skill-data-consent.md#命令职责与用户控制)。
 
 ## 知识库
@@ -32,6 +39,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 | 文档                                                       | 内容                                                                                      |
 | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | [development-guide.md](./knowledge/development-guide.md)   | 开发指南：项目结构、全局权限配置、屏幕方向、截图黑屏、服务端 API、调试发布                  |
+| [emp-events.md](./knowledge/emp-events.md)                 | Taro Vue 事件、HTML 交互移植、EMP 产物排查与千岛真机验收                                      |
 | [bridge-api-guide.md](./knowledge/bridge-api-guide.md)     | Bridge API：用户授权查询与申请、原生能力调用、蓝牙、音频、文件下载、陀螺仪、发帖预填参数、IM 消息订阅、导航栏返回首页按钮、参数与返回值类型 |
 | [openapi-user-authorization.md](./knowledge/openapi-user-authorization.md) | HTTP method + path → 用户授权 scope 映射，含 JSON |
 | [bluetooth.md](./knowledge/bluetooth.md)                  | BLE 中心设备：发现、连接、GATT 读写与通知、MTU、断线清理与重连、Android 配对 |
@@ -41,9 +49,11 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 | [oss-upload.md](./knowledge/oss-upload.md)                 | OSS：OpenAPI 与存储容量权限、POST 直传/后端中转、两分钟超时、审核发布查询及凭据风险 |
 | [phone-authorization.md](./knowledge/phone-authorization.md) | 手机号授权：平台 OpenAPI 申请、App 6.68.0+、原生 button、一次性 code 与后端应用令牌兑换 |
 | [backend-production.md](./knowledge/backend-production.md) | Go / Node 后端运行契约、生产配置、内部归档校验、直接发布与可选 diff 审查、上线验收 |
+| [api-optimization.md](./knowledge/api-optimization.md) | Go / Node / Python 业务 API 优化、分页和旧客户端兼容 |
 | [backend-mcp.md](./references/backend-mcp.md) | 后端正式发布工具参数、master 合并副作用与 HTTP 上传边界 |
 | [backend-operations.md](./knowledge/backend-operations.md) | 云服务使用规范、媒体存储与无效接口限制、通用子流程及操作 1-7                                            |
 | [project-workflows.md](./knowledge/project-workflows.md)   | 项目工作流程：创建项目、开发调试、打包部署（真机调试与体验版另见开发指南）                                                |
+| [prd-lifecycle.md](./knowledge/prd-lifecycle.md)            | PRD 固定入口、1–3 份有效文档、旧稿盘点合并与归档                                        |
 | [prd-template.md](./knowledge/prd-template.md)             | PRD 模版：好的 PRD 应包含哪些内容 + 可直接使用的模版                                      |
 | [skill-data-consent.md](./references/skill-data-consent.md) | Skill 运行数据采集授权文案、项目范围和用户控制入口                                      |
 
@@ -82,25 +92,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 
 先用 `node --version` 核对 [CLI 运行时要求](./docs/使用指南.md#前置条件)；运行时不兼容时使用受支持的环境，不自动修改用户全局 Node。历史项目源码兼容不放宽新版 CLI 的运行时要求。
 
-```bash
-# 检查 qdmp-cli 是否可用
-qdmp-cli --version 2>/dev/null
-```
-
-- **命令成功**（输出版本号） → 开发、创建或前端构建/上传前，运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`，要求 CLI 为最新版。旧版本按 [升级说明](./references/upgrade.md) 更新并复检，不仅凭命令存在放行。全栈项目中的仅后端操作、账号查询和登录不受该前端版本门槛限制。
-- **命令失败**（command not found 或报错） → 执行自动安装：
-
-```bash
-npm install -g qdmp-cli
-```
-
-安装完成后再次验证：
-```bash
-qdmp-cli --version 2>/dev/null
-```
-
-- **验证通过** → 按上述任务范围执行版本检查后继续第一步
-- **仍然失败** → 停止流程，向用户报告错误信息，提示可能原因（npm 未安装、网络问题、权限不足等），并建议用户手动排查后重试。**严禁在 qdmp-cli 不可用的状态下执行创建项目或发布操作。**
+本次要执行任何 CLI 业务命令时，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`。脚本查询官方 npm 的 `latest`，安装缺失的 CLI 或更新当前 Node/npm 环境的旧全局安装，验证通过后再执行原命令。失败时报告原因并暂停依赖 CLI 的操作。登录与账号查询同样适用此检查，无需执行项目依赖检查。
 
 仅创建项目、前端开发或前端构建时检查 pnpm；全栈项目中的仅后端初始化、打包、上传和正式部署不检查、不安装 pnpm，也不依赖浏览器：
 ```bash
@@ -140,7 +132,7 @@ questions:
 
 ### 第二步：读取项目配置
 
-先检查项目根目录是否存在 `qdmp.json`。存在即为旧项目：同级存在 `backend/` 目录时判定为旧全栈，否则判定为旧纯前端；不再通过后端入口是否完整、目录是否为空或依赖是否可构建改变这个旧项目分类。前端开发、构建、真机调试、上传前，先按 [旧项目强制迁移](./knowledge/project-workflows.md#旧项目强制迁移) 完成新版目录、公开配置和 EMP 改造，不能继续使用根式旧前端。原后端语言、源码和运行方式保留；后端就绪状态单独记录，仅在本次操作包含后端时检查其配置和发布契约。
+先检查项目根目录是否存在 `qdmp.json`。存在即为旧项目：同级存在 `backend/` 目录时判定为旧全栈，否则判定为旧纯前端；不再通过后端入口是否完整、目录是否为空或依赖是否可构建改变这个旧项目分类。前端开发、构建、真机调试、上传前，先按 [旧项目强制迁移](./knowledge/project-workflows.md#旧项目强制迁移) 完成新版目录、公开配置和 EMP 改造，不能继续使用根式旧前端。如果只是准备向用户提供可选部署，旧项目先做只读迁移盘点。原后端语言、源码和运行方式保留；后端就绪状态单独记录，仅在本次操作包含后端时检查其配置和发布契约。
 
 目录/前端迁移完成后只允许两种项目形态：`qdmp-config.json + frontend/` 为纯前端，再包含 `backend/` 为全栈。纯前端也必须有根主配置和分离的 `frontend/`，但不要求填写 AppSecret、Go、MongoDB，也不自动创建后端。全栈也按本次范围读取配置：明确仅前端时，不要求后端 runtime、Go 元数据、Node helper/锁文件或后端构建通过；明确仅后端时，仍须确认当前项目是包含 `frontend/` 的全栈项目，再检查实际后端运行契约。
 
@@ -154,7 +146,7 @@ questions:
 - `mongoUri` / `mongoDatabase`：来自主配置的 mongodb；省略/null/双空表示未启用，部分填写错误，启用后 database=AppID
 - `variables`：主配置中的后端专用 JSON 对象，不作为 process.env 或前端变量；变化后重新打包
 
-### 第三步：PRD 检查（仅开发意图时执行）
+### 第三步：PRD 检查（仅需求相关时执行）
 
 涉及前端开发前必须先执行 [依赖栈兜底检查（不通过必须停止）](./knowledge/project-workflows.md#依赖栈兜底检查不通过必须停止)，新建和已有项目均适用。结合 loader、模板来源和实际构建链判断工程类型；通用依赖或 package.json.version 不能单独作为 1.0 判据。绑定和上传前核对本地与平台 loader 一致，新建 2.0 项目必须为 EMP。
 
@@ -162,15 +154,15 @@ questions:
 
 开发类意图（需检查 PRD）：
 - 新建功能、开发某个页面/接口、实现需求
-- 触发流程二（PRD 设计）、流程三（开发调试）
+- 触发流程二（PRD 设计），或流程三中新增、变更产品行为
 - 数据建模（操作 7）
 
-运维类意图（跳过 PRD 检查）：
-- 查日志、查版本、回滚、查状态、部署/发版、后端模板初始化/打包、仅启动真机调试、设置体验版
+可以跳过 PRD 前置检查的意图：
+- 已知行为的故障定位或修复、纯视觉调整、查日志、查版本、回滚、查状态、后端模板初始化/打包、仅启动真机调试和设置体验版。部署按对应发布流程做必要的一致性核对，PRD 盘点不触发归档。
 
-**PRD 检查逻辑**：检查 `{projectRoot}/doc/prd.md` 是否存在：
-- 存在 → 继续，PRD 将在后续流程中按需读取
-- 不存在 → 提示用户，并 AskUserQuestion 确认：
+**PRD 检查逻辑**：按 [PRD 归档与迭代](./knowledge/prd-lifecycle.md) 读取 `{projectRoot}/doc/prd.md` 和相关专题。入口不存在或发现历史版本时先盘点：
+- 已找到有效 PRD → 复用现行文档，迭代更新对应章节；旧路径按生命周期规则处理
+- 确认没有有效 PRD → 提示用户，并 AskUserQuestion 确认：
 
 ```yaml
 questions:
@@ -187,14 +179,14 @@ questions:
 ```
 
 - 选择"先设计 PRD" → 执行流程二：PRD 设计（见 project-workflows.md）
-- 选择"从现有代码生成 PRD" → 执行流程二 Step 3 代码反向扫描（见 project-workflows.md）
+- 选择"从现有代码生成 PRD" → 执行流程二 Step 2 代码反向扫描（见 project-workflows.md）
 - 选择"跳过" → 继续进入操作路由
 
 ---
 
 ## 操作路由
 
-用户明确要求“真机调试 / 手机扫码运行”或“上传体验版 / 设置体验版”时，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`，再按意图读取 [真机调试](./knowledge/development-guide.md#真机调试) 或 [设置体验版](./knowledge/development-guide.md#设置体验版)。这两类请求是前端操作，不自动部署后端。普通上传仍保持原有行为。
+用户明确要求“真机调试 / 手机扫码运行”或“上传体验版 / 设置体验版”时，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`，再按意图读取 [真机调试](./knowledge/development-guide.md#真机调试) 或 [设置体验版](./knowledge/development-guide.md#设置体验版)。这两类请求是前端操作，不自动部署后端。
 
 部署前核对 CLI 是否支持 `deploy prepare --help`，按[部署预检与确认](./knowledge/project-workflows.md#部署预检与确认)处理登录、AppID、应用权限和配置。AppSecret 通过 CLI 写入受保护的本地配置。已有部署授权时，准备完成后继续执行对应范围。
 
@@ -209,7 +201,8 @@ questions:
 | 全栈发布、前后端一起上线 | 流程四：核对两侧有效，后端通过 Skill 验收后再前端上传/提审 |
 | 初始化后端、生成稳定后端模板 | `qdmp-cli backend init --runtime go`，见 backend-production.md |
 | 部署后端、发版后端、后端上线、只部署后端、后端 release | 操作 1: publish（仅后端）                           |
-| 部署前端、上传前端、前端上线、只部署前端                               | 流程四：打包部署（仅前端，见 project-workflows.md） |
+| 上传小程序、上传前端（普通上传）                                        | 流程四：仅前端，构建后执行 `qdmp-cli upload` |
+| 部署前端、前端上线、只部署前端                                          | 流程四：打包部署（仅前端，见 project-workflows.md） |
 | 查看版本、版本列表、版本历史、发布记录                                 | 操作 2: versions                                    |
 | 回滚、回退、恢复到某版本、rollback                                     | 操作 3: rollback                                    |
 | 查看日志、服务日志、启动失败、报错、logs、排查问题                     | 操作 4: logs                                        |
@@ -226,7 +219,7 @@ questions:
 
 ## 操作触发规则
 
-只有用户已明确授权相应操作时才执行。仅要求分析、生成模板、打包或查看 diff 时按原请求交付。功能修复或开发完成且用户尚未授权部署时，在本地检查和[部署预检](./knowledge/project-workflows.md#部署预检与确认)后，用宿主原生选择控件提供本次实际范围的部署按钮和「暂不部署」。点击明确的动作即为该次授权。真机测试是独立操作。
+只有用户已明确授权相应操作时才执行。仅要求分析、生成模板、打包或查看 diff 时按原请求交付。功能修复或开发完成且用户尚未授权部署时，在本地检查和[只读预检](./knowledge/project-workflows.md#部署预检与确认)后，按[宿主确认与文字回退](./knowledge/project-workflows.md#宿主确认与文字回退)提供本次动作和「暂不部署」。普通前端上传的选项为「上传前端」与「暂不部署」。按钮工具不可用时，用普通聊天文字提供同样的选项。收到明确的肯定选择才执行，选择「暂不部署」即结束部署分支。真机测试是独立操作。
 
 用户明确要求部署且目标、范围清楚时，授权覆盖本次构建和发布。按[打包部署流程](./knowledge/project-workflows.md#流程四打包部署)执行。
 
@@ -245,6 +238,8 @@ questions:
 ## 代码编写规则
 
 开发类代码生成或 Review 必须先按「规范依赖」调用对应 skill。产品底线、设计系统和 Taro 视觉落地规则不在本节重复维护，避免规范漂移。
+
+涉及前端业务设计落地、修改、审查或排查时，即使用户只描述业务现象，也先执行 [EMP 事件与真机验收](./knowledge/emp-events.md#前端业务触发与决策) 的判定。由 Agent 根据本次范围、组件契约和目标宿主证据决定复用、局部适配或只验证。按项目的 EMP 目标开发和构建，H5 预览仅作视觉参考。
 
 用户 `openId` **必须从 `/auth/v1/token` 的 `AUTHORIZATION_CODE` 成功响应 `data.openId` 获取**。禁止从 `user.me`（`GET /user/v1/me`）获取、转换或兜底 `openId`，也不得用其 `id` 替代。登录 code 只交给自身后端换票；`appSecret` 只保存在后端，不放入前端环境变量、构建产物或响应。登录/用户模型实现前读取 [用户 openId 与换票](./knowledge/api-guide.md#21-获取-token)。
 
@@ -285,6 +280,7 @@ questions:
 
 涉及页面、组件、样式、`DESIGN.md`、`app.css` token/公共组件类时，必须同时使用 `/qdmp:qdmp-design-rules`：
 
+- 新增、修改或排查列表、图片密集页、多页流程或弹层时，按 [EMP 页面与组件优化](../qdmp-design-rules/references/frontend-optimization.md) 核对本次业务是否需要调整组件、分页或加载策略。独立安装时从实际加载的 `qdmp-design-rules` 读取 `references/frontend-optimization.md`。若旧版没有该页，沿用已验证的组件和接口契约，增长型列表先明确分页和首屏数据，详情与低频内容按需加载，再用目标 EMP 宿主复验。
 - 小程序样式严禁使用 `:root` 定义 CSS 变量；全局 token 必须定义在 `src/app.css` 的 `page { ... }` 中。生成、移植和 Review 时发现存量 `:root` 必须迁移并删除。
 - 有 `DESIGN.md` 时先读取并延续设计系统。
 - 无 `DESIGN.md` 且是全新页面/成块 UI 时，先走设计规范中的页面设计和设计系统生成流程。
@@ -311,6 +307,8 @@ qd.navigateTo({
 后端配置使用项目根 `qdmp-config.json`。迁移保留原后端语言和业务，只有本次涉及后端改造或发布时才检查其运行契约。
 
 修改前读取 `backend/README.md` 和 [生产运行契约](./knowledge/backend-production.md)。保留对应 runtime 的构建、启动、健康/就绪检查和配置加载；Go 源码嵌入配置保持为空，Node helper 不含秘密，密钥只进入打包器的私有副本。数据库模型复用现有后端入口，不硬编码凭据或自动改写线上 URI。
+
+涉及业务 API 的设计、修改、审查或排查时，按 [业务 API 优化与兼容性](./knowledge/api-optimization.md) 识别实际运行时，读取 Go、Node 或 Python 对应规则。为可增长的列表约定分页和上限，按本次范围检查查询、批量及超时，保留已有客户端契约。
 
 修改后端代码前，若项目根目录存在 `qdmp-schema.json`，必须先读取它，确保代码直接引用已定义的数据模型，不重复定义字段。新增数据存储需求时，先更新 `qdmp-schema.json`，再生成对应 model 代码。
 
@@ -357,7 +355,7 @@ Agent 对话中需要登录或用户要求登录时，先读 [Agent 对话登录
 | 问题             | 解决方案                                                                                    |
 | ---------------- | ------------------------------------------------------------------------------------------- |
 | 依赖安装 401/404 | 配置 npm Token                                                                              |
-| qdmp-cli 未找到  | `npm install -g qdmp-cli`                                                                   |
+| qdmp-cli 未找到  | `npm install -g qdmp-cli@latest --include=optional`                                                                   |
 | pnpm 未找到      | `npm install -g pnpm`                                                                       |
 | 登录命令一直等待 | 在支持用户输入的前台交互终端执行；也可选择手动登录 URL，完成后 CLI 会自动继续 |
 | 图片 403         | index.html 加 `<meta name="referrer" content="no-referrer">`                                |

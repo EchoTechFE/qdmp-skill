@@ -471,6 +471,12 @@ export async function exchangeLoginCode(code) {
 
 自建路由把成功结果放入 `{ code: 0, data: session }` 返回，设置 `Cache-Control: no-store`；不返回应用密钥。生产路由复用已有输入校验、错误响应与会话机制，后端模板见 [project-workflows.md](./project-workflows.md)。换票只请求一次，不因网络错误或缺少 `openId` 重放旧 code；需要时重新调用 `qd.login`。刷新保留登录换票得到的 `openId`，退出时清理整份会话。
 
+#### 登录授权码被拒绝（10003）
+
+- 用 HTTP 状态和平台业务码分别判断结果。HTTP 200 也可能带 `10003`。记录阶段、平台 `requestId`（有则优先）、业务 trace、时间、宿主版本和 code 字段来源，日志和对话不输出 code 或 Token。
+- 同一次用户操作及并发首屏请求复用同一个登录任务。一次任务最多调用一次宿主登录和一次换票。收到 `10003` 即结束本次换票，不轮试响应壳里的其他候选，也不在同一任务自动再签发。用户重新打开或明确重试时才取新的 code。
+- 用实际体验包与线上后端的版本和环境核对 AppID、Loader、入口链接、请求域名及服务端注入的应用身份。源码版本、日志标记和部署产物不一致时，先定位线上版本。AppID 或环境不一致、过期和宿主签发失败应按证据区分；`10003` 本身不能证明其中任何一项。验收使用真实千岛宿主新签发的 code，确认换票成功并可读取需登录的页面。
+
 ### 封装请求函数
 
 ```javascript
@@ -727,11 +733,11 @@ function handleLogout() {
 <template>
   <div class="auth-demo">
     <div v-if="!isLoggedIn">
-      <button @click="handleLogin">登录</button>
+      <button @tap="handleLogin">登录</button>
     </div>
     <div v-else>
       <p>欢迎，{{ userInfo?.nickname }}</p>
-      <button @click="handleLogout">退出</button>
+      <button @tap="handleLogout">退出</button>
     </div>
     <p v-if="error" class="error">{{ error }}</p>
   </div>
@@ -786,7 +792,7 @@ function handleShare() {
       <img :src="spuInfo.cover" class="cover" />
       <h1>{{ spuInfo.name }}</h1>
       <p>{{ spuInfo.tagName }} · {{ spuInfo.categoryName }}</p>
-      <button @click="handleShare">分享</button>
+      <button @tap="handleShare">分享</button>
     </div>
   </div>
 </template>
@@ -810,7 +816,7 @@ pnpm run dev
 
 ### 真机调试
 
-要求 CLI **0.1.32 或更高稳定版**，仅支持 EMP。先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`；不足时按升级说明更新。确认本地和平台应用均为 EMP、当前账号具有应用开发权限后，在包含 `qdmp.json` 的前端目录执行（也支持根目录下存在 `frontend/qdmp.json` 的项目）：
+要求 CLI **0.1.32 或更高稳定版**，仅支持 EMP。先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`，自动检查并更新到 npm latest。确认本地和平台应用均为 EMP、当前账号具有应用开发权限后，在包含 `qdmp.json` 的前端目录执行（也支持根目录下存在 `frontend/qdmp.json` 的项目）：
 
 ```bash
 qdmp-cli debug
@@ -830,9 +836,17 @@ Agent 使用 `qdmp-cli debug --json` 读取 NDJSON；需要对话内展示图片
 
 常见失败：无应用开发权限时核对登录账号和平台协作者权限；扫码连接失败时检查 Wi-Fi、所选网卡、端口与防火墙；`--no-build` 提示缺少产物时重新运行 `qdmp-cli debug` 完成构建。重启会产生新的构建快照，使用本次返回的二维码重新扫码。
 
+新版 CLI 的 `ready.bundleSha256` 标识这一份调试包，`bundle-requested` 表示服务收到了 GET 请求（包含电脑手动探测），`device-connected` 表示日志连接成功。再用同一设备的页面挂载日志和页面构建标识确认加载。旧 CLI 没有包摘要或下载事件时，仍以设备连接、页面挂载和页面构建标识核对。体验链接指向当前体验版，重扫前核对平台实际版本和页面显示；生成二维码失败时使用已有体验链接或重试设置已上传版本。
+
+#### 搜索或登录点击无响应
+
+1. 在千岛 App 打开已确认的构建。搜索与登录同时无反应时，先按 [EMP 事件分发排障](./emp-events.md#定位分发故障) 查事件是否进入业务函数，再查 Bridge。
+2. 记录页面挂载、处理函数进入、登录回调、HTTP 最终回调和会话建立；只记录阶段及脱敏状态。用户登录换票应以有效 code 的完整链路验收。CLI 登录、无效 code 的 401、电脑直连搜索成功和数据库 readiness 分属不同验证项。
+3. 按 [Bridge 实测差异](./bridge-api-guide.md#qdrequest--发起网络请求) 适配具体宿主。旧业务保留原登录路由、会话格式和身份键。旧缓存缺少有效换票 `openId` 时按原业务流程取得新 code，不能填入资料接口 ID。若历史业务曾用资料 ID 保存用户数据，先确认可信映射和归属再迁移。发布前用目标真机验证登录、普通请求、续期与切号。
+
 ### 设置体验版
 
-要求 CLI **0.1.32 或更高稳定版**，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`。根据用户指定的是当前代码还是已上传版本选择以下入口，保持应用和环境一致。
+要求 CLI **0.1.32 或更高稳定版**，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`。根据用户指定的是当前代码还是已上传版本选择以下入口，保持应用和环境一致。
 
 #### 上传当前代码并设为体验版
 
