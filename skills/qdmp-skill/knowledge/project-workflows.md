@@ -16,7 +16,11 @@
 
 ### Step 3: 填写受保护配置
 
-按[凭据引导](./backend-production.md#凭据引导与自动写入)补齐本次配置。前端只需目标环境的公开应用身份，补齐后使用 `qdmp-cli build` 验证。
+按[凭据引导](./backend-production.md#凭据引导与自动写入)补齐本次配置。前端只需目标环境的公开应用身份。
+
+同步填写 `frontend/qdmp.json` 中目标环境的 AppID，并将 `frontend/project.config.json` 的 `appid`（全小写）更新为同一个真实 AppID，供开发者工具编译使用；不能只填写 `qdmp.json`。读取现有 JSON 后仅更新对应身份字段，保留 `loader`、`miniprogramRoot`、`projectname`、`setting` 等其他配置，不把根配置中的 AppSecret 或数据库凭据复制到前端。
+
+初始化完成后，重新读取并确认根 `qdmp-config.json`、`frontend/qdmp.json` 中目标环境的 AppID 与 `frontend/project.config.json.appid` 一致，不能留空或保留占位值；默认生产环境对应前两份配置的 `appId` 字段。补齐后使用 `qdmp-cli build` 验证，并检查 `frontend/dist/project.config.json` 的 `appid` 已同步。若不一致，修正源配置或构建流程后重新构建，不要只修改 `dist` 产物。
 
 ### Step 4: 验证后端模板
 
