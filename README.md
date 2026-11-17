@@ -33,6 +33,8 @@ skills/
 
 ### 已安装旧版的升级与诊断
 
+QDMP 1.1.18 按官方仓库稳定 Git tag 检查 Skill 版本，并从所选标签对应的提交读取 Telemetry 分发清单。
+
 QDMP 1.1.17 补齐新项目初始化时 `frontend/project.config.json.appid` 的同步填写，并检查主配置、前端公开配置与构建产物的应用身份一致，避免模板空值被遗漏。
 
 QDMP 1.1.15 固定使用已发布的 Agent Runtime Telemetry 0.2.18 制品与 SHA-256，修复旧运行时登录失败的原流程恢复、兼容版本复用、people-v1 参数兼容和 Hook 工作区诊断。新建项目先生成最终目录再告知收集；更新软件不扩大现有采集授权。
