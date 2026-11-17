@@ -834,9 +834,11 @@ qdmp-cli debug --host 192.168.1.20 --port 9000
 
 Agent 使用 `qdmp-cli debug --json` 读取 NDJSON；需要对话内展示图片时加 `--qr-output <新的绝对PNG路径>`，确保父目录存在且文件不存在。收到 `ready` 后立即展示 `deepLink` 和实际 `qrImagePath`（或宿主支持的 `qrDataUrl`），保持后台进程运行并读取 `device-connected`、`device-info`、`log`、`device-disconnected`、`error`、`stopped` 事件。不要等待长期进程结束才展示二维码；`ready` 只说明服务就绪，不能当作手机已运行成功。JSON 模式不会交互登录；明确缺少登录态时，按 [Agent 对话登录](./agent-login.md) 执行 `qdmp-cli login --agent --env <prod|dev>`，完成后重试原命令。登录和操作必须使用同一环境；默认 `prod` 使用根主配置的 `appId`，显式 `--env dev` 使用目标环境的 `devAppId`。设置体验版也遵循这一环境与登录规则。
 
-常见失败：无应用开发权限时核对登录账号和平台协作者权限；扫码连接失败时检查 Wi-Fi、所选网卡、端口与防火墙；`--no-build` 提示缺少产物时重新运行 `qdmp-cli debug` 完成构建。重启会产生新的构建快照，使用本次返回的二维码重新扫码。
+#### 真机扫码排障
 
-新版 CLI 的 `ready.bundleSha256` 标识这一份调试包，`bundle-requested` 表示服务收到了 GET 请求（包含电脑手动探测），`device-connected` 表示日志连接成功。再用同一设备的页面挂载日志和页面构建标识确认加载。旧 CLI 没有包摘要或下载事件时，仍以设备连接、页面挂载和页面构建标识核对。体验链接指向当前体验版，重扫前核对平台实际版本和页面显示；生成二维码失败时使用已有体验链接或重试设置已上传版本。
+- **显示「本地预览需要真实的 appid」**。核对预览链接查询参数中的 `appId`、`ready.appId` 和本次调试环境的项目 AppID。手机可能在下载前校验链接里的 ID。链接缺失时使用能生成带 `appId` 的 `qdmp-cli debug` 重新出码。
+- **扫旧码打不开，或等不到下载**。保持服务运行至本轮约定的真机验收完成。重启后以本次 `ready` 给出的新二维码为准。服务运行时检查手机到电脑的局域网、网卡、端口和防火墙。权限报错时核对扫码账号与应用协作者权限。
+- **连上后白屏、只有标题或像旧包**。新版 CLI 的 `ready.bundleSha256` 标识当前调试包，`bundle-requested` 记录 GET（含电脑探测），`device-connected` 记录日志连接。用页面可见的构建标识和 Vue 挂载证据确认手机实际加载的是哪一版。`--no-build` 缺产物或发现产物旧时重新构建并出码。验收体验版时核对平台当前体验版本和页面标识。
 
 #### 搜索或登录点击无响应
 
