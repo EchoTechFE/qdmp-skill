@@ -22,7 +22,7 @@ qdmp-cli list
 
 ### 三类旧入口的诊断与自动更新
 
-每次触发主 Skill 都先运行 `scripts/ensure-current.mjs ensure` 检查并维护安装。只读任务用 `diagnose`。旧版已安装客户端需先从原渠道更新到带此启动规则的正式版。四个 Skill 可分别独立安装，因此各自携带 `references/skill-release.json` 标识版本，插件仍由三端 `plugin.json` 标识，不再另外写版本收据。只认 `EchoTechFE/qdmp-skill` 已发布且非预发布的 `vX.Y.Z`，忽略同仓库的 Telemetry Release；不把 main 分支或开发版本当成稳定发布。
+每次触发主 Skill 都先运行 `scripts/ensure-current.mjs ensure` 检查并维护安装。只读任务用 `diagnose`。旧版已安装客户端需先从原渠道更新到带此启动规则的正式版。四个 Skill 可分别独立安装，因此各自携带 `references/skill-release.json` 标识版本，插件仍由三端 `plugin.json` 标识，不再另外写版本收据。稳定版本取 `EchoTechFE/qdmp-skill` 仓库中版本号最高的 `vX.Y.Z` Git tag。仅推送标签也会参与比较，Telemetry 标签和预发布标签会被过滤。
 
 “用户级独立安装的 Skill”指直接安装到用户 Skills 目录中的副本；“通过插件安装的 Skill”由 QDMP 插件提供。两者是同一套公开发布内容的不同安装渠道，不是个人版与公开版的区别；同一宿主可能同时存在两种渠道的副本。
 
@@ -56,7 +56,7 @@ Codex 插件从正式标签的完整已校验快照安装，只对本次命令�
 
 以下情况停止自动变更相应渠道并返回 `manual_required`：自定义/本地开发市场、固定 ref、禁用插件、多个活动安装范围、非 user 范围、符号链接、安装状态不明、CLI 不支持更新。没有安装的渠道不自动安装。网络不可用返回 `release_check_failed`，不执行过期收集引导，但不阻断原业务和已授权运行时。
 
-线上版本检查优先通过 GitHub API 查询稳定 Release，并从选中的同一标签读取清单，不依赖移动分支。每个请求最多两次尝试，单次（含响应体）最多 4 秒，整次查询共享 15 秒总时限；只重试网络异常、超时及临时 HTTP 错误。清单 API 发生可重试故障时才回退到同仓库同标签的官方 raw 地址；401/403/404、限流、无效 JSON/清单或 TLS 证书错误不靠换源绕过。遵守 Retry-After，等待要求超出短重试上限时直接停止。`latest.lookup` 或失败时 `release_lookup` 记录阶段、主机、尝试次数、耗时和错误码，不记录响应内容、登录信息或任务输入。检查失败不使用磁盘旧清单冒充线上最新版本，也不触发软件变更或采集授权。
+线上版本检查通过 GitHub Tags API 分页读取仓库标签，按版本号选出最高的稳定标签，再按该标签对应的提交 SHA 读取 Telemetry 分发清单，自动更新时核对检出的提交。每次请求（含响应体）最多 6 秒，整次查询共享 25 秒总时限。标签列表和 raw 请求遇到临时错误最多尝试两次。清单 API 尝试一次，遇到可重试故障且服务端未要求等待时，回退到同仓库同提交的官方 raw 地址；401/403/404、限流、无效 JSON/清单或 TLS 证书错误不靠换源绕过。遵守 Retry-After，等待要求超出短重试上限时直接停止。`latest.lookup` 或失败时 `release_lookup` 记录阶段、主机、尝试次数、耗时和错误码，不记录响应内容、登录信息或任务输入。检查失败不使用磁盘旧清单冒充线上最新版本，也不触发软件变更或采集授权。
 
 备份保存在用户目录 `.qdmp-skill/backups/<时间-随机ID>/`。用户级独立安装的 Skill 更新前先保存完整备份、事务日志及目录外独立恢复入口；更新不移动整个 Skill 目录，逐文件原子替换，新增文件优先、`SKILL.md` 最后替换，保留发现入口。普通异常会回滚；进程中断后的下一次 ensure 在联网前检查事务，只在原进程已结束、备份有效且没有并发本地编辑时恢复。不能确定锁所有者、PID 仍有效或文件被额外修改时转人工，不强行覆盖。
 
@@ -70,10 +70,10 @@ node <用户目录>/.qdmp-skill/maintenance/recover-update.mjs
 
 #### 旧客户端的一次性入口
 
-1.1.12 及更旧客户端没有新脚本，不可能仅因为发布了新版就开始自检。必须先通过原市场更新，或由支持人员取得**已发布稳定标签**的完整官方仓库并运行其中入口。不要执行 main 分支下载的未知脚本，也不要使用 curl 管道执行。示例中 `<已发布v标签>` 需换成 GitHub Release 中真实存在的 QDMP 标签，不能用 Telemetry 标签；1.1.13 未正式发布前不能让用户运行此示例：
+1.1.12 及更旧客户端没有自检脚本。先通过原市场更新，或由支持人员检出官方仓库已有的稳定 QDMP 标签再运行其中的入口。将示例中的 `<稳定v标签>` 换成带有自检脚本的 QDMP 稳定标签。使用固定标签的完整快照。
 
 ```text
-git clone --depth 1 --branch <已发布v标签> https://github.com/EchoTechFE/qdmp-skill.git <全新临时目录>
+git clone --depth 1 --branch <稳定v标签> https://github.com/EchoTechFE/qdmp-skill.git <全新临时目录>
 node <全新临时目录>/skills/qdmp-skill/scripts/ensure-current.mjs diagnose --host codex --cwd <真实工作目录> --skill-dir <实际旧Skill目录>
 node <全新临时目录>/skills/qdmp-skill/scripts/ensure-current.mjs ensure --host codex --cwd <真实工作目录> --skill-dir <实际旧Skill目录>
 ```

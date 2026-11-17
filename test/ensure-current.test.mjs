@@ -206,17 +206,43 @@ test("invalid host/arguments and unstable versions fail closed", async t => {
   assert.equal(compare("1.1.13-beta", "1.1.12"), null);
   await assert.rejects(main(["ensure", "--host", "codex", "--host", "qoder"]), /duplicate/);
 });
-test("stable release lookup ignores Telemetry tags, drafts, prereleases and main", async () => {
+test("latest QDMP version comes from the highest stable repository tag across pages", async () => {
   const calls = [], distribution = { version: "0.2.17", onboarding: { sha256: "a".repeat(64) } };
+  const base = "https://api.github.com/repos/EchoTechFE/qdmp-skill";
+  const sha = "a".repeat(40);
+  const pages = new Map([
+    [`${base}/tags?per_page=100&page=1`, [
+      { name: "v1.1.9" }, { name: "v9.0.0-beta" }, { name: "v01.9.0" },
+      ...Array.from({ length: 97 }, (_, i) => ({ name: `agent-runtime-telemetry-v9.0.${i}` }))
+    ]],
+    [`${base}/tags?per_page=100&page=2`, [{ name: "v1.1.13", commit: { sha } }, { name: "v1.0.99" }]],
+    [`${base}/contents/skills/qdmp-skill/references/telemetry-distribution.json?ref=${sha}`, distribution]
+  ]);
   const r = await latestRelease({ fetch: async url => {
-    calls.push(url); return { ok: true, text: async () => JSON.stringify(url.includes("/contents/") ? distribution : [
-      { tag_name: "agent-runtime-telemetry-v9.0.0" }, { tag_name: "v9.0.0", draft: true },
-      { tag_name: "v8.0.0", prerelease: true }, { tag_name: "v1.1.13-beta" }, { tag_name: "v1.1.9" }, { tag_name: "v1.1.13" }
-    ]) };
+    calls.push(url);
+    assert.ok(pages.has(url), url);
+    return new Response(JSON.stringify(pages.get(url)));
   } });
-  assert.equal(r.version, "1.1.13"); assert.deepEqual(r.distribution, distribution);
-  assert.ok(calls[1].includes("ref=v1.1.13")); assert.ok(calls.every(u => !u.includes("/main/")));
+  assert.equal(r.version, "1.1.13");
+  assert.equal(r.tag, "v1.1.13");
+  assert.equal(r.commit, sha);
+  assert.deepEqual(r.distribution, distribution);
+  assert.deepEqual(calls, [...pages.keys()]);
+  await assert.rejects(latestRelease({ fetch: async () => new Response("[]") }),
+    error => error.details.stage === "tag_list" && /No stable QDMP version tag/.test(error.message));
   await assert.rejects(latestRelease({ fetch: async () => ({ ok: false, status: 403 }) }), /HTTP 403/);
+});
+test("incomplete tag results and invalid commit IDs leave the update target unknown", async () => {
+  const firstPage = Array.from({ length: 100 }, () => ({ name: "v1.1.15", commit: { sha: "a".repeat(40) } }));
+  for (const failure of [new Response("denied", { status: 403 }), new Response(JSON.stringify([{ name: "v2.0.0", commit: { sha: "main" } }]))]) {
+    const calls = [];
+    await assert.rejects(latestRelease({ fetch: async url => {
+      calls.push(url);
+      return calls.length === 1 ? new Response(JSON.stringify(firstPage)) : failure;
+    } }), error => error.details.stage === "tag_list");
+    assert.equal(calls.length, 2);
+    assert.ok(calls.every(url => url.includes("/tags?")));
+  }
 });
 test("diagnosis compares historical flows against latest release, not the stale loaded manifest", async t => {
   const f = fixture(t), id = crypto.randomUUID(), dir = path.join(f.home, ".qdmp-skill/monitor-flows", id);

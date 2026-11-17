@@ -18,7 +18,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 
 ## 启动先检查 Skill 更新
 
-其他任务先运行 `node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿主> --cwd <实际工作目录> --skill-dir <实际 Skill 目录>`。宿主用 `codex`、`claude-code` 或 `qoder`，目录均用现有的绝对路径。只读任务改用 `diagnose`。PATH 找不到 Node 时用实际宿主或版本管理器提供的 Node 可执行文件。检查目标由 GitHub 当前已发布的最新稳定 QDMP Release 决定。
+其他任务先运行 `node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿主> --cwd <实际工作目录> --skill-dir <实际 Skill 目录>`。宿主用 `codex`、`claude-code` 或 `qoder`，目录均用现有的绝对路径。只读任务改用 `diagnose`。PATH 找不到 Node 时用实际宿主或版本管理器提供的 Node 可执行文件。检查目标由官方仓库中版本号最高的稳定 Git tag（`vX.Y.Z`）决定。
 
 返回 `reload_required=true` 时，提示用户重新加载实际宿主或开启新会话，然后用新版 Skill 恢复当前任务。其余更新问题按 [原渠道更新说明](./references/upgrade.md#三类旧入口的诊断与自动更新) 报告。未完成更新且 `proceed_monitoring=false` 时，可查询收集状态并继续原业务，暂停执行旧收集引导。
 
