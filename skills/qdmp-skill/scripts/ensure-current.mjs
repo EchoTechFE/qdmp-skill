@@ -10,6 +10,8 @@ import { atomicFile, atomicJson, directoryDigest, fileMap, syncDirectory, recove
 
 const REPO = "EchoTechFE/qdmp-skill", MARKET = "qdmp-marketplace", PLUGIN = "qdmp@qdmp-marketplace";
 const UUID = /^[a-f0-9-]{36}$/;
+const COMMIT_SHA = /^[a-f0-9]{40}$/;
+const DISTRIBUTION_PATH = "skills/qdmp-skill/references/telemetry-distribution.json";
 const STABLE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const HOSTS = { codex: ".codex", "claude-code": ".claude", qoder: ".qoder" };
 const SKILLS = ["qdmp-skill", "qdmp-product-rules", "qdmp-design-rules", "qdmp-entry-route"];
@@ -92,29 +94,32 @@ export function auditInstallation(args, options = {}) {
 
 export async function latestRelease(options = {}) {
   if (options.latestRelease) return options.latestRelease();
-  const network = releaseReader(options); let stage = "release_list";
+  const network = releaseReader(options); let stage = "tag_list";
   try {
-    // /latest can be a telemetry release; only stable QDMP vX.Y.Z releases qualify.
-    const releases = [];
-    for (let page = 1; page <= 3; page++) {
-      const batch = await network.read(`https://api.github.com/repos/${REPO}/releases?per_page=100&page=${page}`, stage, 5 * 1024 * 1024);
-      if (!Array.isArray(batch)) throw new Error("Invalid release list");
-      releases.push(...batch.filter(r => !r.draft && !r.prerelease && /^v\d+\.\d+\.\d+$/.test(r.tag_name)).map(r => ({ version: r.tag_name.slice(1), tag: r.tag_name })));
+    let latest;
+    for (let page = 1; ; page++) {
+      const batch = await network.read(`https://api.github.com/repos/${REPO}/tags?per_page=100&page=${page}`, stage, 5 * 1024 * 1024);
+      if (!Array.isArray(batch) || batch.some(tag => typeof tag?.name !== "string")) throw new Error("Invalid repository tag list");
+      for (const { name, commit } of batch) {
+        const version = name.slice(1);
+        if (name.startsWith("v") && STABLE.test(version) && (!latest || compare(version, latest.version) > 0)) {
+          latest = { version, tag: name, commit: commit?.sha };
+        }
+      }
       if (batch.length < 100) break;
-      if (page === 3) throw new Error("Release list incomplete; refusing an ambiguous latest version");
     }
-    releases.sort((a, b) => compare(b.version, a.version) ?? 0);
-    if (!releases[0]) throw new Error("No published stable QDMP release");
-    const latest = releases[0];
+    if (!latest) throw new Error("No stable QDMP version tag");
+    if (!COMMIT_SHA.test(latest.commit ?? "")) throw new Error("Invalid commit SHA for latest QDMP tag");
     stage = "manifest_api";
     let distribution;
     try {
-      distribution = await network.read(`https://api.github.com/repos/${REPO}/contents/skills/qdmp-skill/references/telemetry-distribution.json?ref=${latest.tag}`, stage, 256 * 1024, "application/vnd.github.raw+json");
+      // Give the same-commit raw endpoint time within the shared deadline.
+      distribution = await network.read(`https://api.github.com/repos/${REPO}/contents/${DISTRIBUTION_PATH}?ref=${latest.commit}`, stage, 256 * 1024, "application/vnd.github.raw+json", 1);
     } catch (error) {
-      // Same repository and exact tag only. Never mask missing/invalid data or rate limits.
-      if (!error.retryable || error.status === 429 || error.retryAfter > 1000 || network.remaining() <= 0) throw error;
+      // Same repository and exact commit only. Never mask missing/invalid data or rate limits.
+      if (!error.retryable || error.status === 429 || error.retryAfter > 0 || network.remaining() <= 0) throw error;
       stage = "manifest_raw";
-      distribution = await network.read(`https://raw.githubusercontent.com/${REPO}/${latest.tag}/skills/qdmp-skill/references/telemetry-distribution.json`, stage, 256 * 1024);
+      distribution = await network.read(`https://raw.githubusercontent.com/${REPO}/${latest.commit}/${DISTRIBUTION_PATH}`, stage, 256 * 1024);
     }
     if (!STABLE.test(distribution?.version ?? "") || !/^[a-f0-9]{64}$/.test(distribution?.onboarding?.sha256 ?? "")) throw new Error("Published telemetry pin invalid");
     return { ...latest, distribution, lookup: network.info() };
@@ -281,9 +286,14 @@ function checkout(latest, options) {
   if (options.checkout) return options.checkout(latest);
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "qdmp-update-"));
   const hooks = path.join(temp, "empty-hooks"); fs.mkdirSync(hooks);
-  try { command("git", ["-c", `core.hooksPath=${hooks}`, "clone", "--depth", "1", "--branch", latest.tag, "--", `https://github.com/${REPO}.git`, path.join(temp, "release")], options, 60000); }
-  catch (e) { fs.rmSync(temp, { recursive: true, force: true }); throw e; }
-  return { root: path.join(temp, "release"), cleanup: () => fs.rmSync(temp, { recursive: true, force: true }) };
+  const root = path.join(temp, "release");
+  try {
+    command("git", ["-c", `core.hooksPath=${hooks}`, "clone", "--depth", "1", "--branch", latest.tag, "--", `https://github.com/${REPO}.git`, root], options, 60000);
+    if (latest.commit && command("git", ["rev-parse", "HEAD"], { ...options, cwd: root }).trim() !== latest.commit) {
+      throw new Error("QDMP tag points to a different commit than the version lookup");
+    }
+  } catch (e) { fs.rmSync(temp, { recursive: true, force: true }); throw e; }
+  return { root, cleanup: () => fs.rmSync(temp, { recursive: true, force: true }) };
 }
 function validateRelease(root, latest) {
   for (const native of HOST_FILES.slice(1)) if (fs.existsSync(path.join(root, native))) throw new Error("Release contains reserved host metadata");

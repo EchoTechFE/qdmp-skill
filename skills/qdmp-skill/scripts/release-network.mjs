@@ -21,14 +21,15 @@ async function bodyText(response, limit) {
   } finally { reader.releaseLock(); }
 }
 export function releaseReader(options = {}) {
-  const { totalMs = 15000, attemptMs = 4000, retryMs = 250 } = options.networkPolicy ?? {};
-  if (![totalMs, attemptMs, retryMs].every(Number.isFinite) || totalMs <= 0 || totalMs > 15000 || attemptMs <= 0 || attemptMs > 4000 || retryMs < 0 || retryMs > 1000) throw new Error("Invalid release network policy");
+  const maxTotalMs = 25000, maxAttemptMs = 6000;
+  const { totalMs = maxTotalMs, attemptMs = maxAttemptMs, retryMs = 250 } = options.networkPolicy ?? {};
+  if (![totalMs, attemptMs, retryMs].every(Number.isFinite) || totalMs <= 0 || totalMs > maxTotalMs || attemptMs <= 0 || attemptMs > maxAttemptMs || retryMs < 0 || retryMs > 1000) throw new Error("Invalid release network policy");
   const start = performance.now(), trace = [];
   const remaining = () => Math.max(0, totalMs - (performance.now() - start));
   const info = () => ({ duration_ms: Math.round(performance.now() - start), budget_ms: totalMs, requests: [...trace] });
-  async function read(url, stage, maxBytes, accept = "application/vnd.github+json") {
+  async function read(url, stage, maxBytes, accept = "application/vnd.github+json", maxAttempts = 2) {
     let last;
-    for (let attempt = 1; attempt <= 2 && remaining() > 0; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts && remaining() > 0; attempt++) {
       const controller = new AbortController(), began = performance.now(); let timer;
       try {
         const deadline = new Promise((_, reject) => { timer = setTimeout(() => {
@@ -56,7 +57,7 @@ export function releaseReader(options = {}) {
         trace.push({ stage, host: new URL(url).host, attempt, outcome: "failed", code, status: error.status, duration_ms: Math.round(performance.now() - began) });
         last = failure(`${stage} (${new URL(url).host}) attempt ${attempt}: ${error.message} [${code}]`, { code, status: error.status, retryable, retryAfter: error.retryAfter });
         const delay = Math.max(retryMs, error.retryAfter || 0);
-        if (!retryable || attempt === 2 || delay > 1000 || remaining() <= delay) break;
+        if (!retryable || attempt === maxAttempts || delay > 1000 || remaining() <= delay) break;
         if (delay) await new Promise(resolve => setTimeout(resolve, delay));
       } finally { clearTimeout(timer); controller.abort(); }
     }
