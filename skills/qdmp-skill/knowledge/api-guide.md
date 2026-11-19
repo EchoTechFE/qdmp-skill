@@ -143,7 +143,7 @@ Authorization: Bearer <accessToken>
 
 ## 4. Library：SPU / Tag / Island
 
-**响应壳**：`code`、`message`、`data`、`requestId`。SPU 详情、SPU 搜索和 Tag 接口（§4.1–4.6）使用字符串 `"0"` 表示成功。岛屿详情的清单定义为整数 `0`（§4.7），SPU 关联款式和款式统计的接入资料也使用整数 `0`（§4.11–4.12）。
+**响应壳**：`code`、`message`、`data`、`requestId`。SPU 详情、SPU 搜索和 Tag 接口（§4.1–4.6）使用字符串 `"0"` 表示成功。岛屿详情（§4.7）、SPU 关联款式和款式统计（§4.11–4.12）使用整数 `0`。见 [官方全量接口清单](https://g.echo.tech/openapi/openapi-doc/-/blob/master/all-endpoints.json) 中各接口的响应定义。
 
 ### 4.1 GET `/spu/v1/detail`
 
@@ -329,7 +329,7 @@ curl --get 'https://openapi.qiandao.com/island/v1/search' \
 
 ### 4.11 GET `/spu/v1/reverse`
 
-按主款式查询关联款式分组，返回各组的名称、分页信息及本页款式图文。接入资料要求有效的 `Access-Token` 和登录态。接入前从目标应用的接口文档确认可用的 Token 类型、用户授权 scope 和应用开通状态，见 [OpenAPI 权限申请流程](./openapi-permission-flow.md)。
+按主款式查询关联款式分组，返回各组的名称、分页信息及本页款式图文。官方清单要求有效的 `Access-Token` 和登录态，未列出具体的用户授权 scope。接入前通过目标应用的接口文档或平台支持核对可用的 Token 类型、用户授权 scope 和应用开通状态，见 [OpenAPI 权限申请流程](./openapi-permission-flow.md)。
 
 | Query | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
@@ -374,7 +374,7 @@ HTTP 成功且业务 `code` 为整数 `0` 后，校验 `data.sections`。分组�
 
 ### 4.12 GET `/spu/v1/statistics`
 
-按单个款式查询统计。必填 Query `id` 为 SPU ID 十进制字符串，请求使用 `Access-Token`。Token 类型及权限以目标应用的接口文档和开通状态为准。
+按单个款式查询统计。必填 Query `id` 为 SPU ID 的 uint64 十进制字符串，请求使用 `Access-Token`。Token 类型及权限以目标应用的接口文档和开通状态为准。
 
 ```bash
 curl --get 'https://openapi.qiandao.com/spu/v1/statistics' \
@@ -387,9 +387,9 @@ HTTP 成功且业务 `code` 为整数 `0` 后，校验 `data` 对象。五个字
 | 字段 | 含义 |
 | --- | --- |
 | `rating` | 款式评分 |
-| `ratingCount` | 评分数量 |
-| `wishCount` | 想要数量 |
-| `markCount` | 标记数量 |
+| `ratingCount` | 评分人数 |
+| `wishCount` | 想要人数 |
+| `markCount` | 标记人数 |
 | `viewCount` | 浏览量 |
 
 - 保留原始字段和精度，尤其是超出 JavaScript 安全整数范围的计数。字符串 `"0"` 有效，缺字段、空字符串、`null` 或类型异常使用未知或异常状态。评分满分、精度、统计周期和去重口径以平台定义为准。
@@ -1189,7 +1189,7 @@ curl 'https://openapi.qiandao.com/c2c-openapi/v1/gamePriceModule' \
 
 ### POST `/c2c-openapi/v1/spu/flashPrice`
 
-按 SPU 批量获取当前最低闪购价。请求使用 JSON 和 `Access-Token`，Token 类型及权限以目标应用的接口文档和开通状态为准。
+按 SPU 批量获取当前最低闪购价。[官方全量接口清单](https://g.echo.tech/openapi/openapi-doc/-/blob/master/all-endpoints.json) 中对应操作为 `C2COpenAPIService_BatchGetSpuFlashPrice2`。请求使用 JSON 和 `Access-Token`，Token 类型及权限以目标应用的接口文档和开通状态为准。
 
 | JSON 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
