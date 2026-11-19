@@ -110,7 +110,7 @@ Authorization: Bearer <accessToken>
 
 **建议**：请求头与目标接口要求保持一致；若出现 401，结合业务 `code` 按 [13. 错误与排查](#13-错误与排查) 定位原因，并检查 Header 名及必需的 `x-echo-qdmp-version`。
 
-下文 **Library** 示例采用与线上一致的 **`Authorization: Bearer`**；**User / Mark** 示例同时给出 **`access-token` + `x-echo-qdmp-version`**（与 Swagger 一致）。
+下文 **Library** 的 SPU 详情与搜索等接口示例使用 **`Authorization: Bearer`**，SPU 关联款式和款式统计示例使用 **`Access-Token`**。**User / Mark** 示例同时给出 **`access-token` + `x-echo-qdmp-version`**（与 Swagger 一致）。
 
 ### 手机号授权码兑换
 
@@ -143,7 +143,7 @@ Authorization: Bearer <accessToken>
 
 ## 4. Library：SPU / Tag / Island
 
-**响应壳**：`code`、`message`、`data`、`requestId`。下列 SPU / Tag 接口的 `code` 为 **string**，`"0"` 表示成功；岛屿详情的清单定义为整数 `0`，见 §4.7。
+**响应壳**：`code`、`message`、`data`、`requestId`。SPU 详情、SPU 搜索和 Tag 接口（§4.1–4.6）使用字符串 `"0"` 表示成功。岛屿详情的清单定义为整数 `0`（§4.7），SPU 关联款式和款式统计的接入资料也使用整数 `0`（§4.11–4.12）。
 
 ### 4.1 GET `/spu/v1/detail`
 
@@ -326,6 +326,74 @@ curl --get 'https://openapi.qiandao.com/island/v1/search' \
 ```
 
 以上岛屿接口均依据同一份全量清单。鉴权、错误处理和未知状态的处理沿用 §4.7；所需权限以平台正式配置为准。
+
+### 4.11 GET `/spu/v1/reverse`
+
+按主款式查询关联款式分组，返回各组的名称、分页信息及本页款式图文。接入资料要求有效的 `Access-Token` 和登录态。接入前从目标应用的接口文档确认可用的 Token 类型、用户授权 scope 和应用开通状态，见 [OpenAPI 权限申请流程](./openapi-permission-flow.md)。
+
+| Query | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `id` | `string` | 是 | 主 SPU ID，十进制字符串，范围 `1..9223372036854775807` |
+| `sectionKey` | `string` | 否 | 服务端返回的分组标识。填入后只查该组，将原值交给 URL 查询串编码 |
+| `offset` | `integer` | 是 | 组内偏移，非负整数。省略 `sectionKey` 时传 `0` |
+| `limit` | `integer` | 是 | 每组页大小，`1..100`。每次请求满足 `offset + limit <= 2000` |
+
+```bash
+# 所有匹配分组的首屏，每组最多 20 条
+curl --get 'https://openapi.qiandao.com/spu/v1/reverse' \
+  -H 'Access-Token: <accessToken>' \
+  --data-urlencode 'id=123456789012345678' \
+  --data-urlencode 'offset=0' \
+  --data-urlencode 'limit=20'
+
+# 指定组的下一页，替换为该组实际的 sectionKey 和下一页偏移
+curl --get 'https://openapi.qiandao.com/spu/v1/reverse' \
+  -H 'Access-Token: <accessToken>' \
+  --data-urlencode 'id=123456789012345678' \
+  --data-urlencode 'sectionKey=<sectionKey>' \
+  --data-urlencode 'offset=20' \
+  --data-urlencode 'limit=20'
+```
+
+HTTP 成功且业务 `code` 为整数 `0` 后，校验 `data.sections`。分组按配置顺序返回，结构如下。
+
+| 字段（相对 `data.sections[]`） | 类型 | 含义 |
+| --- | --- | --- |
+| `sectionKey` | `string` | 与主款式、分组配置和排序绑定的标识 |
+| `name` | `string` | 分组名称，可能为空 |
+| `offset` / `limit` | `integer` | 本组本页的实际偏移和页大小 |
+| `totalCount` | `integer` | 组内精确总数，可大于 2000 |
+| `items` | `array` | 组内本页款式，项内 `spuId`、`name`、`image` 均为字符串，`image` 为完整 HTTP(S) 地址或空字符串 |
+
+无匹配分组时 `sections=[]`。分组存在但无匹配款式时，可返回 `items=[]`、`totalCount=0`。同一款式出现在多组时分别保留。
+
+- 每组分别保存数据、加载状态和偏移。下一页用该组上次响应的 `offset + limit` 推进，即使 `items` 为空或短于 `limit`。下一页偏移必须同时小于 `totalCount` 和 `2000`，末页的 `limit` 最多为 `2000 - offset`。保留实际 `totalCount`。
+- 翻页失败时保留已得到的数据及失败偏移。核对响应的分组和偏移后再追加，同组避免并发重复加载。数据可能在跨页期间变化，按需在组内用 `spuId` 去重，分页位置仍跟随响应。
+- 切换主款式、全量刷新、离页或切换登录会话时使旧请求失效。标识失效时先重新拉取所有分组首屏，再使用新的 `sectionKey` 分页。
+- `400` 时检查 ID、分页和分组标识。`409` 时检查组内查询范围和所选各组的 `limit` 总容量，整次按失败处理。`429` 时先停止自动查询，按实际限流或配额原因处理并遵守 `Retry-After`，匹配组数超限时联系平台支持。排查时保留脱敏后的查询参数、状态、业务响应、时间及 `requestId`（或 `request_id`），其他错误见 [13. 错误与排查](#13-错误与排查)。
+
+### 4.12 GET `/spu/v1/statistics`
+
+按单个款式查询统计。必填 Query `id` 为 SPU ID 十进制字符串，请求使用 `Access-Token`。Token 类型及权限以目标应用的接口文档和开通状态为准。
+
+```bash
+curl --get 'https://openapi.qiandao.com/spu/v1/statistics' \
+  -H 'Access-Token: <accessToken>' \
+  --data-urlencode 'id=123456789012345678'
+```
+
+HTTP 成功且业务 `code` 为整数 `0` 后，校验 `data` 对象。五个字段直接位于 `data` 下，均为字符串。
+
+| 字段 | 含义 |
+| --- | --- |
+| `rating` | 款式评分 |
+| `ratingCount` | 评分数量 |
+| `wishCount` | 想要数量 |
+| `markCount` | 标记数量 |
+| `viewCount` | 浏览量 |
+
+- 保留原始字段和精度，尤其是超出 JavaScript 安全整数范围的计数。字符串 `"0"` 有效，缺字段、空字符串、`null` 或类型异常使用未知或异常状态。评分满分、精度、统计周期和去重口径以平台定义为准。
+- 分别维护详情与统计的加载和失败状态。切换款式、离页或登录会话变化时丢弃旧结果，重试使用当前款式 ID。HTTP 404 或路由不存在时立即停止自动重试和轮询，保留请求方法、路径、HTTP 状态、业务响应、请求时间和 `requestId`，按 [13. 错误与排查](#13-错误与排查) 核对。
 
 ---
 
@@ -1117,6 +1185,37 @@ curl 'https://openapi.qiandao.com/c2c-openapi/v1/gamePriceModule' \
 
 ---
 
+## C2C：SPU 最低闪购价
+
+### POST `/c2c-openapi/v1/spu/flashPrice`
+
+按 SPU 批量获取当前最低闪购价。请求使用 JSON 和 `Access-Token`，Token 类型及权限以目标应用的接口文档和开通状态为准。
+
+| JSON 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `spuIds` | `string[]` | 是 | 每批 1–100 个 uint64 十进制字符串，最大值 `18446744073709551615`，允许重复 |
+
+```bash
+curl --request POST 'https://openapi.qiandao.com/c2c-openapi/v1/spu/flashPrice' \
+  -H 'Access-Token: <accessToken>' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{"spuIds":["123456789012345678","123456789012345679"]}'
+```
+
+HTTP 成功且业务 `code` 为整数 `0` 后，校验 `data.items` 与输入逐项对应，保留顺序、重复项和无报价项。
+
+| 字段（相对 `data.items[]`） | 类型 | 含义 |
+| --- | --- | --- |
+| `spuId` | `string` | 对应输入的 SPU ID |
+| `price` | `string` | 最低闪购价，国内单位为元。`""` 表示暂无报价，`"0"` 是有效报价 |
+| `currency` | `string` | 来源返回的币种。无报价或来源未提供币种时可为 `""` |
+
+- 保留原始价格精度和币种，避免除以 100、自行舍入或将未知币种填成 `CNY`。空价格仅表示本次查询无报价。字段缺失、`null`、类型错误或返回条目与输入不匹配时，记录响应异常。
+- 超过 100 项时分批查询，控制并发并按批次对应到原始列表。非零 `code` 表示整批失败，`data` 为 `null`。保留已有成功批次和失败批次的 `requestId`，依据 [错误与排查](#13-错误与排查) 判断是否能重试失败批次。
+- 列表需要合计时，以当前已加载条目为范围，收到分页、搜索或筛选结果时更新。按币种分别进行十进制加法，未知币种单列。零价参与计数；覆盖数量、无报价和失败状态分别保留。重复项或数量按目标列表的业务语义计算。列表替换、离页或会话切换时丢弃旧请求结果。
+
+---
+
 ## 12. 与小程序开发的衔接
 
 1. **凭证来源**：开放平台 `appId` / `appSecret` 由后端安全配置提供，`appSecret` 不写入前端环境变量或构建产物。
@@ -1179,6 +1278,8 @@ curl 'https://openapi.qiandao.com/c2c-openapi/v1/gamePriceModule' \
 | 刷新 Token   | POST | `/auth/v1/refresh`   |
 | SPU 详情     | GET  | `/spu/v1/detail`     |
 | SPU 搜索     | GET  | `/spu/v1/search`     |
+| SPU 关联款式 | GET  | [`/spu/v1/reverse`](#411-get-spuv1reverse) |
+| SPU 款式统计 | GET  | [`/spu/v1/statistics`](#412-get-spuv1statistics) |
 | Tag 详情     | GET  | `/tag/v1/detail`     |
 | Tag 搜索     | GET  | `/tag/v1/search`     |
 | 关注 Tag     | POST | `/tag/v1/follow`     |
@@ -1217,5 +1318,6 @@ curl 'https://openapi.qiandao.com/c2c-openapi/v1/gamePriceModule' \
 | C2C 连通检查 | GET | `/c2c-openapi/v1/ping` |
 | 合作游戏价格曲线 | POST | `/c2c-openapi/v1/gamePriceLine` |
 | 合作游戏价格模块 | POST | `/c2c-openapi/v1/gamePriceModule` |
+| SPU 最低闪购价 | POST | [`/c2c-openapi/v1/spu/flashPrice`](#post-c2c-openapiv1spuflashprice) |
 
 完整字段与枚举见各服务 Swagger（§1 表格）。

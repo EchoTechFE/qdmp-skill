@@ -36,7 +36,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 | [openapi-user-authorization.md](./knowledge/openapi-user-authorization.md) | HTTP method + path → 用户授权 scope 映射，含 JSON |
 | [bluetooth.md](./knowledge/bluetooth.md)                  | BLE 中心设备：发现、连接、GATT 读写与通知、MTU、断线清理与重连、Android 配对 |
 | [inner-audio.md](./knowledge/inner-audio.md)              | 普通音频：创建、播放、暂停、停止、销毁、实例生命周期与真实调用结果记录 |
-| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：岛屿详情/加入状态/搜索、合作游戏价格、OSS 图片/视频 POST 上传与发布查询、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
+| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：SPU 关联款式/统计/最低闪购价、岛屿详情/加入状态/搜索、合作游戏价格、OSS 图片/视频 POST 上传与发布查询、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
 | [wishlist.md](./knowledge/wishlist.md)                     | 心愿单 OpenAPI：列表、详情、创建与条目修改、数量/心愿价语义、用户授权、分页及写入不重放 |
 | [oss-upload.md](./knowledge/oss-upload.md)                 | OSS：OpenAPI 与存储容量权限、POST 直传/后端中转、两分钟超时、审核发布查询及凭据风险 |
 | [phone-authorization.md](./knowledge/phone-authorization.md) | 手机号授权：平台 OpenAPI 申请、App 6.68.0+、原生 button、一次性 code 与后端应用令牌兑换 |
@@ -251,6 +251,8 @@ questions:
 涉及帖子评论、回复、评论列表或评论点赞（rcomment）时，必须读取 [api-guide.md](./knowledge/api-guide.md) 的「Lifestyle：评论与回复（Comment / RComment）」；严格区分一级评论列表的 `offset` 分页与回复列表的 `cursor` 分页，并将帖子、评论和回复 ID 保持为 int64 字符串。
 
 涉及心愿单（Folder）列表、详情、创建或条目修改时，读取 [wishlist.md](./knowledge/wishlist.md)；使用 `/folder/v1/*` 与 `user.folder.read`、`user.folder.write`，不要混用单个商品“想要”的 `user.wish.*`。`join` 的数量为绝对覆盖、`num=0` 移出条目，发送后任何失败均不自动重放；完整字段、授权及分页规则见该指南。
+
+涉及 SPU 的[关联款式](./knowledge/api-guide.md#411-get-spuv1reverse)、[款式统计](./knowledge/api-guide.md#412-get-spuv1statistics)或[最低闪购价](./knowledge/api-guide.md#post-c2c-openapiv1spuflashprice)时，读取对应接口说明。SPU ID 保持十进制字符串，关联款式按 `sectionKey` 独立分页，统计与报价保留返回的字符串精度，并分别处理零值、空结果和请求失败。
 
 涉及千岛 OpenAPI 报错排查或错误处理时，读取 [api-guide.md 的「错误与排查」](./knowledge/api-guide.md#13-错误与排查)，根据业务 `code`、`message` 和 HTTP 状态定位原因；区分应用权限、用户授权、Token 无效或过期、限流与配额耗尽。
 
