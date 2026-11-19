@@ -110,7 +110,7 @@ Authorization: Bearer <accessToken>
 
 **建议**：请求头与目标接口要求保持一致；若出现 401，结合业务 `code` 按 [13. 错误与排查](#13-错误与排查) 定位原因，并检查 Header 名及必需的 `x-echo-qdmp-version`。
 
-下文 **Library** 的 SPU 详情与搜索等接口示例使用 **`Authorization: Bearer`**，SPU 关联款式和款式统计示例使用 **`Access-Token`**。**User / Mark** 示例同时给出 **`access-token` + `x-echo-qdmp-version`**（与 Swagger 一致）。
+下文 **Library** 的 SPU 详情与搜索等接口示例使用 **`Authorization: Bearer`**，SPU 关联款式和款式统计示例使用 **`access-token`**。**User / Mark** 示例同时给出 **`access-token` + `x-echo-qdmp-version`**（与 Swagger 一致）。
 
 ### 手机号授权码兑换
 
@@ -331,8 +331,10 @@ curl --get 'https://openapi.qiandao.com/island/v1/search' \
 
 按主款式查询关联款式分组，返回各组的名称、分页信息及本页款式图文。官方清单要求有效的 `Access-Token` 和登录态，未列出具体的用户授权 scope。接入前通过目标应用的接口文档或平台支持核对可用的 Token 类型、用户授权 scope 和应用开通状态，见 [OpenAPI 权限申请流程](./openapi-permission-flow.md)。
 
+**operationId**：`LibraryService_GetSpuReverseSections`
+
 | Query | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
+| ----- | ---- | ---- | ---- |
 | `id` | `string` | 是 | 主 SPU ID，十进制字符串，范围 `1..9223372036854775807` |
 | `sectionKey` | `string` | 否 | 服务端返回的分组标识。填入后只查该组，将原值交给 URL 查询串编码 |
 | `offset` | `integer` | 是 | 组内偏移，非负整数。省略 `sectionKey` 时传 `0` |
@@ -341,24 +343,24 @@ curl --get 'https://openapi.qiandao.com/island/v1/search' \
 ```bash
 # 所有匹配分组的首屏，每组最多 20 条
 curl --get 'https://openapi.qiandao.com/spu/v1/reverse' \
-  -H 'Access-Token: <accessToken>' \
   --data-urlencode 'id=123456789012345678' \
   --data-urlencode 'offset=0' \
-  --data-urlencode 'limit=20'
+  --data-urlencode 'limit=20' \
+  -H 'access-token: <accessToken>'
 
 # 指定组的下一页，替换为该组实际的 sectionKey 和下一页偏移
 curl --get 'https://openapi.qiandao.com/spu/v1/reverse' \
-  -H 'Access-Token: <accessToken>' \
   --data-urlencode 'id=123456789012345678' \
   --data-urlencode 'sectionKey=<sectionKey>' \
   --data-urlencode 'offset=20' \
-  --data-urlencode 'limit=20'
+  --data-urlencode 'limit=20' \
+  -H 'access-token: <accessToken>'
 ```
 
-HTTP 成功且业务 `code` 为整数 `0` 后，校验 `data.sections`。分组按配置顺序返回，结构如下。
+**data**：`sections`（`librarySpuReverseSection[]`），按配置顺序返回。HTTP 成功且业务 `code` 为整数 `0` 后校验分组结构。
 
-| 字段（相对 `data.sections[]`） | 类型 | 含义 |
-| --- | --- | --- |
+| `data.sections[]` 字段 | 类型 | 说明 |
+| ---------------------- | ---- | ---- |
 | `sectionKey` | `string` | 与主款式、分组配置和排序绑定的标识 |
 | `name` | `string` | 分组名称，可能为空 |
 | `offset` / `limit` | `integer` | 本组本页的实际偏移和页大小 |
@@ -374,23 +376,29 @@ HTTP 成功且业务 `code` 为整数 `0` 后，校验 `data.sections`。分组�
 
 ### 4.12 GET `/spu/v1/statistics`
 
-按单个款式查询统计。必填 Query `id` 为 SPU ID 的 uint64 十进制字符串，请求使用 `Access-Token`。Token 类型及权限以目标应用的接口文档和开通状态为准。
+按单个款式查询统计。请求使用 `access-token`，Token 类型及权限以目标应用的接口文档和开通状态为准。
+
+**operationId**：`LibraryService_GetSpuStatistics`
+
+| Query | 类型 | 必填 | 说明 |
+| ----- | ---- | ---- | ---- |
+| `id` | `string` | 是 | SPU ID，uint64 十进制字符串 |
 
 ```bash
 curl --get 'https://openapi.qiandao.com/spu/v1/statistics' \
-  -H 'Access-Token: <accessToken>' \
-  --data-urlencode 'id=123456789012345678'
+  --data-urlencode 'id=123456789012345678' \
+  -H 'access-token: <accessToken>'
 ```
 
-HTTP 成功且业务 `code` 为整数 `0` 后，校验 `data` 对象。五个字段直接位于 `data` 下，均为字符串。
+**data**：`libraryGetSpuStatisticsResponseData`。HTTP 成功且业务 `code` 为整数 `0` 后校验下列字段。
 
-| 字段 | 含义 |
-| --- | --- |
-| `rating` | 款式评分 |
-| `ratingCount` | 评分人数 |
-| `wishCount` | 想要人数 |
-| `markCount` | 标记人数 |
-| `viewCount` | 浏览量 |
+| `data` 字段 | 类型 | 说明 |
+| ----------- | ---- | ---- |
+| `rating` | `string` | 款式评分 |
+| `ratingCount` | `string` | 评分人数 |
+| `wishCount` | `string` | 想要人数 |
+| `markCount` | `string` | 标记人数 |
+| `viewCount` | `string` | 浏览量 |
 
 - 保留原始字段和精度，尤其是超出 JavaScript 安全整数范围的计数。字符串 `"0"` 有效，缺字段、空字符串、`null` 或类型异常使用未知或异常状态。评分满分、精度、统计周期和去重口径以平台定义为准。
 - 分别维护详情与统计的加载和失败状态。切换款式、离页或登录会话变化时丢弃旧结果，重试使用当前款式 ID。HTTP 404 或路由不存在时立即停止自动重试和轮询，保留请求方法、路径、HTTP 状态、业务响应、请求时间和 `requestId`，按 [13. 错误与排查](#13-错误与排查) 核对。
@@ -1189,23 +1197,26 @@ curl 'https://openapi.qiandao.com/c2c-openapi/v1/gamePriceModule' \
 
 ### POST `/c2c-openapi/v1/spu/flashPrice`
 
-按 SPU 批量获取当前最低闪购价。[官方全量接口清单](https://g.echo.tech/openapi/openapi-doc/-/blob/master/all-endpoints.json) 中对应操作为 `C2COpenAPIService_BatchGetSpuFlashPrice2`。请求使用 JSON 和 `Access-Token`，Token 类型及权限以目标应用的接口文档和开通状态为准。
+按 SPU 批量获取当前最低闪购价。请求使用 JSON 和 `access-token`，Token 类型及权限以目标应用的接口文档和开通状态为准。
 
-| JSON 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
+**请求体**：`c2cBatchSpuFlashPriceRequest`，见[官方全量接口清单](https://g.echo.tech/openapi/openapi-doc/-/blob/master/all-endpoints.json)。
+
+| 字段 | 类型 | 必填 | 说明 |
+| ---- | ---- | ---- | ---- |
 | `spuIds` | `string[]` | 是 | 每批 1–100 个 uint64 十进制字符串，最大值 `18446744073709551615`，允许重复 |
 
 ```bash
-curl --request POST 'https://openapi.qiandao.com/c2c-openapi/v1/spu/flashPrice' \
-  -H 'Access-Token: <accessToken>' \
+curl 'https://openapi.qiandao.com/c2c-openapi/v1/spu/flashPrice' \
+  -X POST \
+  -H 'access-token: <accessToken>' \
   -H 'Content-Type: application/json' \
   --data-raw '{"spuIds":["123456789012345678","123456789012345679"]}'
 ```
 
-HTTP 成功且业务 `code` 为整数 `0` 后，校验 `data.items` 与输入逐项对应，保留顺序、重复项和无报价项。
+**data**：`items`（`c2cSpuFlashPrice[]`）。HTTP 成功且业务 `code` 为整数 `0` 后校验返回项与输入逐项对应，保留顺序、重复项和无报价项。
 
-| 字段（相对 `data.items[]`） | 类型 | 含义 |
-| --- | --- | --- |
+| 字段 | 类型 | 说明 |
+| ---- | ---- | ---- |
 | `spuId` | `string` | 对应输入的 SPU ID |
 | `price` | `string` | 最低闪购价，国内单位为元。`""` 表示暂无报价，`"0"` 是有效报价 |
 | `currency` | `string` | 来源返回的币种。无报价或来源未提供币种时可为 `""` |
@@ -1278,8 +1289,8 @@ HTTP 成功且业务 `code` 为整数 `0` 后，校验 `data.items` 与输入逐
 | 刷新 Token   | POST | `/auth/v1/refresh`   |
 | SPU 详情     | GET  | `/spu/v1/detail`     |
 | SPU 搜索     | GET  | `/spu/v1/search`     |
-| SPU 关联款式 | GET  | [`/spu/v1/reverse`](#411-get-spuv1reverse) |
-| SPU 款式统计 | GET  | [`/spu/v1/statistics`](#412-get-spuv1statistics) |
+| SPU 关联款式 | GET  | `/spu/v1/reverse`    |
+| SPU 款式统计 | GET  | `/spu/v1/statistics` |
 | Tag 详情     | GET  | `/tag/v1/detail`     |
 | Tag 搜索     | GET  | `/tag/v1/search`     |
 | 关注 Tag     | POST | `/tag/v1/follow`     |
@@ -1318,6 +1329,6 @@ HTTP 成功且业务 `code` 为整数 `0` 后，校验 `data.items` 与输入逐
 | C2C 连通检查 | GET | `/c2c-openapi/v1/ping` |
 | 合作游戏价格曲线 | POST | `/c2c-openapi/v1/gamePriceLine` |
 | 合作游戏价格模块 | POST | `/c2c-openapi/v1/gamePriceModule` |
-| SPU 最低闪购价 | POST | [`/c2c-openapi/v1/spu/flashPrice`](#post-c2c-openapiv1spuflashprice) |
+| SPU 最低闪购价 | POST | `/c2c-openapi/v1/spu/flashPrice` |
 
 完整字段与枚举见各服务 Swagger（§1 表格）。
