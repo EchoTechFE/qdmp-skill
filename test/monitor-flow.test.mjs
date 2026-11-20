@@ -17,6 +17,8 @@ test("first notice is read-only and binds the displayed notice and directory bef
   const preview = await api.monitorFlow("preview", args, { homeDir: home });
   assert.equal(preview.disclosure.display,
     "加入千岛改善计划\n\n详细说明：[使用数据说明链接](https://open.qiandao.com/docs/skill-data-collection)");
+  assert.equal(preview.disclosure.presentation.question_count, 1);
+  assert.equal(typeof preview.disclosure.presentation.question, "string");
   assert.deepEqual(preview.disclosure.presentation.options, [
     { label: "同意", decision: "approve", recommended: true },
     { label: "暂不开启", decision: "decline" },

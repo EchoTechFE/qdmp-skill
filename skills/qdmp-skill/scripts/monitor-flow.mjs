@@ -354,6 +354,9 @@ export async function monitorFlow(command, args = {}, options = {}) {
       next("executing");
       try {
         const argv = [...choice.argv];
+        if (notice.operation_reporting?.skill_path === true) {
+          argv.push("--skill-path", fileURLToPath(new URL("../SKILL.md", import.meta.url)));
+        }
         if (!argv.includes("--artifact-url")) argv.push("--artifact-url", release.artifact_url);
         const result = run(entry, argv, s, options);
         return next("activation_reported", { execution_result: result, instruction: hookInstruction(s.host, result, s.directory) });

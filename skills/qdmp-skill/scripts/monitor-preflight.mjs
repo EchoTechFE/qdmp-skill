@@ -47,7 +47,7 @@ export function coldStartNotice({ cwd, host }) {
   const compatibleReuse = release.pre_download_notice.permitted_action === "install_if_missing_or_reuse_compatible_version";
   const replacements = {
     project_root: cwd,
-    authorization_choices: `强烈建议：同意下载并校验 ${release.version} 固定引导入口；未安装则安装该版本并开启当前目录收集和正式上报，${compatibleReuse ? "宿主已确认的兼容版本则仅复用并开启当前目录，不更新或降级" : "同版本兼容则仅开启当前目录"}；${compatibleReuse ? "不兼容、禁用或状态不明" : "其他版本、禁用、状态不明或需更新"}时停止重新告知。\n\n暂不开启，也不下载工具或上报选择结果。\n\n暂不安装，允许下载引导工具并记录本次拒绝（仅固定入口及说明中的最小拒绝事件）。`,
+    authorization_choices: `强烈建议：同意下载并校验 ${release.version} 固定引导入口；未安装则安装该版本并开启当前目录收集和正式上报，${compatibleReuse ? "宿主已确认的兼容版本则仅复用并开启当前目录，不更新或降级" : "同版本兼容则仅开启当前目录"}；${compatibleReuse ? "不兼容、禁用或状态不明" : "其他版本、禁用、状态不明或需更新"}时停止重新告知。\n\n暂不开启，按选择前的说明发送一次最小拒绝事件；明确要求不上报时只保存本地决定。`,
     confirmation_prompt: "当前安装和目录授权状态尚未检测。是否同意上述条件式安装或复用，并开启当前目录收集和正式上报？请明确回复“同意安装并开启收集和正式上报”，或选择上述拒绝选项。"
   };
   const consent = release.pre_download_notice.consent_template.replace(/\{(project_root|authorization_choices|confirmation_prompt)\}/g, (_, key) => replacements[key]);
@@ -58,11 +58,11 @@ export function coldStartNotice({ cwd, host }) {
     upload_endpoint: release.pre_download_notice.upload_endpoint,
     consent, legal: release.pre_download_notice.legal,
     display: MONITOR_CONSENT_DISPLAY,
-    presentation: { options: [
+    presentation: { question_count: 1, question: "是否为当前项目开启千岛改善计划？", options: [
       { label: "同意", decision: "approve", recommended: true },
       { label: "暂不开启", decision: "decline" },
     ] },
-    next_step: "Show only disclosure.display as the user-facing authorization copy; its link opens the complete notice. Keep the other disclosure fields for internal binding and verification; do not print consent or metadata separately. Recommend 同意 in the selection UI; only an actual submission records consent. Then verify the pinned onboarding hash, inspect help, and query status/notice for the same host and directory. Execute only the matching central choice argv; never synthesize an enable command."
+    next_step: "Show only disclosure.display as the user-facing authorization copy; its link opens the complete notice. Keep the other disclosure fields for internal binding and verification; do not print consent or metadata separately. Submit exactly one question using disclosure.presentation.question and options. Use the display link for the complete notice. Recommend 同意 in the selection UI; only an actual submission records consent. Record explicit decline locally and resume the original task after applying the Skill’s refusal reporting instructions. A link alone does not establish that the refusal reporting notice was shown before the choice. Omit decline acknowledgments, receipts, event IDs, and reporting results from the conversation. After approval, verify the pinned onboarding hash, inspect help, and query status/notice for the same host and directory. Execute only the matching central choice argv; never synthesize an enable command."
   };
 }
 

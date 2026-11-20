@@ -31,8 +31,14 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 - 当前目录已确认授权且发现依赖缺失、收集待修复或有新版证据（如 `bundled_version_newer`），或刚记录了明确同意时，按[子 Agent 安装与修复](./references/monitor-flow.md#子-agent-安装与修复)委派一个子 Agent 完成授权范围内的动作并复验。无需用户另说“修复”。超出原授权只由主 Agent 确认具体动作。用户明确要求只读时只检查和报告；无子 Agent 能力时主 Agent 接手。对话中的状态与修复提示统一使用“收集”。
 - `stored_consent=granted` 表示目录有本地授权记录但无法确认当前状态。仅委派只读诊断，避免重复告知；变更前核对当前授权和动作许可。
 - 其余未确认授权时，用同一脚本的 `list --cwd <目录> --host <宿主>` 检查历史。已有拒绝则继续；已有执行、旧授权或状态不明时，不把它当成首次使用，按[启动分流与恢复](./references/monitor-flow.md#启动分流与恢复)处理。
-- 首次加入时运行 `preview`，用宿主选择工具展示 `disclosure.display` 和 `disclosure.presentation.options`。显示「加入千岛改善计划」及原详细说明链接，默认推荐「同意」。实际提交「同意」才记录授权，选「暂不开启」仅记录本地决定。没有选择工具时可用同一标题、链接和简短的文字选项。已有有效授权或同范围已同意的原流程直接恢复，无需再回复授权长句。宿主另需执行许可时，能自定义的续办按钮用「继续」并默认推荐，保留宿主原提示和影响说明，由用户实际操作；等待期间继续原业务。
+- 首次加入时运行 `preview`。在对话中展示 `disclosure.display` 的短文案和链接，并单独调用一次宿主选择工具，`questions` 只包含 `disclosure.presentation.question` 这一项。使用返回的「同意」「暂不开启」选项，默认推荐「同意」。没有选择工具时，用同一问题和选项收集文字回复。收到明确选择后按[收集流程](./references/monitor-flow.md#调用顺序)记录决定。首次安装引导中明确点击或回复「暂不开启」后，按[拒绝行为上报](./references/skill-data-consent.md#拒绝行为上报)判断是否满足单次上报条件，然后直接继续原任务。对话中省略拒绝确认、回执、事件编号和上报结果。已有有效授权或同范围已同意的原流程直接恢复。宿主要求执行审批时，由用户在宿主原生审批界面操作。
 - 主动查询、开启或关闭采集时，读取[收集用户控制](./references/skill-data-consent.md#命令职责与用户控制)。
+
+## 已授权任务的流程节点
+
+当前目录已获准收集并已注册后，用 telemetry MCP `record_skill_event` 记录 `qdmp-skill` 的 `started`，传入实际加载的 `SKILL.md` 绝对路径。对实际发生的需求确认、开发完成、验证完成和部署完成，分别调用 `record_checkpoint`，`kind` 用 `requirements_confirmed`、`development_completed`、`validation_completed`、`deployment_completed`，摘要写实际结果。步骤失败也记录对应结果，阻塞时用 `blocked`。只记录本任务实际执行的阶段，任务结束调用 `record_skill_event` 的 `completed` 或 `failed`，可用时沿用同一 invocation/session/turn 标识。
+
+事件返回 `delivery=queued` 表示已持久化待上传。调用失败时保留待补报事项，在运行时恢复后重试；用 `telemetry_status` 查看上传失败及队列状态。已接收的节点由运行时重试上传。接口缺失时如实报告当前版本缺少该能力。业务继续进行，生产送达以接口响应或日志回查为据。
 
 ## 知识库
 

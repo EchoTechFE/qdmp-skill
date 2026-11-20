@@ -41,9 +41,9 @@ QDMP 1.1.14 补充 [云服务使用规范](skills/qdmp-skill/knowledge/backend-o
 
 ### 项目收集插件的安装边界
 
-QDMP 仅提供可选收集的提示和调用指引，不内置收集安装器、Bootstrap MCP 或上报脚本，也不改变原有开发、登录、部署流程。安装、目录授权、更新、三宿主适配、拒绝结果上报及持续采集均由独立的 `agent-runtime-telemetry` 维护。需要授权时只展示第 1 节授权短文案及完整说明链接，用户作出明确选择后，Agent 委派子 Agent 安装、补齐依赖或修复，并复验收集状态；没有子 Agent 时由主 Agent 执行。超出已有许可时只确认新增的软件动作；当前运行时采集不要求登录；旧运行时明确要求的登录和宿主安全确认仍需用户完成。
+QDMP 仅提供可选收集的提示和调用指引，不内置收集安装器、Bootstrap MCP 或上报脚本，也不改变原有开发、登录、部署流程。安装、目录授权、更新、三宿主适配及持续采集均由独立的 `agent-runtime-telemetry` 维护。需要授权时只展示第 1 节授权短文案及完整说明链接，用户作出明确选择后，Agent 委派子 Agent 安装、补齐依赖或修复，并复验收集状态；没有子 Agent 时由主 Agent 执行。超出已有许可时只确认新增的软件动作；当前运行时采集不要求登录；旧运行时明确要求的登录和宿主安全确认仍需用户完成。
 
-[Skill 内分发清单](skills/qdmp-skill/references/telemetry-distribution.json) 保存固定发布入口、SHA-256 和 telemetry 生成的 `pre_download_notice`（用于内部校验的告知数据与法律原文，绑定两个制品哈希和版本）。冷启动只展示状态机生成的 `display` 短文案及完整说明链接并取得一次明确确认，再下载/校验/执行独立 onboarding；实际动作超出授权范围时停止重新确认。拒绝下载或宿主拦截时不下载工具、不上报拒绝事件，也不影响业务。业务授权不能替代宿主执行审批。`onboarding: null` 或本地告知缺失表示入口不可用，不能先联网补文案。详见 [收集指引](skills/qdmp-skill/references/skill-data-consent.md)。
+[Skill 内分发清单](skills/qdmp-skill/references/telemetry-distribution.json) 保存固定发布入口、SHA-256 和 telemetry 生成的 `pre_download_notice`（用于内部校验的告知数据与法律原文，绑定两个制品哈希和版本）。冷启动只展示状态机生成的 `display` 短文案及完整说明链接并取得一次明确确认，再下载/校验/执行独立 onboarding；实际动作超出授权范围时停止重新确认。首次安装引导选择「暂不开启」后保存本地决定。只有用户在选择前已实际看到拒绝上报告知且未要求不上报，才发送一次最小拒绝事件。业务授权不能替代宿主执行审批。`onboarding: null` 或本地告知缺失表示入口不可用，不能先联网补文案。详见 [收集指引](skills/qdmp-skill/references/skill-data-consent.md)。
 
 `skills/qdmp-skill/references/telemetry-distribution.json` 是本仓库唯一的分发清单，发布维护和安装后运行都使用这一份，不再保留仓库根副本。早期根清单服务于现已移除的 QDMP Bootstrap；迁移到 Skill 内是为了支持独立安装 Skill，不是为了维护两份配置。运行时只按实际 Skill 安装路径读取，不读取用户工作目录。
 

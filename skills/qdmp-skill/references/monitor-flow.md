@@ -8,7 +8,7 @@
 
 需要检查历史时，`list` 查看对应目录和宿主的流程。有通过采集验证且仍匹配固定清单的流程，可用 `probe --flow <id>` 作只读复查；其余流程用 `status --flow <id>`，只按 `allowed_actions` 恢复。目录、宿主或版本冲突时保留旧记录，不重放旧动作。明确拒绝时继续原业务。只有当前返回 `consent_required`，或本地无运行时、无该目录的授权证据，且没有历史授权/执行记录时，才使用 `preview`。本地返回 `unknown` 时说明状态未确认，继续业务。
 
-首次使用只读 `preview`，展示 `disclosure.display` 和原说明链接，选择界面默认推荐「同意」。不要把终端输出视为告知。只有收到明确决定后，才进入下节记录决定。用户暂不决定时继续原业务。
+首次使用只读 `preview`，按 SKILL.md 展示单题选择。只有收到明确决定后，才进入下节记录决定。用户暂不决定时继续原业务。
 
 ### 子 Agent 安装与修复
 
@@ -47,7 +47,7 @@ node <Skill>/scripts/monitor-flow.mjs verify --flow <flow>
 
 每一步读返回值；仅在 `allowed_actions` 包含下一动作时继续。不能把这些命令当作无条件批处理。inspect 在状态文件保存中央 notice 供核对，动作需确认时在输出中返回告知，不绕过 execute 直接运行 enable。execute 重新检查实时版本、目录、权限和选项，原样使用已校验的中央 argv；如需插件地址只补充随附固定 `--artifact-url`，不接受其他来源。按固定清单的 permitted_action 处理：旧清单只涵盖条件式 install 或同版本 reuse；新清单 install_if_missing_or_reuse_compatible_version 在展示了条件式安装/兼容复用说明后，可直接复用已确认的兼容版本，不再问版本动作。更新、降级或不兼容版本不在该范围内。
 
-用户选择“不下载、不上报”时，使用 authorize 的 `--decision decline` 和真实 digest；流程终止，不联网。这个本地决定记录不撤回已有项目授权。允许下载并上报最小拒绝的选择仍按 `skill-data-consent.md` 的独立 decline 协议处理；该独立事件不能伪装成开启收集的授权。不得把“允许记录拒绝”转换为 approve。
+用户选择「暂不开启」时，使用 `authorize --decision decline` 和真实摘要记录本地决定。首次安装引导按[拒绝行为上报](./skill-data-consent.md#拒绝行为上报)判断是否满足独立上报条件，然后直接继续原任务。
 
 ## 重试及版本动作确认
 
@@ -75,7 +75,7 @@ node <Skill>/scripts/monitor-flow.mjs verify --flow <flow>
 | collecting | verify | 当前运行时报告 collecting；落库仍未验证 |
 | failed | verify；旧版复用登录失败可 resume | 未证明为登录前置错误时禁止重放 |
 | needs_reconfirmation | inspect | 状态不符可重新检查；新增权限仍需确认 |
-| declined | 无变更动作 | 本次拒绝，不下载或上传选择结果 |
+| declined | 无变更动作 | 本地拒绝已保存，独立上报见上文 |
 
 已存在的空目录或缺少 appId 时，授权状态仍按真实目录保存在用户目录；当前运行时无需为采集等待项目配置或登录。旧运行时明确要求登录时，choice_ready 可等待登录后继续，不把配置错误当成用户未授权。
 
