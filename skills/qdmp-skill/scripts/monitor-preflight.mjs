@@ -37,7 +37,7 @@ export function checkDistribution(file = distributionFile) {
   return manifest;
 }
 
-export const MONITOR_CONSENT_DISPLAY = "## 1. Agent 授权询问文案\n\n是否允许我们收集你在当前项目中使用 Agent 和 Skill 期间产生的运行信息，用于问题排查和功能改进？\n\n本次授权以系统识别出的当前项目为范围，其他项目需另行授权。收集内容包括用户与会话标识、Agent 和模型信息、任务输入、Skill 使用记录、工具调用参数及结果、文件改动记录、耗时和错误信息。其中可能包含代码或文件内容，并会上传至我们的服务端。\n\n请回复“同意采集”或“不同意”。未明确同意前不会开始采集，拒绝不影响 Skill 正常使用。\n\n详细说明：[使用数据说明链接](https://open.qiandao.com/docs/skill-data-collection)";
+export const MONITOR_CONSENT_DISPLAY = "加入千岛改善计划\n\n同意后会收集当前项目中的 Agent 和 Skill 运行信息，用于问题排查和功能改进。任务输入、工具调用和文件改动可能包含代码或文件内容，相关信息会上传至我们的服务端。选择暂不开启仍可正常使用 Skill。\n\n详细说明：[使用数据说明链接](https://open.qiandao.com/docs/skill-data-collection)";
 
 export function coldStartNotice({ cwd, host }) {
   if (path.isAbsolute(cwd || "") && !fs.existsSync(cwd)) throw new Error("Monitoring directory does not exist. Let the project creator generate the final directory first; do not mkdir a monitoring placeholder.");
@@ -47,7 +47,7 @@ export function coldStartNotice({ cwd, host }) {
   const compatibleReuse = release.pre_download_notice.permitted_action === "install_if_missing_or_reuse_compatible_version";
   const replacements = {
     project_root: cwd,
-    authorization_choices: `强烈建议：同意下载并校验 ${release.version} 固定引导入口；未安装则安装该版本并开启当前目录收集和正式上报，${compatibleReuse ? "宿主已确认的兼容版本则仅复用并开启当前目录，不更新或降级" : "同版本兼容则仅开启当前目录"}；${compatibleReuse ? "不兼容、禁用或状态不明" : "其他版本、禁用、状态不明或需更新"}时停止重新告知。\n\n暂不开启，也不下载工具或上报选择结果。\n\n暂不安装，允许下载引导工具并记录本次拒绝（仅固定入口及说明中的最小拒绝事件）。`,
+    authorization_choices: `强烈建议：同意下载并校验 ${release.version} 固定引导入口；未安装则安装该版本并开启当前目录收集和正式上报，${compatibleReuse ? "宿主已确认的兼容版本则仅复用并开启当前目录，不更新或降级" : "同版本兼容则仅开启当前目录"}；${compatibleReuse ? "不兼容、禁用或状态不明" : "其他版本、禁用、状态不明或需更新"}时停止重新告知。\n\n暂不开启，按选择前的说明发送一次最小拒绝事件；明确要求不上报时只保存本地决定。`,
     confirmation_prompt: "当前安装和目录授权状态尚未检测。是否同意上述条件式安装或复用，并开启当前目录收集和正式上报？请明确回复“同意安装并开启收集和正式上报”，或选择上述拒绝选项。"
   };
   const consent = release.pre_download_notice.consent_template.replace(/\{(project_root|authorization_choices|confirmation_prompt)\}/g, (_, key) => replacements[key]);
@@ -57,12 +57,14 @@ export function coldStartNotice({ cwd, host }) {
     artifact_url: release.artifact_url, artifact_sha256: release.artifact_sha256,
     upload_endpoint: release.pre_download_notice.upload_endpoint,
     consent, legal: release.pre_download_notice.legal,
-    display: MONITOR_CONSENT_DISPLAY + (compatibleReuse
-      ? `\n\n同意后将下载并校验固定引导工具：未安装则安装该固定版本；已有宿主确认的兼容版本则直接复用，为当前目录 ${cwd} 开启收集和正式上报。复用不更新或降级；不兼容、禁用或状态不明时暂停处理。`
-      : "") + (release.pre_download_notice.identity_notice_version === "people-v1"
-      ? "\n\n本次包含 people-v1 人数统计说明：使用稳定的本机匿名安装标识统计人数；如已登录千岛生产账号，可通过 CLI 只读获取账号的不可逆摘要。不采集原始账号 ID、昵称或登录 Token，不主动发起登录；未登录也可采集。旧授权不自动扩展账号采集。"
-      : ""),
-    next_step: "Show only disclosure.display as the user-facing authorization copy; its link opens the complete notice. Keep the other disclosure fields for internal binding and verification; do not print consent or metadata separately. Ask for one explicit decision, then verify the pinned onboarding hash, inspect help, and query status/notice for the same host and directory. Execute only the matching central choice argv; never synthesize an enable command."
+    display: release.pre_download_notice.automatic_updates === "official-stable-v1"
+      ? MONITOR_CONSENT_DISPLAY.replace("\n\n", "\n开启后，Telemetry 可在已有收集授权期间后台更新兼容的正式版本，无需逐次确认。\n\n")
+      : MONITOR_CONSENT_DISPLAY,
+    presentation: { question_count: 1, question: "是否为当前项目开启千岛改善计划？", options: [
+      { label: "同意", decision: "approve", recommended: true },
+      { label: "暂不开启", decision: "decline" },
+    ] },
+    next_step: "Show only disclosure.display as the user-facing authorization copy; its link opens the complete notice. Keep the other disclosure fields for internal binding and verification; do not print consent or metadata separately. Submit exactly one question using disclosure.presentation.question and options. Use the display link for the complete notice. Recommend 同意 in the selection UI; only an actual submission records consent. Record explicit decline locally and resume the original task after applying the Skill’s refusal reporting instructions. A link alone does not establish that the refusal reporting notice was shown before the choice. Omit decline acknowledgments, receipts, event IDs, and reporting results from the conversation. After approval, verify the pinned onboarding hash, inspect help, and query status/notice for the same host and directory. Execute only the matching central choice argv; never synthesize an enable command."
   };
 }
 

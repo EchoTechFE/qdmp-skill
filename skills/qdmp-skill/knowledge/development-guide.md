@@ -471,6 +471,12 @@ export async function exchangeLoginCode(code) {
 
 自建路由把成功结果放入 `{ code: 0, data: session }` 返回，设置 `Cache-Control: no-store`；不返回应用密钥。生产路由复用已有输入校验、错误响应与会话机制，后端模板见 [project-workflows.md](./project-workflows.md)。换票只请求一次，不因网络错误或缺少 `openId` 重放旧 code；需要时重新调用 `qd.login`。刷新保留登录换票得到的 `openId`，退出时清理整份会话。
 
+#### 登录授权码被拒绝（10003）
+
+- 用 HTTP 状态和平台业务码分别判断结果。HTTP 200 也可能带 `10003`。记录阶段、平台 `requestId`（有则优先）、业务 trace、时间、宿主版本和 code 字段来源，日志和对话不输出 code 或 Token。
+- 同一次用户操作及并发首屏请求复用同一个登录任务。一次任务最多调用一次宿主登录和一次换票。收到 `10003` 即结束本次换票，不轮试响应壳里的其他候选，也不在同一任务自动再签发。用户重新打开或明确重试时才取新的 code。
+- 用实际体验包与线上后端的版本和环境核对 AppID、Loader、入口链接、请求域名及服务端注入的应用身份。源码版本、日志标记和部署产物不一致时，先定位线上版本。AppID 或环境不一致、过期和宿主签发失败应按证据区分；`10003` 本身不能证明其中任何一项。验收使用真实千岛宿主新签发的 code，确认换票成功并可读取需登录的页面。
+
 ### 封装请求函数
 
 ```javascript
@@ -727,11 +733,11 @@ function handleLogout() {
 <template>
   <div class="auth-demo">
     <div v-if="!isLoggedIn">
-      <button @click="handleLogin">登录</button>
+      <button @tap="handleLogin">登录</button>
     </div>
     <div v-else>
       <p>欢迎，{{ userInfo?.nickname }}</p>
-      <button @click="handleLogout">退出</button>
+      <button @tap="handleLogout">退出</button>
     </div>
     <p v-if="error" class="error">{{ error }}</p>
   </div>
@@ -786,7 +792,7 @@ function handleShare() {
       <img :src="spuInfo.cover" class="cover" />
       <h1>{{ spuInfo.name }}</h1>
       <p>{{ spuInfo.tagName }} · {{ spuInfo.categoryName }}</p>
-      <button @click="handleShare">分享</button>
+      <button @tap="handleShare">分享</button>
     </div>
   </div>
 </template>
@@ -810,7 +816,7 @@ pnpm run dev
 
 ### 真机调试
 
-要求 CLI **0.1.32 或更高稳定版**，仅支持 EMP。先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`；不足时按升级说明更新。确认本地和平台应用均为 EMP、当前账号具有应用开发权限后，在包含 `qdmp.json` 的前端目录执行（也支持根目录下存在 `frontend/qdmp.json` 的项目）：
+要求 CLI **0.1.32 或更高稳定版**，仅支持 EMP。先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`，自动检查并更新到 npm latest。确认本地和平台应用均为 EMP、当前账号具有应用开发权限后，在包含 `qdmp.json` 的前端目录执行（也支持根目录下存在 `frontend/qdmp.json` 的项目）：
 
 ```bash
 qdmp-cli debug
@@ -828,11 +834,21 @@ qdmp-cli debug --host 192.168.1.20 --port 9000
 
 Agent 使用 `qdmp-cli debug --json` 读取 NDJSON；需要对话内展示图片时加 `--qr-output <新的绝对PNG路径>`，确保父目录存在且文件不存在。收到 `ready` 后立即展示 `deepLink` 和实际 `qrImagePath`（或宿主支持的 `qrDataUrl`），保持后台进程运行并读取 `device-connected`、`device-info`、`log`、`device-disconnected`、`error`、`stopped` 事件。不要等待长期进程结束才展示二维码；`ready` 只说明服务就绪，不能当作手机已运行成功。JSON 模式不会交互登录；明确缺少登录态时，按 [Agent 对话登录](./agent-login.md) 执行 `qdmp-cli login --agent --env <prod|dev>`，完成后重试原命令。登录和操作必须使用同一环境；默认 `prod` 使用根主配置的 `appId`，显式 `--env dev` 使用目标环境的 `devAppId`。设置体验版也遵循这一环境与登录规则。
 
-常见失败：无应用开发权限时核对登录账号和平台协作者权限；扫码连接失败时检查 Wi-Fi、所选网卡、端口与防火墙；`--no-build` 提示缺少产物时重新运行 `qdmp-cli debug` 完成构建。重启会产生新的构建快照，使用本次返回的二维码重新扫码。
+#### 真机扫码排障
+
+- **显示「本地预览需要真实的 appid」**。核对预览链接查询参数中的 `appId`、`ready.appId` 和本次调试环境的项目 AppID。手机可能在下载前校验链接里的 ID。链接缺失时使用能生成带 `appId` 的 `qdmp-cli debug` 重新出码。
+- **扫旧码打不开，或等不到下载**。保持服务运行至本轮约定的真机验收完成。重启后以本次 `ready` 给出的新二维码为准。服务运行时检查手机到电脑的局域网、网卡、端口和防火墙。权限报错时核对扫码账号与应用协作者权限。
+- **连上后白屏、只有标题或像旧包**。新版 CLI 的 `ready.bundleSha256` 标识当前调试包，`bundle-requested` 记录 GET（含电脑探测），`device-connected` 记录日志连接。用页面可见的构建标识和 Vue 挂载证据确认手机实际加载的是哪一版。`--no-build` 缺产物或发现产物旧时重新构建并出码。验收体验版时核对平台当前体验版本和页面标识。
+
+#### 搜索或登录点击无响应
+
+1. 在千岛 App 打开已确认的构建。搜索与登录同时无反应时，先按 [EMP 事件分发排障](./emp-events.md#定位分发故障) 查事件是否进入业务函数，再查 Bridge。
+2. 记录页面挂载、处理函数进入、登录回调、HTTP 最终回调和会话建立；只记录阶段及脱敏状态。用户登录换票应以有效 code 的完整链路验收。CLI 登录、无效 code 的 401、电脑直连搜索成功和数据库 readiness 分属不同验证项。
+3. 按 [Bridge 实测差异](./bridge-api-guide.md#qdrequest--发起网络请求) 适配具体宿主。旧业务保留原登录路由、会话格式和身份键。旧缓存缺少有效换票 `openId` 时按原业务流程取得新 code，不能填入资料接口 ID。若历史业务曾用资料 ID 保存用户数据，先确认可信映射和归属再迁移。发布前用目标真机验证登录、普通请求、续期与切号。
 
 ### 设置体验版
 
-要求 CLI **0.1.32 或更高稳定版**，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs 0.1.32`。根据用户指定的是当前代码还是已上传版本选择以下入口，保持应用和环境一致。
+要求 CLI **0.1.32 或更高稳定版**，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`。根据用户指定的是当前代码还是已上传版本选择以下入口，保持应用和环境一致。
 
 #### 上传当前代码并设为体验版
 
@@ -845,7 +861,7 @@ qdmp-cli upload --experience -d "本次更新说明"
 qdmp-cli upload --experience --json -d "本次更新说明"
 ```
 
-CLI 自动读取上传接口返回的真实版本号并设为体验版，开发者无需手动输入版本号。普通 `qdmp-cli upload` 不会自动设置体验版；设置体验版不等于提审或正式发布。体验链接和二维码打开平台“当前体验版”，再次切换后会打开新版本，体验权限沿用平台规则。默认使用正式平台的同一个 appId；`--env dev` 选择开发环境 API，不表示“体验版”。
+CLI 自动读取上传接口返回的真实版本号并设为体验版。普通 `qdmp-cli upload` 只登记上传版本。体验链接和二维码打开平台“当前体验版”，再次切换后会打开新版本，体验权限沿用平台规则。部署流程沿用同一个生产 AppID。
 
 #### 将已上传版本设为体验版
 

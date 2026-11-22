@@ -20,10 +20,7 @@ type BridgeCompleteCallback = (res: unknown) => void
 
 ### qd.login — 获取登录凭证
 
-```js
-const res = await qd.login()
-// 将本次登录 code 发往自己的后端换票；不要记录授权码。
-```
+EMP 项目优先复用已在目标宿主验证过的登录适配。直接调用 `qd.login` 时，Android 千岛 6.66.0 / SDK 48 的实测路径从 `success/fail` 回调获取终态，模板或其他宿主的 Promise 封装以各自验证过的契约为准。参考[认证示例](./development-guide.md#认证流程示例)，将本次 code 发往自己的后端换票。
 
 `qd.login` 返回临时登录凭证，不直接提供用户 `openId`。后端保管 `appId/appSecret`，以 `AUTHORIZATION_CODE` 调用 `/auth/v1/token`，从成功响应的 `data.openId` 获取用户身份。**禁止从 `user.me`（`GET /user/v1/me`）获取或兜底 `openId`，也不能以其 `id` 替代。** 参考 [换票契约](./api-guide.md#21-获取-token) 和 [认证示例](./development-guide.md#认证流程示例)。
 
@@ -583,6 +580,8 @@ qd.onLoginStatusChanged(callback)
 qd.offLoginStatusChanged(callback)
 ```
 
+已有会话管理时保留明确的退出、切号和过期处理。存在延迟事件时先核对事件目标及当前登录尝试，避免用任意状态事件清掉刚建立的会话；只记录诊断阶段，不输出身份或凭证。
+
 ---
 
 ## 五、网络 (network)
@@ -593,15 +592,7 @@ qd.offLoginStatusChanged(callback)
 | ---- | ------- | --- | ------- | --- |
 | 支持 | ✓       | ✓   | ✓       | ✓   |
 
-```js
-const res = await qd.request({
-  url: 'https://api.example.com/data',
-  method: 'POST',
-  header: { 'Content-Type': 'application/json' },
-  data: { key: 'value' }
-})
-console.log(res.data, res.statusCode)
-```
+Android 千岛 6.66.0 / SDK 48 已复现 `qd.request` 的直接返回值仅表示调用已派发，完整 HTTP 响应由 `success/fail` 回调给出。该宿主的请求适配只用回调结算，保留超时与单次结算保护，并在响应后校验 HTTP 状态和业务码。不要让直接返回值和回调以先到者结算。已有 `Taro.request` 或 Promise 适配在目标宿主能返回完整 HTTP 响应时继续复用；切换调用方式前用真机验收目标版本。
 
 ### qd.uploadFile — 上传文件
 

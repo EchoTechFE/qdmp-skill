@@ -33,21 +33,23 @@ skills/
 
 ### 已安装旧版的升级与诊断
 
-QDMP 1.1.18 按官方仓库稳定 Git tag 检查 Skill 版本，并从所选标签对应的提交读取 Telemetry 分发清单。
-
-QDMP 1.1.17 补齐新项目初始化时 `frontend/project.config.json.appid` 的同步填写，并检查主配置、前端公开配置与构建产物的应用身份一致，避免模板空值被遗漏。
+当前插件包版本为 1.1.18，随包 Skill 版本为 1.1.16。新项目绑定 AppID 时同步核对根配置、前端公开配置与 `frontend/project.config.json.appid`。
 
 QDMP 1.1.15 固定使用已发布的 Agent Runtime Telemetry 0.2.18 制品与 SHA-256，修复旧运行时登录失败的原流程恢复、兼容版本复用、people-v1 参数兼容和 Hook 工作区诊断。新建项目先生成最终目录再告知收集；更新软件不扩大现有采集授权。
 
 QDMP 1.1.14 补充 [云服务使用规范](skills/qdmp-skill/knowledge/backend-operations.md#云服务使用规范)：禁止媒体文件内容写入云数据库，接口不存在时停止重试与轮询，避免触发 WAF 封禁。该版本正式发布后，更新并重新加载 Skill 才能应用这些规则。
 
-QDMP 1.1.13 按实际宿主检查已有安装，自动更新用户级独立安装的 Skill；插件仅在支持固定发布目标时自动更新，否则转人工处理。同版本也校验内容，并识别并存副本和旧收集流程。独立安装与插件安装只是同一公开版本的不同安装渠道，更新不会改变采集授权。旧客户端需先正常升级一次；1.1.13 正式发布后才能使用其标签升级。操作、限制及恢复方法见 [升级说明](skills/qdmp-skill/references/upgrade.md#三类旧入口的诊断与自动更新)。
+主 Skill 按实际宿主检查已发布的正式 GitHub Release 和本机安装。可更新、待重新加载和新版首次加载时，会在对话中提示版本、能力和下一步。也可直接问「检查 QDMP 更新」或「这一版有什么新能力」。同一宿主只保留一个启用的用户级渠道。实际加载新版并校验通过后，停用可验证的重复入口，复验后删除临时备份。旧客户端先从原渠道升级到带启动检查的正式版。详见 [升级说明](skills/qdmp-skill/references/upgrade.md#三类旧入口的诊断与自动更新)。
+
+可在 GitHub 仓库选择 **Watch → Custom → Releases** 订阅发布。完整变更见 [GitHub Releases](https://github.com/EchoTechFE/qdmp-skill/releases)。
+
+维护者在发版提交中同步更新四个 Skill 版本声明、主 Skill 启动参数的会话版本和 [发布说明](skills/qdmp-skill/references/release-notes.md)。三个宿主的插件包版本须一致，并与主 Skill 版本声明的 `plugin_version` 对应。推送与 Skill 版本对应的 `vX.Y.Z` 标签后，发布工作流运行测试并用这份说明创建同名正式 GitHub Release。
 
 ### 项目收集插件的安装边界
 
-QDMP 仅提供可选收集的提示和调用指引，不内置收集安装器、Bootstrap MCP 或上报脚本，也不改变原有开发、登录、部署流程。安装、目录授权、更新、三宿主适配、拒绝结果上报及持续采集均由独立的 `agent-runtime-telemetry` 维护。需要授权时只展示第 1 节授权短文案及完整说明链接，用户作出明确选择后，Agent 委派子 Agent 安装、补齐依赖或修复，并复验收集状态；没有子 Agent 时由主 Agent 执行。超出已有许可时只确认新增的软件动作；当前运行时采集不要求登录；旧运行时明确要求的登录和宿主安全确认仍需用户完成。
+QDMP 仅提供可选收集的提示和调用指引，不内置收集安装器、Bootstrap MCP 或上报脚本，也不改变原有开发、登录、部署流程。安装、目录授权、更新、三宿主适配及持续采集均由独立的 `agent-runtime-telemetry` 维护。需要授权时只展示第 1 节授权短文案及完整说明链接，用户作出明确选择后，Agent 委派子 Agent 安装、补齐依赖或修复，并复验收集状态；没有子 Agent 时由主 Agent 执行。超出已有许可时只确认新增的软件动作；当前运行时采集不要求登录；旧运行时明确要求的登录和宿主安全确认仍需用户完成。
 
-[Skill 内分发清单](skills/qdmp-skill/references/telemetry-distribution.json) 保存固定发布入口、SHA-256 和 telemetry 生成的 `pre_download_notice`（用于内部校验的告知数据与法律原文，绑定两个制品哈希和版本）。冷启动只展示状态机生成的 `display` 短文案及完整说明链接并取得一次明确确认，再下载/校验/执行独立 onboarding；实际动作超出授权范围时停止重新确认。拒绝下载或宿主拦截时不下载工具、不上报拒绝事件，也不影响业务。业务授权不能替代宿主执行审批。`onboarding: null` 或本地告知缺失表示入口不可用，不能先联网补文案。详见 [收集指引](skills/qdmp-skill/references/skill-data-consent.md)。
+[Skill 内分发清单](skills/qdmp-skill/references/telemetry-distribution.json) 保存固定发布入口、SHA-256 和 telemetry 生成的 `pre_download_notice`（用于内部校验的告知数据与法律原文，绑定两个制品哈希和版本）。冷启动只展示状态机生成的 `display` 短文案及完整说明链接并取得一次明确确认，再下载/校验/执行独立 onboarding；实际动作超出授权范围时停止重新确认。首次安装引导选择「暂不开启」后保存本地决定。只有用户在选择前已实际看到拒绝上报告知且未要求不上报，才发送一次最小拒绝事件。业务授权不能替代宿主执行审批。`onboarding: null` 或本地告知缺失表示入口不可用，不能先联网补文案。详见 [收集指引](skills/qdmp-skill/references/skill-data-consent.md)。
 
 `skills/qdmp-skill/references/telemetry-distribution.json` 是本仓库唯一的分发清单，发布维护和安装后运行都使用这一份，不再保留仓库根副本。早期根清单服务于现已移除的 QDMP Bootstrap；迁移到 Skill 内是为了支持独立安装 Skill，不是为了维护两份配置。运行时只按实际 Skill 安装路径读取，不读取用户工作目录。
 
@@ -286,7 +288,7 @@ Agent 按 backend/ 目录是否存在识别项目，再结合用户范围：纯�
 ```
 1. 配置环境 → Node.js、Go、qdmp-cli；前端步骤另需 pnpm
 2. 创建项目 → qdmp-cli create myApp（默认完整全栈模板，也可显式 -t default）
-3. 配置与依赖 → 本地填写模板自带的 qdmp-config.json，CLI 直接读取；在实际前端目录安装依赖
+3. 配置与依赖 → 部署预检自动补齐所需配置；在实际前端目录安装依赖
 4. 开发调试 → 按前后端各自 README 启动和验证
 5. 后端正式发布 → backend deploy --description "<说明>" 内部构建、校验归档并直接发布，完成全部上线验收；--review 为可选审查
 6. 前端构建与登录 → 在 frontend/ 执行 qdmp-cli build，按需 qdmp-cli login --agent --env prod
