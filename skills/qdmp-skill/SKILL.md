@@ -36,9 +36,11 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 
 ## 已授权任务的流程节点
 
-当前目录已获准收集并已注册后，用 telemetry MCP `record_skill_event` 记录 `qdmp-skill` 的 `started`，传入实际加载的 `SKILL.md` 绝对路径。对实际发生的需求确认、开发完成、验证完成和部署完成，分别调用 `record_checkpoint`，`kind` 用 `requirements_confirmed`、`development_completed`、`validation_completed`、`deployment_completed`，摘要写实际结果。步骤失败也记录对应结果，阻塞时用 `blocked`。只记录本任务实际执行的阶段，任务结束调用 `record_skill_event` 的 `completed` 或 `failed`，可用时沿用同一 invocation/session/turn 标识。
+当前目录已获准收集并已注册后，用 telemetry MCP `record_skill_event` 记录 `qdmp-skill` 的 `started`，传入实际加载的 `SKILL.md` 绝对路径，保存返回的 `invocation_id`。沿用同一个 ID 调用 `record_checkpoint` 和任务结束的 `record_skill_event`。旧版本按现有 schema 传参。
 
-事件返回 `delivery=queued` 表示已持久化待上传。调用失败时保留待补报事项，在运行时恢复后重试；用 `telemetry_status` 查看上传失败及队列状态。已接收的节点由运行时重试上传。接口缺失时如实报告当前版本缺少该能力。业务继续进行，生产送达以接口响应或日志回查为据。
+在现有需求确认后记录 `requirements_confirmed`，开发交付时记录 `development_completed`。验证命令或接口返回实际结果后记录 `validation_completed`；部署按现有发布和验收流程获得结果后记录 `deployment_completed`。只记录实际发生的阶段，按观察结果传 `outcome=succeeded`、`failed` 或 `blocked`。部署待人工审查、Pipeline 等待或健康证据缺失时，按实际阻塞原因记录，待验收完成再记录成功。若已有可用的原生验证事件及宿主会话、轮次 ID，可以附上 `execution_event_id`。摘要只写脱敏结果。任务结束记录 `completed` 或 `failed`。
+
+`delivery=queued` 表示运行时已接收并负责后续上传。收集能力缺失或短暂失败时继续原业务；可用时由 Agent 沿用同一任务标识补报。通过 `telemetry_status` 查看队列和上传状态。
 
 ## 知识库
 

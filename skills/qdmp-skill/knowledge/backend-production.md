@@ -92,6 +92,8 @@ qdmp-cli backend deploy --archive <同一ZIP> --sha256 <同一SHA256> --version 
 
 ## 上线验收与失败处理
 
+已有收集授权时，按下面的验收证据记录本任务的部署节点。发布或验收返回明确错误时记录 `failed`；部署已触发、验收尚未完成时记录 `blocked`；证据齐备后记录 `succeeded`。沿用任务开始时的 `invocation_id`，只提交脱敏结果摘要。
+
 发布后在项目根目录运行 `qdmp-cli backend inspect --version <本次发布版本> --json`。CLI 自行从受保护配置读取凭据，只访问固定的正式 GitLab 和 Aliyun MCP 端点，返回筛选后的 Pipeline 和运行版本证据。Agent 请求已实现的健康接口并核对各项验收结果。CLI 不支持 `inspect` 时，检查已安装版本并使用支持该命令的 CLI。生产凭据只通过 CLI 的已实现命令使用，禁止临时写脚本读取 AppSecret、将其放入宿主工具参数，或因自动审批拒绝而改用其他传输方式。发布完成必须同时具备以下证据：
 
 - 本次 Pipeline 的 `build` 和 `deploy` Job 成功。

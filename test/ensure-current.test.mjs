@@ -396,3 +396,26 @@ test("maintenance entry points execute through an aliased directory", t => {
     assert.match(run.stderr, error);
   }
 });
+
+test("an unavailable Telemetry pin does not block a verified Skill update or permit onboarding", async t => {
+  const f = fixture(t);
+  f.plugin();
+  const { latestRelease: _fixtureRelease, ...options } = f.options;
+  options.fetch = async url => url.includes("/tags?")
+    ? new Response(JSON.stringify([{ name: latest.tag, commit: { sha: "a".repeat(40) } }]))
+    : new Response("not found", { status: 404 });
+
+  await assert.rejects(latestRelease(options), error => error.details.stage === "manifest_api");
+  const updated = await ensureCurrent("ensure", f.args, options);
+  assert.equal(updated.latest.tag, latest.tag);
+  assert.equal(updated.personal_update.state, "updated");
+  assert.equal(updated.plugin_update.state, "updated");
+  assert.equal(updated.telemetry_pin_error.stage, "manifest_api");
+  assert.equal(updated.telemetry_changed, false);
+  assert.equal(updated.proceed_monitoring, false);
+
+  const afterReload = await ensureCurrent("ensure", f.args, options);
+  assert.equal(afterReload.state, "current");
+  assert.equal(afterReload.loaded_content_verified, true);
+  assert.equal(afterReload.proceed_monitoring, false);
+});

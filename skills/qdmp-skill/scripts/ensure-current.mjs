@@ -92,7 +92,7 @@ export function auditInstallation(args, options = {}) {
     copies, multiple_disk_copies: copies.length > 1, duplicate_installations: null, flows };
 }
 
-export async function latestRelease(options = {}) {
+export async function latestRelease(options = {}, { allowUnavailableTelemetryPin = false } = {}) {
   if (options.latestRelease) return options.latestRelease();
   const network = releaseReader(options); let stage = "tag_list";
   try {
@@ -111,18 +111,24 @@ export async function latestRelease(options = {}) {
     if (!latest) throw new Error("No stable QDMP version tag");
     if (!COMMIT_SHA.test(latest.commit ?? "")) throw new Error("Invalid commit SHA for latest QDMP tag");
     stage = "manifest_api";
-    let distribution;
     try {
-      // Give the same-commit raw endpoint time within the shared deadline.
-      distribution = await network.read(`https://api.github.com/repos/${REPO}/contents/${DISTRIBUTION_PATH}?ref=${latest.commit}`, stage, 256 * 1024, "application/vnd.github.raw+json", 1);
+      let distribution;
+      try {
+        // Give the same-commit raw endpoint time within the shared deadline.
+        distribution = await network.read(`https://api.github.com/repos/${REPO}/contents/${DISTRIBUTION_PATH}?ref=${latest.commit}`, stage, 256 * 1024, "application/vnd.github.raw+json", 1);
+      } catch (error) {
+        // Same repository and exact commit only. Never mask missing/invalid data or rate limits.
+        if (!error.retryable || error.status === 429 || error.retryAfter > 0 || network.remaining() <= 0) throw error;
+        stage = "manifest_raw";
+        distribution = await network.read(`https://raw.githubusercontent.com/${REPO}/${latest.commit}/${DISTRIBUTION_PATH}`, stage, 256 * 1024);
+      }
+      if (!STABLE.test(distribution?.version ?? "") || !/^[a-f0-9]{64}$/.test(distribution?.onboarding?.sha256 ?? "")) throw new Error("Published telemetry pin invalid");
+      return { ...latest, distribution, lookup: network.info() };
     } catch (error) {
-      // Same repository and exact commit only. Never mask missing/invalid data or rate limits.
-      if (!error.retryable || error.status === 429 || error.retryAfter > 0 || network.remaining() <= 0) throw error;
-      stage = "manifest_raw";
-      distribution = await network.read(`https://raw.githubusercontent.com/${REPO}/${latest.commit}/${DISTRIBUTION_PATH}`, stage, 256 * 1024);
+      if (!allowUnavailableTelemetryPin) throw error;
+      return { ...latest, distribution: null, lookup: network.info(),
+        distribution_error: { stage, message: error.message } };
     }
-    if (!STABLE.test(distribution?.version ?? "") || !/^[a-f0-9]{64}$/.test(distribution?.onboarding?.sha256 ?? "")) throw new Error("Published telemetry pin invalid");
-    return { ...latest, distribution, lookup: network.info() };
   } catch (error) { error.details ??= { stage, ...network.info() }; throw error; }
 }
 // Windows npm shims are not executables. Resolve their JS bin without cmd.exe.
@@ -376,10 +382,11 @@ export async function ensureCurrent(mode, args, options = {}) {
   }
   const audit = auditInstallation(args, options), result = { ...audit, mode, changes: [], telemetry_changed: false };
   let latest;
-  try { latest = await latestRelease(options); if (!STABLE.test(latest?.version) || latest.tag !== `v${latest.version}`) throw new Error("Invalid stable release"); }
+  try { latest = await latestRelease(options, { allowUnavailableTelemetryPin: true }); if (!STABLE.test(latest?.version) || latest.tag !== `v${latest.version}`) throw new Error("Invalid stable release"); }
   catch (e) { return { ...result, state: "release_check_failed", diagnostic: e.message, release_lookup: e.details, proceed_monitoring: false, instruction: "Do not install from an unknown release. Existing business tasks and authorized telemetry may continue unchanged." }; }
   result.latest = { version: latest.version, tag: latest.tag, telemetry_version: latest.distribution?.version,
     onboarding_sha256: latest.distribution?.onboarding?.sha256, lookup: latest.lookup };
+  if (latest.distribution_error) result.telemetry_pin_error = latest.distribution_error;
   if (latest.distribution) result.flows = auditInstallation(args, { ...options, distribution: latest.distribution }).flows;
   const opts = { ...options, cwd: audit.cwd };
   let row;
@@ -440,9 +447,10 @@ export async function ensureCurrent(mode, args, options = {}) {
     if (loadedStale && !result.changes.length) result.loaded_diagnostic = "The loaded Skill is unversioned or stale and was not updated through a managed personal/plugin channel. Refresh its original installation; do not run its old onboarding.";
     return { ...result, state: blocked ? result.changes.length ? "partial_update" : "manual_required" : result.changes.length ? "reload_required" : "current",
       reload_required: result.changes.length > 0,
-      proceed_monitoring: !blocked && !result.changes.length && loadedCurrent !== null && loadedCurrent >= 0,
+      proceed_monitoring: !latest.distribution_error && !blocked && !result.changes.length && loadedCurrent !== null && loadedCurrent >= 0,
       instruction: blocked ? "One or more channels remain blocked. Read personal_update/plugin_update diagnostics; a reload alone does not resolve them. Reload successfully updated channels, but do not execute stale onboarding. Business tasks may continue."
         : result.changes.length ? "Disk updates verified. Reload the actual host and read the updated Skill before continuing; old in-memory instructions and old pinned flows do not become current automatically. Telemetry authorization/trust are unchanged."
+        : latest.distribution_error ? "The Skill release is verified, but the Telemetry pin is unavailable. Continue business work and existing authorized collection; skip new Telemetry onboarding."
         : "Use current compatible flows only; retain old consent evidence without replay." };
   } finally { try { staged?.cleanup?.(); } finally { fs.closeSync(fd); fs.unlinkSync(lock); } }
 }
