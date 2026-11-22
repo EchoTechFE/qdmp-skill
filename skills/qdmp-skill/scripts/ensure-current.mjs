@@ -12,11 +12,66 @@ const REPO = "EchoTechFE/qdmp-skill", MARKET = "qdmp-marketplace", PLUGIN = "qdm
 const UUID = /^[a-f0-9-]{36}$/;
 const COMMIT_SHA = /^[a-f0-9]{40}$/;
 const DISTRIBUTION_PATH = "skills/qdmp-skill/references/telemetry-distribution.json";
+const RELEASE_URL = `https://github.com/${REPO}/releases/tag`;
+const RELEASE_HEADING = "## 用户可见更新";
 const STABLE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const HOSTS = { codex: ".codex", "claude-code": ".claude", qoder: ".qoder" };
 const SKILLS = ["qdmp-skill", "qdmp-product-rules", "qdmp-design-rules", "qdmp-entry-route"];
 const hash = x => crypto.createHash("sha256").update(x).digest("hex");
 function json(file, fallback = null) { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { if (e.code === "ENOENT") return fallback; throw e; } }
+export function releaseHighlights(notes) {
+  if (typeof notes !== "string") return [];
+  const lines = notes.split(/\r?\n/);
+  const heading = lines.indexOf(RELEASE_HEADING);
+  if (heading === -1) return [];
+  const highlights = [];
+  for (const line of lines.slice(heading + 1)) {
+    if (line.startsWith("#")) break;
+    const text = line.match(/^- (.{1,160})$/u)?.[1]?.trim();
+    if (text) highlights.push(text);
+    if (highlights.length === 5) break;
+  }
+  return highlights;
+}
+
+function installedNotes(audit) {
+  if (!audit.loaded_version) return undefined;
+  try {
+    const notes = fs.readFileSync(path.join(audit.loaded_skill, "references/release-notes.md"), "utf8");
+    const tag = `v${audit.loaded_version}`;
+    if (notes.split(/\r?\n/, 1)[0] !== `# QDMP Skill ${tag}`) return undefined;
+    const highlights = releaseHighlights(notes);
+    if (highlights.length) return { version: audit.loaded_version, highlights, url: `${RELEASE_URL}/${tag}` };
+  } catch { /* Release notes are optional for older installations. */ }
+}
+
+function loadedChannel(audit, args) {
+  return audit.copies.find(copy => copy.root === args.skillDir)?.channel ?? "loaded_other";
+}
+
+function noticeOnce(result, audit, args, options, kind, release) {
+  if (args.loadedVersion === undefined || !release) return result;
+  const channel = result.active_channel ?? loadedChannel(audit, args);
+  const installation = channel === "plugin_cache" ? null : audit.loaded_skill;
+  const dir = path.join(options.homeDir ?? os.homedir(), ".qdmp-skill", "release-notices");
+  const marker = noticeKind => path.join(dir, hash(JSON.stringify([audit.host, audit.config, channel, installation, noticeKind, release.version])));
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (kind === "available" && ["reload_required", "switch_required"].some(previous => fs.existsSync(marker(previous)))) return result;
+    fs.writeFileSync(marker(kind), "", { flag: "wx", mode: 0o600 });
+  } catch (error) {
+    if (error.code === "EEXIST") return result;
+    return { ...result, notice_cache_error: error.code ?? "UNAVAILABLE" };
+  }
+  const highlights = kind === "loaded" ? release.highlights : kind === "available" ? release.highlights?.slice(0, 1) : [];
+  return { ...result, update_notice: { kind, host: audit.host, channel, loaded_version: args.loadedVersion, ...release, highlights: highlights ?? [] } };
+}
+
+function pendingDiskReload(result) {
+  return { ...result, state: "reload_required", reload_required: true, reload_for_current: true,
+    reload_reason: "disk_version_changed", proceed_monitoring: false,
+    instruction: "Reload the host to use the newer Skill on disk." };
+}
 export function compare(a, b) {
   if (!STABLE.test(a ?? "") || !STABLE.test(b ?? "")) return null;
   for (let i = 0; i < 3; i++) { const d = BigInt(a.split(".")[i]) - BigInt(b.split(".")[i]); if (d) return d > 0n ? 1 : -1; }
@@ -94,22 +149,34 @@ export function auditInstallation(args, options = {}) {
 
 export async function latestRelease(options = {}, { allowUnavailableTelemetryPin = false } = {}) {
   if (options.latestRelease) return options.latestRelease();
-  const network = releaseReader(options); let stage = "tag_list";
+  const network = releaseReader(options); let stage = "release_list";
+  const api = `https://api.github.com/repos/${REPO}`;
   try {
     let latest;
     for (let page = 1; ; page++) {
-      const batch = await network.read(`https://api.github.com/repos/${REPO}/tags?per_page=100&page=${page}`, stage, 5 * 1024 * 1024);
-      if (!Array.isArray(batch) || batch.some(tag => typeof tag?.name !== "string")) throw new Error("Invalid repository tag list");
-      for (const { name, commit } of batch) {
-        const version = name.slice(1);
-        if (name.startsWith("v") && STABLE.test(version) && (!latest || compare(version, latest.version) > 0)) {
-          latest = { version, tag: name, commit: commit?.sha };
+      const batch = await network.read(`${api}/releases?per_page=100&page=${page}`, stage, 5 * 1024 * 1024);
+      if (!Array.isArray(batch) || batch.some(release => typeof release?.tag_name !== "string")) throw new Error("Invalid repository release list");
+      for (const { tag_name: tag, draft, prerelease, published_at: publishedAt, body } of batch) {
+        const version = tag.slice(1);
+        if (draft === false && prerelease === false && typeof publishedAt === "string" && Number.isFinite(Date.parse(publishedAt))
+          && tag.startsWith("v") && STABLE.test(version) && (!latest || compare(version, latest.version) > 0)) {
+          latest = { version, tag, url: `${RELEASE_URL}/${tag}`, highlights: releaseHighlights(body) };
         }
       }
       if (batch.length < 100) break;
     }
-    if (!latest) throw new Error("No stable QDMP version tag");
-    if (!COMMIT_SHA.test(latest.commit ?? "")) throw new Error("Invalid commit SHA for latest QDMP tag");
+    if (!latest) throw new Error("No published stable QDMP release");
+    stage = "release_commit";
+    const tagRef = await network.read(`${api}/git/ref/tags/${latest.tag}`, stage, 256 * 1024);
+    if (tagRef?.ref !== `refs/tags/${latest.tag}`) throw new Error("Published QDMP release tag reference is invalid");
+    let object = tagRef.object;
+    for (let depth = 0; object?.type === "tag" && COMMIT_SHA.test(object.sha ?? "") && depth < 4; depth++) {
+      const tag = await network.read(`${api}/git/tags/${object.sha}`, stage, 256 * 1024);
+      if (tag?.sha !== object.sha) throw new Error("Published QDMP release tag object is invalid");
+      object = tag.object;
+    }
+    if (object?.type !== "commit" || !COMMIT_SHA.test(object.sha ?? "")) throw new Error("Invalid commit SHA for published QDMP release");
+    latest.commit = object.sha;
     stage = "manifest_api";
     try {
       let distribution;
@@ -239,13 +306,12 @@ function frozenSnapshot(stage, latest, options) {
   if (packageDigest(root) !== digest) throw new Error("Frozen release cache was modified; inspect manually");
   return root;
 }
-function updatePlugin(row, audit, latest, options) {
+function updatePlugin(row, audit, latest, options, checkOnly = false) {
   if (!row) return { state: "not_installed" };
   const attemptsFile = path.join(options.homeDir ?? os.homedir(), ".qdmp-skill/update-attempts.json");
   const key = `${audit.host}:${audit.config}:${latest.tag}`, attempts = json(attemptsFile, {});
   if (attempts[key] && attempts[key].state !== "verified") return { state: "manual_required", reason: "previous_update_attempt_requires_readback", previous: attempts[key] };
-  if (compare(row.version, latest.version) === null) return { state: "manual_required", reason: "unknown_installed_version" };
-  if (compare(row.version, latest.version) > 0) return { state: "newer_preserved", version: row.version };
+  if (!STABLE.test(row.version ?? "")) return { state: "manual_required", reason: "unknown_installed_version" };
   if (row.enabled === false || row.disabled === true) return { state: "manual_required", reason: "disabled_plugin_not_auto_enabled" };
   if (row.marketplaceName && row.marketplaceName !== MARKET) return { state: "manual_required", reason: "different_marketplace" };
   const source = sourceFor(row, audit);
@@ -257,9 +323,15 @@ function updatePlugin(row, audit, latest, options) {
   if (declared?.name !== "qdmp" || declared.version !== row.version) return { state: "manual_required", reason: "plugin_identity_mismatch" };
   const staged = checkout(latest, options);
   try {
-    if (row.version === latest.version) return packageDigest(root) === packageDigest(staged.root)
-      ? { state: "current", version: row.version, content_verified: true }
+    const pluginVersion = staged.pluginVersion;
+    const installedSkillVersion = version(path.join(root, "skills/qdmp-skill"));
+    if (compare(row.version, pluginVersion) > 0 || compare(installedSkillVersion, latest.version) > 0) {
+      return { state: "newer_preserved", version: row.version, skill_version: installedSkillVersion };
+    }
+    if (row.version === pluginVersion) return packageDigest(root) === packageDigest(staged.root)
+      ? { state: "current", version: row.version, content_verified: true, root }
       : { state: "manual_required", reason: "same_version_content_mismatch", version: row.version };
+    if (checkOnly) return { state: "update_required" };
     if (audit.host !== "codex") return { state: "manual_required", reason: "immutable_plugin_update_not_supported", target: latest.tag,
       instruction: "This host has no verified immutable install adapter. Do not update from a moving default branch. Independently installed Skills can still be updated safely." };
     const executable = cli(audit.host, options);
@@ -278,16 +350,47 @@ function updatePlugin(row, audit, latest, options) {
       // Per-command override only; leave the user's official tracking source intact.
       command(executable, ["plugin", action, PLUGIN, "-c", `marketplaces.${MARKET}.source_type="local"`, "-c", `marketplaces.${MARKET}.source=${JSON.stringify(frozen)}`], options, 60000);
       const after = inventory(audit.host, executable, options);
-      if (!after || compare(after.version, latest.version) !== 0) throw new Error("Plugin command returned without the exact published version; inspect live installation, do not retry blindly");
+      if (!after || compare(after.version, pluginVersion) !== 0) throw new Error("Plugin command returned without the exact published version; inspect live installation, do not retry blindly");
       const manifest = json(path.join(pluginRoot(after, audit), audit.host === "codex" ? ".codex-plugin" : audit.host === "qoder" ? ".qoder-plugin" : ".claude-plugin", "plugin.json"));
-      if (manifest?.version !== latest.version || manifest.name !== "qdmp") throw new Error("Updated plugin disk manifest mismatch");
+      if (manifest?.version !== pluginVersion || manifest.name !== "qdmp") throw new Error("Updated plugin disk manifest mismatch");
       if (after.enabled === false || after.disabled === true || after.scope && after.scope !== "user") throw new Error("Updated plugin is disabled or its scope changed");
       if (packageDigest(pluginRoot(after, audit)) !== packageDigest(staged.root)) throw new Error("Updated plugin package differs from the published tag");
-      attempts[key].state = "verified"; return { state: "updated", version: after.version, backup, reload_required: true };
+      attempts[key].state = "verified"; return { state: "updated", version: after.version, backup, root: pluginRoot(after, audit), reload_required: true };
     } catch (e) { attempts[key].state = "uncertain"; attempts[key].diagnostic = e.message; return { state: "manual_required", reason: "update_failed_or_unverified", diagnostic: e.message, backup }; }
     finally { atomicJson(attemptsFile, attempts); }
   } finally { staged.cleanup?.(); }
 }
+// Keep actual installations, rollback backups and the copy used by this call.
+function pruneOlderQdmpCaches(audit, latest, plugin, options) {
+  const frozen = path.join(options.homeDir ?? os.homedir(), ".qdmp-skill", "releases");
+  const hostCache = path.join(audit.config, "plugins", "cache", MARKET, "qdmp");
+  const removed = [];
+  const prune = (root, pattern, targetVersion) => {
+    if (!fs.existsSync(root) || fs.lstatSync(root).isSymbolicLink()) return;
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      const old = entry.name.match(pattern)?.[1];
+      if (!entry.isDirectory() || compare(old, targetVersion) !== -1) continue;
+      const candidate = path.join(root, entry.name);
+      const resolved = fs.realpathSync(candidate);
+      if (path.dirname(resolved) !== fs.realpathSync(root) || resolved === plugin.root
+        || audit.loaded_skill === resolved || audit.loaded_skill.startsWith(resolved + path.sep)) continue;
+      if (fs.existsSync(path.join(resolved, ".in_use"))) continue;
+      const manifest = json(path.join(resolved, ".codex-plugin", "plugin.json"));
+      if (manifest?.name !== "qdmp" || manifest.version !== old) continue;
+      try { fs.rmSync(candidate, { recursive: true }); removed.push(candidate); }
+      catch { /* Windows can retain an open handle on the old cache. */ }
+    }
+  };
+  if (plugin.state === "current" || plugin.state === "updated" || plugin.state === "not_installed") {
+    prune(frozen, /^v(\d+\.\d+\.\d+)-[a-f0-9]{16}$/, latest.version);
+  }
+  // A host cache may still serve the old Skill while a reload is pending.
+  if (audit.host === "codex" && plugin.state === "current" && audit.loaded_version === latest.version && options.loadedVerified) {
+    prune(hostCache, /^(\d+\.\d+\.\d+)$/, plugin.version);
+  }
+  return removed;
+}
+
 function checkout(latest, options) {
   if (options.checkout) return options.checkout(latest);
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "qdmp-update-"));
@@ -302,10 +405,13 @@ function checkout(latest, options) {
   return { root, cleanup: () => fs.rmSync(temp, { recursive: true, force: true }) };
 }
 function validateRelease(root, latest) {
+  const declaration = json(path.join(root, "skills/qdmp-skill/references/skill-release.json"));
+  const pluginVersion = declaration && Object.hasOwn(declaration, "plugin_version") ? declaration.plugin_version : latest.version;
+  if (!STABLE.test(pluginVersion ?? "")) throw new Error("Invalid published plugin version");
   for (const native of HOST_FILES.slice(1)) if (fs.existsSync(path.join(root, native))) throw new Error("Release contains reserved host metadata");
   for (const host of [".codex-plugin", ".claude-plugin", ".qoder-plugin"]) {
     const m = json(path.join(root, host, "plugin.json"));
-    if (m?.name !== "qdmp" || m.version !== latest.version) throw new Error("Published release manifest mismatch");
+    if (m?.name !== "qdmp" || m.version !== pluginVersion) throw new Error("Published release manifest mismatch");
   }
   for (const name of SKILLS) {
     const dir = path.join(root, "skills", name);
@@ -315,7 +421,108 @@ function validateRelease(root, latest) {
   }
   packageDigest(root);
   if (latest.distribution && JSON.stringify(json(path.join(root, "skills/qdmp-skill/references/telemetry-distribution.json"))) !== JSON.stringify(latest.distribution)) throw new Error("Published manifest changed during checkout");
+  return pluginVersion;
 }
+
+function duplicateBackup(audit, options, channel) {
+  const id = hash(JSON.stringify([audit.host, audit.config, channel]));
+  return path.join(options.homeDir ?? os.homedir(), ".qdmp-skill", "channel-cleanup", id);
+}
+
+function retirePersonal(audit, latest, options, verifyKeeper) {
+  const root = path.join(audit.config, "skills");
+  const backup = duplicateBackup(audit, options, "personal");
+  if (!SKILLS.some(name => fs.existsSync(path.join(root, name))) && !fs.existsSync(backup)) return null;
+  if (!verifyKeeper()) throw new Error("Active plugin could not be verified");
+  fs.mkdirSync(path.dirname(backup), { recursive: true, mode: 0o700 });
+  if (fs.realpathSync(root) !== root || (fs.existsSync(backup) && fs.realpathSync(backup) !== backup)) {
+    throw new Error("Linked standalone discovery or backup directory");
+  }
+  if (fs.realpathSync(path.dirname(backup)) !== path.dirname(backup)) throw new Error("Linked cleanup directory");
+  if (fs.existsSync(backup) && fs.readdirSync(backup).some(name => !SKILLS.includes(name))) throw new Error("Unexpected standalone backup entries");
+  const snapshots = new Map();
+  const moved = [];
+  try {
+    const entries = SKILLS.map(name => {
+      const installed = path.join(root, name);
+      const saved = path.join(backup, name);
+      if (fs.existsSync(installed) && fs.existsSync(saved)) throw new Error(`Conflicting cleanup copies: ${name}`);
+      const source = fs.existsSync(installed) ? installed : saved;
+      if (!fs.existsSync(source)) return null;
+      if (fs.realpathSync(source) !== source) throw new Error(`Linked standalone Skill: ${name}`);
+      const versionOnDisk = version(source);
+      const compared = compare(versionOnDisk, latest.version);
+      if (compared === null || compared > 0) throw new Error(`Standalone version requires review: ${name}`);
+      const release = compared === 0 ? options.checkout() : snapshots.get(versionOnDisk)
+        ?? checkout({ version: versionOnDisk, tag: `v${versionOnDisk}` }, options.originalOptions);
+      if (compared < 0) snapshots.set(versionOnDisk, release);
+      const digest = directoryDigest(source);
+      if (digest !== directoryDigest(path.join(release.root, "skills", name))) throw new Error(`Standalone Skill has local changes: ${name}`);
+      return { installed, saved, source, digest };
+    }).filter(Boolean);
+    fs.mkdirSync(backup, { recursive: true, mode: 0o700 });
+    for (const { installed, saved, source, digest } of entries) {
+      if (source !== installed) continue;
+      if (directoryDigest(installed) !== digest || fs.existsSync(saved)) throw new Error("Standalone Skill changed during cleanup");
+      fs.renameSync(installed, saved);
+      moved.push({ installed, saved });
+    }
+    if (entries.some(entry => fs.existsSync(entry.installed)) || !verifyKeeper()) throw new Error("Single-channel verification failed");
+  } catch (error) {
+    for (const { installed, saved } of moved.reverse()) if (!fs.existsSync(installed)) fs.renameSync(saved, installed);
+    throw error;
+  } finally {
+    for (const release of snapshots.values()) release.cleanup?.();
+  }
+  fs.rmSync(backup, { recursive: true });
+  return { state: "retired", channel: "personal" };
+}
+
+function retirePlugin(row, audit, latest, options, verifyKeeper) {
+  const backup = duplicateBackup(audit, options, "plugin");
+  if (row === undefined) return { state: "manual_required", channel: "plugin_cache", reason: "inventory_unavailable" };
+  if (!row || row.enabled === false || row.disabled === true) {
+    if (!fs.existsSync(backup)) return null;
+    if (fs.realpathSync(backup) !== backup || !verifyKeeper()) throw new Error("Plugin cleanup backup cannot be verified");
+    fs.rmSync(backup, { recursive: true });
+    return { state: "retired", channel: "plugin_cache" };
+  }
+  const source = sourceFor(row, audit);
+  const pluginVersion = options.checkout().pluginVersion;
+  if (row.enabled !== true || row.scope && row.scope !== "user" || row.marketplaceName && row.marketplaceName !== MARKET
+    || !official(source.source) || source.pinned || compare(row.version, pluginVersion) === null || compare(row.version, pluginVersion) > 0) {
+    return { state: "manual_required", channel: "plugin_cache", reason: "unverified_or_scoped_plugin" };
+  }
+  if (!verifyKeeper()) throw new Error("Active standalone Skill could not be verified");
+  const executable = cli(audit.host, options), codex = audit.host === "codex";
+  if (codex) {
+    fs.mkdirSync(path.dirname(backup), { recursive: true, mode: 0o700 });
+    if (fs.realpathSync(path.dirname(backup)) !== path.dirname(backup)) throw new Error("Linked cleanup directory");
+    const root = pluginRoot(row, audit);
+    if (fs.realpathSync(root) !== root) throw new Error("Linked plugin installation");
+    const installedSkillVersion = version(path.join(root, "skills/qdmp-skill"));
+    const compared = compare(installedSkillVersion, latest.version);
+    if (compared === null || compared > 0) throw new Error("Installed plugin Skill version requires review");
+    const installedRelease = compared === 0 ? options.checkout()
+      : checkout({ version: installedSkillVersion, tag: `v${installedSkillVersion}` }, options.originalOptions);
+    try {
+      const digest = packageDigest(installedRelease.root);
+      if (packageDigest(root) !== digest) throw new Error("Plugin package has local changes");
+      if (!fs.existsSync(backup)) fs.cpSync(root, backup, { recursive: true });
+      if (fs.realpathSync(backup) !== backup || packageDigest(backup) !== digest) throw new Error("Plugin cleanup backup mismatch");
+    } finally {
+      if (compared < 0) installedRelease.cleanup?.();
+    }
+  }
+  const verb = codex ? "remove" : "disable";
+  const args = ["plugin", verb, PLUGIN, ...(audit.host === "claude-code" ? ["--scope", "user"] : [])];
+  command(executable, args, options);
+  const remaining = inventory(audit.host, executable, options);
+  if (!verifyKeeper() || (remaining && remaining.enabled !== false && remaining.disabled !== true)) throw new Error("Single-channel verification failed");
+  if (codex) fs.rmSync(backup, { recursive: true });
+  return { state: "retired", channel: "plugin_cache" };
+}
+
 function updatePersonal(audit, latest, options) {
   const main = audit.copies.find(c => c.channel === "personal");
   if (!main) return { state: "not_installed" };
@@ -376,16 +583,31 @@ function updatePersonal(audit, latest, options) {
 export async function ensureCurrent(mode, args, options = {}) {
   if (!["diagnose", "ensure"].includes(mode)) throw new Error("mode must be diagnose or ensure");
   if (!Object.hasOwn(HOSTS, args.host) || !path.isAbsolute(args.cwd || "") || !path.isAbsolute(args.skillDir || "")) throw new Error("explicit supported host, absolute cwd and actual loaded skill directory required");
+  if (args.loadedVersion !== undefined && !STABLE.test(args.loadedVersion)) throw new Error("loaded version must be stable X.Y.Z");
   if (mode === "ensure") {
     const recovery = recoverPending(options.homeDir ?? os.homedir());
     if (recovery.state === "busy") return { mode, state: "update_busy", recovery, proceed_monitoring: false, telemetry_changed: false };
   }
-  const audit = auditInstallation(args, options), result = { ...audit, mode, changes: [], telemetry_changed: false };
+  const audit = auditInstallation(args, options), result = { ...audit, mode, changes: [], telemetry_changed: false,
+    session_version: args.loadedVersion };
+  const localRelease = installedNotes(audit);
+  if (localRelease) result.disk_release = localRelease;
+  // A file replacement does not change the Skill instructions already loaded into a session.
+  const diskAhead = compare(audit.loaded_version, args.loadedVersion) === 1;
+  if (diskAhead && mode === "ensure") return noticeOnce(pendingDiskReload(result), audit, args, options,
+    "reload_required", localRelease ?? { version: audit.loaded_version });
+  const activeRelease = args.loadedVersion === audit.loaded_version ? localRelease : undefined;
   let latest;
   try { latest = await latestRelease(options, { allowUnavailableTelemetryPin: true }); if (!STABLE.test(latest?.version) || latest.tag !== `v${latest.version}`) throw new Error("Invalid stable release"); }
-  catch (e) { return { ...result, state: "release_check_failed", diagnostic: e.message, release_lookup: e.details, proceed_monitoring: false, instruction: "Do not install from an unknown release. Existing business tasks and authorized telemetry may continue unchanged." }; }
+  catch (e) {
+    const failed = { ...(diskAhead ? pendingDiskReload(result) : result), state: "release_check_failed",
+      diagnostic: e.message, release_lookup: e.details, proceed_monitoring: false,
+      instruction: "Do not install from an unknown release. Existing business tasks and authorized telemetry may continue unchanged." };
+    return mode === "ensure" ? noticeOnce(failed, audit, args, options, "loaded", activeRelease) : failed;
+  }
   result.latest = { version: latest.version, tag: latest.tag, telemetry_version: latest.distribution?.version,
-    onboarding_sha256: latest.distribution?.onboarding?.sha256, lookup: latest.lookup };
+    onboarding_sha256: latest.distribution?.onboarding?.sha256, lookup: latest.lookup,
+    url: `${RELEASE_URL}/${latest.tag}`, highlights: latest.highlights ?? [] };
   if (latest.distribution_error) result.telemetry_pin_error = latest.distribution_error;
   if (latest.distribution) result.flows = auditInstallation(args, { ...options, distribution: latest.distribution }).flows;
   const opts = { ...options, cwd: audit.cwd };
@@ -408,55 +630,142 @@ export async function ensureCurrent(mode, args, options = {}) {
   }
   try { result.marketplace_snapshot = marketplaceSnapshot(audit, opts); }
   catch (e) { result.marketplace_snapshot = { diagnostic: e.message }; }
-  result.duplicate_installations = row === undefined ? null : row !== null && audit.copies.some(c => c.channel === "personal");
-  if (mode === "diagnose") return { ...result, state: "diagnosed", proceed_monitoring: false };
+  result.duplicate_installations = row === undefined ? null
+    : row !== null && row.enabled !== false && row.disabled !== true && audit.copies.some(c => c.channel === "personal");
+  if (mode === "diagnose") return { ...(diskAhead ? pendingDiskReload(result) : result), state: "diagnosed", proceed_monitoring: false };
   const stateDir = path.join(options.homeDir ?? os.homedir(), ".qdmp-skill"); fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
   const lock = path.join(stateDir, "skill-update.lock"); let fd;
   try { fd = fs.openSync(lock, "wx", 0o600); fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, host: args.host, created_at: new Date().toISOString() })); fs.fsyncSync(fd); }
   catch (e) { if (e.code === "EEXIST") return { ...result, state: "update_busy", proceed_monitoring: false }; throw e; }
-  let staged, stageError;
-  const updateOptions = { ...opts, checkout: () => {
+  let staged, stageError, pluginVersion;
+  const updateOptions = { ...opts, originalOptions: opts, checkout: () => {
     if (stageError) throw stageError;
     try {
-      if (!staged) { staged = checkout(latest, opts); validateRelease(staged.root, latest); }
-      return { root: staged.root };
+      if (!staged) { staged = checkout(latest, opts); pluginVersion = validateRelease(staged.root, latest); }
+      return { root: staged.root, pluginVersion };
     }
     catch (error) { stageError = error; throw error; }
   } };
   try {
     // The lock may have been acquired after another invocation completed.
     const fresh = auditInstallation(args, options);
+    if (compare(fresh.loaded_version, args.loadedVersion) === 1) {
+      const diskRelease = installedNotes(fresh);
+      const pending = pendingDiskReload({ ...result, ...fresh, disk_release: diskRelease });
+      return noticeOnce(pending, fresh, args, options, "reload_required", diskRelease ?? { version: fresh.loaded_version });
+    }
     try { row = inventory(audit.host, cli(audit.host, opts), opts); }
     catch { /* retain only prior absence proven from the same-host explicit registry */ if (row !== null) row = undefined; }
-    try { result.personal_update = updatePersonal(fresh, latest, updateOptions); } catch (e) { result.personal_update = { state: "manual_required", diagnostic: e.message }; }
-    try { result.plugin_update = row === undefined ? { state: "manual_required", reason: "inventory_unavailable" } : updatePlugin(row, audit, latest, updateOptions); }
-    catch (e) { result.plugin_update = { state: "manual_required", diagnostic: e.message }; }
-    for (const key of ["personal_update", "plugin_update"]) if (result[key].state === "updated") result.changes.push(key);
-    const loadedCurrent = compare(audit.loaded_version, latest.version);
+    const channel = loadedChannel(fresh, args);
+    result.active_channel = channel;
+    const loadedCurrent = compare(fresh.loaded_version, latest.version);
     const loadedStale = loadedCurrent === null || loadedCurrent < 0;
-    let loadedMismatch = false;
-    if (loadedCurrent === 0 && !result.changes.length) {
+    const target = { version: result.latest.version, url: result.latest.url, highlights: result.latest.highlights };
+    const verifyPersonal = () => {
+      const personal = fresh.copies.find(copy => copy.channel === "personal");
+      if (!personal || personal.linked || personal.version !== latest.version || fs.realpathSync(personal.root) !== personal.root) return null;
+      const release = updateOptions.checkout();
+      return directoryDigest(personal.root) === directoryDigest(path.join(release.root, "skills/qdmp-skill")) ? personal.root : null;
+    };
+    const runPlugin = (checkOnly = false) => {
+      try { return row === undefined ? { state: "manual_required", reason: "inventory_unavailable" } : updatePlugin(row, fresh, latest, updateOptions, checkOnly); }
+      catch (error) { return { state: "manual_required", diagnostic: error.message }; }
+    };
+
+    let pluginAtTarget;
+    if (loadedStale && row) pluginAtTarget = runPlugin(true);
+    let ready;
+    if (loadedStale && channel !== "personal" && !(channel === "plugin_cache" && pluginAtTarget?.state === "current")) {
       try {
-        const release = checkout(latest, updateOptions);
-        result.loaded_content_verified = directoryDigest(audit.loaded_skill) === directoryDigest(path.join(release.root, "skills/qdmp-skill"));
+        const skillDir = verifyPersonal();
+        if (skillDir) ready = { channel: "personal", skill_dir: skillDir };
+      } catch { /* A copy that cannot be verified cannot be offered as ready. */ }
+    }
+    if (channel !== "plugin_cache" && pluginAtTarget?.state === "current" && !ready) {
+      ready = { channel: "plugin_cache", skill_dir: path.join(pluginAtTarget.root, "skills/qdmp-skill") };
+    }
+    if (ready) {
+      const outcome = { ...result, state: "switch_required", switch_to: { ...ready, version: latest.version },
+        reload_required: false, reload_for_current: false, proceed_monitoring: false,
+        instruction: "Load the verified installed Skill from the indicated channel before using new capabilities." };
+      return noticeOnce(outcome, fresh, args, options, "switch_required", target);
+    }
+
+    result.personal_update = { state: "skipped" };
+    result.plugin_update = row === null ? { state: "not_installed" } : { state: "skipped" };
+    if (channel === "personal") {
+      try { result.personal_update = updatePersonal(fresh, latest, updateOptions); }
+      catch (error) { result.personal_update = { state: "manual_required", diagnostic: error.message }; }
+    } else if (channel === "plugin_cache") {
+      result.plugin_update = !pluginAtTarget || pluginAtTarget.state === "update_required" ? runPlugin() : pluginAtTarget;
+    }
+    for (const key of ["personal_update", "plugin_update"]) if (result[key].state === "updated") result.changes.push(key);
+
+    let loadedMismatch = false;
+    if (loadedCurrent === 0) {
+      try {
+        const release = updateOptions.checkout();
+        result.loaded_content_verified = directoryDigest(fresh.loaded_skill) === directoryDigest(path.join(release.root, "skills/qdmp-skill"));
         loadedMismatch = !result.loaded_content_verified;
         if (loadedMismatch) result.loaded_diagnostic = "The actually loaded Skill differs from the published version. Preserve the copy and repair its original installation; do not run its onboarding.";
       } catch (error) { loadedMismatch = true; result.loaded_diagnostic = error.message; }
     }
-    const blocked = loadedMismatch || [result.personal_update, result.plugin_update].some(r => r.state === "manual_required") || loadedStale && !result.changes.length;
-    if (loadedStale && !result.changes.length) result.loaded_diagnostic = "The loaded Skill is unversioned or stale and was not updated through a managed personal/plugin channel. Refresh its original installation; do not run its old onboarding.";
-    return { ...result, state: blocked ? result.changes.length ? "partial_update" : "manual_required" : result.changes.length ? "reload_required" : "current",
-      reload_required: result.changes.length > 0,
-      proceed_monitoring: !latest.distribution_error && !blocked && !result.changes.length && loadedCurrent !== null && loadedCurrent >= 0,
-      instruction: blocked ? "One or more channels remain blocked. Read personal_update/plugin_update diagnostics; a reload alone does not resolve them. Reload successfully updated channels, but do not execute stale onboarding. Business tasks may continue."
-        : result.changes.length ? "Disk updates verified. Reload the actual host and read the updated Skill before continuing; old in-memory instructions and old pinned flows do not become current automatically. Telemetry authorization/trust are unchanged."
+    if (channel === "plugin_cache" || row === null) {
+      try {
+        result.removed_cache = pruneOlderQdmpCaches(fresh, latest, result.plugin_update,
+          { ...options, loadedVerified: result.loaded_content_verified === true });
+      } catch (error) { result.cache_cleanup_error = error.message; }
+    }
+    const pluginAlreadyUpdated = loadedStale && channel === "plugin_cache" && result.plugin_update.content_verified === true;
+    const reloadRequired = result.changes.length > 0 || pluginAlreadyUpdated;
+    const loadedNeedsRepair = loadedStale && !reloadRequired;
+    const blocked = loadedMismatch || loadedNeedsRepair || [result.personal_update, result.plugin_update].some(r => r.state === "manual_required");
+    if (loadedNeedsRepair) result.loaded_diagnostic = "The loaded Skill is stale. Refresh its original installation; do not run its old onboarding.";
+    let keeperUnverified = false;
+    const recheckKeeper = check => {
+      let verified = false;
+      try { verified = check(); return verified; }
+      finally { if (!verified) keeperUnverified = true; }
+    };
+    if (args.loadedVersion === latest.version && result.loaded_content_verified && !blocked && !reloadRequired && channel !== "loaded_other") {
+      const verifyMain = () => directoryDigest(fresh.loaded_skill) === directoryDigest(
+        path.join(updateOptions.checkout().root, "skills/qdmp-skill"));
+      try {
+        const cleanup = channel === "personal"
+          ? retirePlugin(row, fresh, latest, updateOptions, () => recheckKeeper(verifyMain))
+          : result.plugin_update.content_verified && path.join(result.plugin_update.root, "skills/qdmp-skill") === fresh.loaded_skill
+            ? retirePersonal(fresh, latest, updateOptions, () => recheckKeeper(() => {
+              const active = inventory(fresh.host, cli(fresh.host, opts), opts);
+              return active?.enabled === true && active.disabled !== true && active.version === result.plugin_update.version
+                && pluginRoot(active, fresh) === result.plugin_update.root && verifyMain()
+                && packageDigest(result.plugin_update.root) === packageDigest(updateOptions.checkout().root);
+            })) : null;
+        if (cleanup) result.channel_cleanup = cleanup;
+        if (cleanup?.state === "retired") result.duplicate_installations = false;
+      } catch (error) {
+        result.channel_cleanup = { state: "manual_required", channel: channel === "personal" ? "plugin_cache" : "personal",
+          diagnostic: error.message };
+      }
+    }
+    const outcome = { ...result, state: blocked ? "manual_required" : reloadRequired ? "reload_required" : "current",
+      reload_required: reloadRequired, reload_for_current: reloadRequired,
+      proceed_monitoring: !latest.distribution_error && !blocked && !reloadRequired && !keeperUnverified,
+      instruction: blocked || keeperUnverified ? "Inspect the channel that provides the loaded Skill before running onboarding. Business tasks may continue."
+        : reloadRequired ? "The selected installation is updated. Reload the host before using the new Skill."
         : latest.distribution_error ? "The Skill release is verified, but the Telemetry pin is unavailable. Continue business work and existing authorized collection; skip new Telemetry onboarding."
         : "Use current compatible flows only; retain old consent evidence without replay." };
+    if (reloadRequired) return noticeOnce(outcome, fresh, args, options, "reload_required", target);
+    if (loadedCurrent === -1) return noticeOnce(outcome, fresh, args, options, "available", target);
+    const cleanupNotice = result.channel_cleanup
+      ? noticeOnce(outcome, fresh, args, options, result.channel_cleanup.state === "retired" ? "channel_retired" : "cleanup_required", target)
+      : outcome;
+    const activated = noticeOnce(outcome, fresh, args, options, "loaded", loadedMismatch ? undefined : activeRelease);
+    return activated.update_notice ? activated : cleanupNotice;
   } finally { try { staged?.cleanup?.(); } finally { fs.closeSync(fd); fs.unlinkSync(lock); } }
 }
 export async function main(argv) {
   const [mode, ...tokens] = argv, args = {}, options = {};
-  const allowed = { "--host": "host", "--cwd": "cwd", "--skill-dir": "skillDir", "--command": "hostCommand" };
+  const allowed = { "--host": "host", "--cwd": "cwd", "--skill-dir": "skillDir", "--loaded-version": "loadedVersion", "--command": "hostCommand" };
   for (let i = 0; i < tokens.length; i += 2) {
     const key = allowed[tokens[i]], value = tokens[i + 1];
     if (!key || !value || value.startsWith("--") || Object.hasOwn(args, key) || Object.hasOwn(options, key)) throw new Error("unknown, duplicate or missing argument");

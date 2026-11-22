@@ -5,7 +5,9 @@ import { releaseReader } from "../skills/qdmp-skill/scripts/release-network.mjs"
 import { latestRelease } from "../skills/qdmp-skill/scripts/ensure-current.mjs";
 const pin = { version: "0.2.17", onboarding: { sha256: "a".repeat(64) } };
 const sha = "a".repeat(40);
-const list = [{ name: "v1.1.13", commit: { sha } }];
+const list = [{ tag_name: "v1.1.13", draft: false, prerelease: false, published_at: "2026-11-08T00:00:00Z" }];
+const releaseReply = url => reply(url.includes("/git/ref/tags/")
+  ? { ref: "refs/tags/v1.1.13", object: { type: "commit", sha } } : list);
 const reply = data => new Response(JSON.stringify(data));
 const quick = { totalMs: 300, attemptMs: 30, retryMs: 0 };
 
@@ -14,12 +16,12 @@ test("a transient timeout is retried with a new signal; API manifest is fixed to
   const result = await latestRelease({ networkPolicy: quick, fetch: async (url, opts) => {
     calls.push({ url, ...opts });
     if (calls.length === 1) return new Promise(() => {});
-    return reply(url.includes("/contents/") ? pin : list);
+    return url.includes("/contents/") ? reply(pin) : releaseReply(url);
   } });
-  assert.equal(result.version, "1.1.13"); assert.equal(calls.length, 3);
+  assert.equal(result.version, "1.1.13"); assert.equal(calls.length, 4);
   assert.equal(calls[0].signal.aborted, true); assert.notEqual(calls[0].signal, calls[1].signal);
-  assert.equal(new URL(calls[2].url).searchParams.get("ref"), sha);
-  assert.equal(calls[2].headers.Accept, "application/vnd.github.raw+json");
+  assert.equal(new URL(calls[3].url).searchParams.get("ref"), sha);
+  assert.equal(calls[3].headers.Accept, "application/vnd.github.raw+json");
   assert.equal(result.lookup.requests[0].code, "REQUEST_TIMEOUT");
 });
 test("transient manifest failures fall back only to the same official repository and commit", async () => {
@@ -27,19 +29,20 @@ test("transient manifest failures fall back only to the same official repository
   const result = await latestRelease({ networkPolicy: quick, fetch: async url => {
     calls.push(url);
     if (url.includes("/contents/")) return new Response("unavailable", { status: 503 });
-    return reply(url.includes("raw.githubusercontent") ? pin : list);
+    return url.includes("raw.githubusercontent") ? reply(pin) : releaseReply(url);
   } });
-  assert.equal(result.distribution.version, "0.2.17"); assert.equal(calls.length, 3);
-  assert.equal(calls[2], `https://raw.githubusercontent.com/EchoTechFE/qdmp-skill/${sha}/skills/qdmp-skill/references/telemetry-distribution.json`);
+  assert.equal(result.distribution.version, "0.2.17"); assert.equal(calls.length, 4);
+  assert.equal(calls[3], `https://raw.githubusercontent.com/EchoTechFE/qdmp-skill/${sha}/skills/qdmp-skill/references/telemetry-distribution.json`);
   assert.equal(result.lookup.requests.at(-1).stage, "manifest_raw");
 });
 test("a stalled manifest API does not consume a second attempt before the raw fallback", async () => {
   const result = await latestRelease({ networkPolicy: quick, fetch: async url => {
     if (url.includes("/contents/")) return new Promise(() => {});
-    return reply(url.includes("raw.githubusercontent.com") ? pin : list);
+    return url.includes("raw.githubusercontent.com") ? reply(pin) : releaseReply(url);
   } });
   assert.deepEqual(result.lookup.requests.map(({ stage, code }) => [stage, code]), [
-    ["tag_list", undefined],
+    ["release_list", undefined],
+    ["release_commit", undefined],
     ["manifest_api", "REQUEST_TIMEOUT"],
     ["manifest_raw", undefined]
   ]);
@@ -47,24 +50,24 @@ test("a stalled manifest API does not consume a second attempt before the raw fa
 for (const status of [401, 403, 404, 429]) test(`HTTP ${status} cannot silently select another manifest source`, async () => {
   const calls = [];
   await assert.rejects(latestRelease({ networkPolicy: quick, fetch: async url => {
-    calls.push(url); return url.includes("/contents/") ? new Response("denied", { status }) : reply(list);
+    calls.push(url); return url.includes("/contents/") ? new Response("denied", { status }) : releaseReply(url);
   } }), e => e.details.stage === "manifest_api" && e.details.status === status);
   assert.equal(calls.some(u => u.includes("raw.githubusercontent")), false);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
 });
 for (const bad of ["<html>proxy error</html>", JSON.stringify({ version: "bad" }), "null"]) test(`invalid manifest fails closed: ${bad.slice(0, 12)}`, async () => {
   let calls = 0;
   await assert.rejects(latestRelease({ networkPolicy: quick, fetch: async url => {
-    calls++; return url.includes("/contents/") ? new Response(bad) : reply(list);
+    calls++; return url.includes("/contents/") ? new Response(bad) : releaseReply(url);
   } }), /Invalid release JSON|Published telemetry pin invalid/);
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
 });
 test("HTTP retry-after is respected without sleeping beyond the bounded retry policy", async () => {
   let calls = 0;
   await assert.rejects(latestRelease({ networkPolicy: quick, fetch: async url => {
-    calls++; return url.includes("/contents/") ? new Response("later", { status: 503, headers: { "retry-after": "120" } }) : reply(list);
+    calls++; return url.includes("/contents/") ? new Response("later", { status: 503, headers: { "retry-after": "120" } }) : releaseReply(url);
   } }), /HTTP 503/);
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
 });
 test("the shared total deadline bounds all attempts and stalled body reads", async t => {
   let elapsed = 0;

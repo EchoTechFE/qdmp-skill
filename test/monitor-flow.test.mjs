@@ -15,8 +15,10 @@ test("first notice is read-only and binds the displayed notice and directory bef
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const args = { cwd: f.cwd, host: "codex" };
   const preview = await api.monitorFlow("preview", args, { homeDir: home });
-  assert.equal(preview.disclosure.display,
-    "加入千岛改善计划\n\n详细说明：[使用数据说明链接](https://open.qiandao.com/docs/skill-data-collection)");
+  assert.match(preview.disclosure.display, /^加入千岛改善计划/);
+  for (const disclosed of [/当前项目/, /可能包含代码或文件内容/, /上传至我们的服务端/, /暂不开启仍可正常使用/, /https:\/\/open\.qiandao\.com\/docs\/skill-data-collection/]) {
+    assert.match(preview.disclosure.display, disclosed);
+  }
   assert.equal(preview.disclosure.presentation.question_count, 1);
   assert.equal(typeof preview.disclosure.presentation.question, "string");
   assert.deepEqual(preview.disclosure.presentation.options, [

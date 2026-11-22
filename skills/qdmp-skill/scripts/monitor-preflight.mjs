@@ -37,7 +37,7 @@ export function checkDistribution(file = distributionFile) {
   return manifest;
 }
 
-export const MONITOR_CONSENT_DISPLAY = "加入千岛改善计划\n\n详细说明：[使用数据说明链接](https://open.qiandao.com/docs/skill-data-collection)";
+export const MONITOR_CONSENT_DISPLAY = "加入千岛改善计划\n\n同意后会收集当前项目中的 Agent 和 Skill 运行信息，用于问题排查和功能改进。任务输入、工具调用和文件改动可能包含代码或文件内容，相关信息会上传至我们的服务端。选择暂不开启仍可正常使用 Skill。\n\n详细说明：[使用数据说明链接](https://open.qiandao.com/docs/skill-data-collection)";
 
 export function coldStartNotice({ cwd, host }) {
   if (path.isAbsolute(cwd || "") && !fs.existsSync(cwd)) throw new Error("Monitoring directory does not exist. Let the project creator generate the final directory first; do not mkdir a monitoring placeholder.");
@@ -57,7 +57,9 @@ export function coldStartNotice({ cwd, host }) {
     artifact_url: release.artifact_url, artifact_sha256: release.artifact_sha256,
     upload_endpoint: release.pre_download_notice.upload_endpoint,
     consent, legal: release.pre_download_notice.legal,
-    display: MONITOR_CONSENT_DISPLAY,
+    display: release.pre_download_notice.automatic_updates === "official-stable-v1"
+      ? MONITOR_CONSENT_DISPLAY.replace("\n\n", "\n开启后，Telemetry 可在已有收集授权期间后台更新兼容的正式版本，无需逐次确认。\n\n")
+      : MONITOR_CONSENT_DISPLAY,
     presentation: { question_count: 1, question: "是否为当前项目开启千岛改善计划？", options: [
       { label: "同意", decision: "approve", recommended: true },
       { label: "暂不开启", decision: "decline" },

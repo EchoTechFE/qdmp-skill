@@ -33,11 +33,17 @@ skills/
 
 ### 已安装旧版的升级与诊断
 
+当前插件包版本为 1.1.18，随包 Skill 版本为 1.1.16。新项目绑定 AppID 时同步核对根配置、前端公开配置与 `frontend/project.config.json.appid`。
+
 QDMP 1.1.15 固定使用已发布的 Agent Runtime Telemetry 0.2.18 制品与 SHA-256，修复旧运行时登录失败的原流程恢复、兼容版本复用、people-v1 参数兼容和 Hook 工作区诊断。新建项目先生成最终目录再告知收集；更新软件不扩大现有采集授权。
 
 QDMP 1.1.14 补充 [云服务使用规范](skills/qdmp-skill/knowledge/backend-operations.md#云服务使用规范)：禁止媒体文件内容写入云数据库，接口不存在时停止重试与轮询，避免触发 WAF 封禁。该版本正式发布后，更新并重新加载 Skill 才能应用这些规则。
 
-主 Skill 每次触发时按实际宿主以 Git tag 检查最新稳定版和已有安装，自动更新用户级独立安装的 Skill；插件仅在支持固定发布目标时自动更新，否则转人工处理。同版本也校验内容，并识别并存副本和旧收集流程。独立安装与插件安装只是同一公开版本的不同安装渠道，更新不会改变采集授权。旧客户端需先从原渠道升级到带启动检查的正式版。操作、限制及恢复方法见 [升级说明](skills/qdmp-skill/references/upgrade.md#三类旧入口的诊断与自动更新)。
+主 Skill 按实际宿主检查已发布的正式 GitHub Release 和本机安装。可更新、待重新加载和新版首次加载时，会在对话中提示版本、能力和下一步。也可直接问「检查 QDMP 更新」或「这一版有什么新能力」。同一宿主只保留一个启用的用户级渠道。实际加载新版并校验通过后，停用可验证的重复入口，复验后删除临时备份。旧客户端先从原渠道升级到带启动检查的正式版。详见 [升级说明](skills/qdmp-skill/references/upgrade.md#三类旧入口的诊断与自动更新)。
+
+可在 GitHub 仓库选择 **Watch → Custom → Releases** 订阅发布。完整变更见 [GitHub Releases](https://github.com/EchoTechFE/qdmp-skill/releases)。
+
+维护者在发版提交中同步更新四个 Skill 版本声明、主 Skill 启动参数的会话版本和 [发布说明](skills/qdmp-skill/references/release-notes.md)。三个宿主的插件包版本须一致，并与主 Skill 版本声明的 `plugin_version` 对应。推送与 Skill 版本对应的 `vX.Y.Z` 标签后，发布工作流运行测试并用这份说明创建同名正式 GitHub Release。
 
 ### 项目收集插件的安装边界
 

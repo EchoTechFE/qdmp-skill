@@ -18,9 +18,22 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 
 ## 启动先检查 Skill 更新
 
-其他任务先运行 `node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿主> --cwd <实际工作目录> --skill-dir <实际 Skill 目录>`。宿主用 `codex`、`claude-code` 或 `qoder`，目录均用现有的绝对路径。只读任务改用 `diagnose`。PATH 找不到 Node 时用实际宿主或版本管理器提供的 Node 可执行文件。检查目标由官方仓库中版本号最高的稳定 Git tag（`vX.Y.Z`）决定。
+其他任务先运行 `node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿主> --cwd <实际工作目录> --skill-dir <实际 Skill 目录> --loaded-version 1.1.16`。宿主用 `codex`、`claude-code` 或 `qoder`，目录均用现有的绝对路径。保留本条指令里的版本，它表示当前会话读取的 Skill 版本。只读任务改用 `diagnose`。PATH 找不到 Node 时用实际宿主或版本管理器提供的 Node 可执行文件。检查目标取官方仓库已发布的最高稳定 GitHub Release（`vX.Y.Z`）。
 
-返回 `reload_required=true` 时，提示用户重新加载实际宿主或开启新会话，然后用新版 Skill 恢复当前任务。其余更新问题按 [原渠道更新说明](./references/upgrade.md#三类旧入口的诊断与自动更新) 报告。未完成更新且 `proceed_monitoring=false` 时，可查询收集状态并继续原业务，暂停执行旧收集引导。
+同一宿主只保留一个启用的用户级 QDMP 渠道。优先使用已验证的新版安装，其余情况只更新当前加载的渠道。待当前会话实际加载已发布新版且内容校验通过后，脚本再停用重复入口。停用复验通过后删除本次清理的临时备份。
+
+普通任务只在返回 `update_notice` 的当次展示更新消息。按 `kind` 选择文案：
+
+- `available`：本次未装好新版。展示会话版本、可更新版本、最多一条摘要，以及 [原安装渠道的升级入口](./references/upgrade.md#三类旧入口的诊断与自动更新)。
+- `reload_required`：说明当前渠道的磁盘版本已就绪，提示重新加载宿主或开启新会话。自动升级成功时从这条消息开始。
+- `switch_required`：`switch_to` 指向本机已经验证的新版。按该宿主支持的入口引导用户加载指定渠道，并在新会话核对实际加载路径。如果宿主没有选择入口，明确提示用户通过原渠道手动处理当前加载的副本。
+- `loaded`：当前会话首次实际加载该版本。说明当前版本，按发布顺序展示最多五条能力摘要及链接。若有 `channel_cleanup`，一并说明该处理结果。首次安装和手动升级也使用这条文案。只有已知发生升级时才说「已升级」。
+- `channel_retired`：说明哪个重复入口已停用。宿主需重载才能刷新插件时，给出重载入口。
+- `cleanup_required`：说明哪个入口需要在宿主内手动停用。保留本地修改、项目级及无法查证的安装，按升级说明提供对应操作。
+
+没有 `update_notice` 时，继续原任务，跳过发版消息和重复的重载提示。当前任务明确依赖尚未加载的新能力时，说明该任务需要重载或切换渠道。仍按 `reload_required` 和 `proceed_monitoring` 保护当前会话。未完成更新且 `proceed_monitoring=false` 时，可查询收集状态并继续原业务，暂停执行旧收集引导。
+
+用户问「检查 QDMP 更新」或「这一版有什么新能力」时，执行 `diagnose` 并直接回复，无论之前是否展示过。用 `session_version` 和 `loaded_version` 分别说明会话版本与该路径上的磁盘版本。按 `disk_release.highlights` 的原顺序展示本机能力摘要，用 `latest` 读取线上版本和摘要。若检查失败，说明线上版本暂不可确认，照常展示本机摘要。这个入口不更新软件，不进入收集引导。
 
 ## 启动先查收集状态
 
@@ -52,7 +65,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 | [openapi-user-authorization.md](./knowledge/openapi-user-authorization.md) | HTTP method + path → 用户授权 scope 映射，含 JSON |
 | [bluetooth.md](./knowledge/bluetooth.md)                  | BLE 中心设备：发现、连接、GATT 读写与通知、MTU、断线清理与重连、Android 配对 |
 | [inner-audio.md](./knowledge/inner-audio.md)              | 普通音频：创建、播放、暂停、停止、销毁、实例生命周期与真实调用结果记录 |
-| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：岛屿详情/加入状态/搜索、合作游戏价格、OSS 图片/视频 POST 上传与发布查询、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
+| [api-guide.md](./knowledge/api-guide.md)                   | 服务端 API：SPU 关联款式/统计/最低闪购价、岛屿详情/加入状态/搜索、合作游戏价格、OSS 图片/视频 POST 上传与发布查询、帖子评论与回复（rcomment）、OpenAPI 错误码与原因（10001–10021） |
 | [wishlist.md](./knowledge/wishlist.md)                     | 心愿单 OpenAPI：列表、详情、创建与条目修改、数量/心愿价语义、用户授权、分页及写入不重放 |
 | [oss-upload.md](./knowledge/oss-upload.md)                 | OSS：OpenAPI 与存储容量权限、POST 直传/后端中转、两分钟超时、审核发布查询及凭据风险 |
 | [phone-authorization.md](./knowledge/phone-authorization.md) | 手机号授权：平台 OpenAPI 申请、App 6.68.0+、原生 button、一次性 code 与后端应用令牌兑换 |
@@ -254,6 +267,8 @@ questions:
 涉及帖子评论、回复、评论列表或评论点赞（rcomment）时，必须读取 [api-guide.md](./knowledge/api-guide.md) 的「Lifestyle：评论与回复（Comment / RComment）」；严格区分一级评论列表的 `offset` 分页与回复列表的 `cursor` 分页，并将帖子、评论和回复 ID 保持为 int64 字符串。
 
 涉及心愿单（Folder）列表、详情、创建或条目修改时，读取 [wishlist.md](./knowledge/wishlist.md)；使用 `/folder/v1/*` 与 `user.folder.read`、`user.folder.write`，不要混用单个商品“想要”的 `user.wish.*`。`join` 的数量为绝对覆盖、`num=0` 移出条目，发送后任何失败均不自动重放；完整字段、授权及分页规则见该指南。
+
+涉及 SPU 的[关联款式](./knowledge/api-guide.md#411-get-spuv1reverse)、[款式统计](./knowledge/api-guide.md#412-get-spuv1statistics)或[最低闪购价](./knowledge/api-guide.md#post-c2c-openapiv1spuflashprice)时，读取对应接口说明。SPU ID 保持十进制字符串，关联款式按 `sectionKey` 独立分页，统计与报价保留返回的字符串精度，并分别处理零值、空结果和请求失败。
 
 涉及千岛 OpenAPI 报错排查或错误处理时，读取 [api-guide.md 的「错误与排查」](./knowledge/api-guide.md#13-错误与排查)，根据业务 `code`、`message` 和 HTTP 状态定位原因；区分应用权限、用户授权、Token 无效或过期、限流与配额耗尽。
 
