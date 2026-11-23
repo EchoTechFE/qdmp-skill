@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import test from "node:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { checkReleaseVersion } from "../scripts/check-release-version.mjs";
 import { recoverPending } from "../skills/qdmp-skill/scripts/recover-update.mjs";
 import { ensureCurrent, auditInstallation, flowCompatibility, compare, main, latestRelease, hostInvocation, releaseHighlights } from "../skills/qdmp-skill/scripts/ensure-current.mjs";
 
@@ -288,20 +289,39 @@ test("personal multi-Skill update rolls back previous replacements on a later fa
     assert.ok(fs.readFileSync(path.join(f.config, "skills/qdmp-design-rules/SKILL.md"), "utf8").includes("1.1.11"));
   } finally { fs.renameSync = rename; }
 });
-test("release declarations track plugin and Skill versions independently", () => {
-  const repo = new URL("../", import.meta.url);
-  const metadata = file => JSON.parse(fs.readFileSync(new URL(file, repo)));
-  const primary = metadata("skills/qdmp-skill/references/skill-release.json");
-  const versions = names.map(name => metadata(`skills/${name}/references/skill-release.json`).version);
-  assert.ok(versions.every(version => version === primary.version));
-  for (const host of ["codex", "claude", "qoder"]) {
-    assert.equal(metadata(`.${host}-plugin/plugin.json`).version, primary.plugin_version ?? primary.version);
-  }
-  const skill = fs.readFileSync(new URL("skills/qdmp-skill/SKILL.md", repo), "utf8");
-  const notes = fs.readFileSync(new URL("skills/qdmp-skill/references/release-notes.md", repo), "utf8");
-  assert.equal(skill.match(/--loaded-version (\d+\.\d+\.\d+)/)?.[1], versions[0]);
-  assert.equal(notes.split("\n", 1)[0], `# QDMP Skill v${versions[0]}`);
+test("repository release tag matches the four Skills and three plugin manifests", () => {
+  const repo = fileURLToPath(new URL("../", import.meta.url));
+  const notes = fs.readFileSync(path.join(repo, "skills/qdmp-skill/references/release-notes.md"), "utf8");
+  const tag = checkReleaseVersion(repo);
+  assert.equal(checkReleaseVersion(repo, tag), tag);
   assert.ok(releaseHighlights(notes).length > 0);
+});
+
+test("release preflight rejects a single stale plugin, Skill, planned tag, or actual tag", t => {
+  const repo = fileURLToPath(new URL("../", import.meta.url));
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "qdmp-release-check-"));
+  t.after(() => fs.rmSync(fixture, { recursive: true, force: true }));
+  const plugins = ["codex", "claude", "qoder"].map(host => `.${host}-plugin/plugin.json`);
+  const skills = names.map(name => `skills/${name}/references/skill-release.json`);
+  const instructions = "skills/qdmp-skill/SKILL.md";
+  const notes = "skills/qdmp-skill/references/release-notes.md";
+  for (const file of [...plugins, ...skills, instructions, notes]) {
+    save(path.join(fixture, file), fs.readFileSync(path.join(repo, file), "utf8"));
+  }
+  const tag = checkReleaseVersion(fixture);
+  for (const file of [...plugins, ...skills, instructions, notes]) {
+    const local = path.join(fixture, file);
+    const good = fs.readFileSync(local, "utf8");
+    fs.writeFileSync(local, good.replace(tag.slice(1), "9.9.9"));
+    assert.throws(() => checkReleaseVersion(fixture), /expected/);
+    fs.writeFileSync(local, good);
+  }
+  const primary = path.join(fixture, skills[0]);
+  const good = fs.readFileSync(primary, "utf8");
+  save(primary, { ...JSON.parse(good), plugin_version: "9.9.9" });
+  assert.throws(() => checkReleaseVersion(fixture), /plugin_version/);
+  fs.writeFileSync(primary, good);
+  assert.throws(() => checkReleaseVersion(fixture, "v9.9.9"), /Git release tag/);
 });
 
 test("release highlights keep the first five items in publication order", () => {

@@ -33,7 +33,7 @@ skills/
 
 ### 已安装旧版的升级与诊断
 
-当前插件包版本为 1.1.18，随包 Skill 版本为 1.1.16。新项目绑定 AppID 时同步核对根配置、前端公开配置与 `frontend/project.config.json.appid`。
+当前发布统一使用 1.1.19，涵盖三个宿主的插件包和四个 Skill。新项目绑定 AppID 时同步核对根配置、前端公开配置与 `frontend/project.config.json.appid`。
 
 QDMP 1.1.15 固定使用已发布的 Agent Runtime Telemetry 0.2.18 制品与 SHA-256，修复旧运行时登录失败的原流程恢复、兼容版本复用、people-v1 参数兼容和 Hook 工作区诊断。新建项目先生成最终目录再告知收集；更新软件不扩大现有采集授权。
 
@@ -43,7 +43,7 @@ QDMP 1.1.14 补充 [云服务使用规范](skills/qdmp-skill/knowledge/backend-o
 
 可在 GitHub 仓库选择 **Watch → Custom → Releases** 订阅发布。完整变更见 [GitHub Releases](https://github.com/EchoTechFE/qdmp-skill/releases)。
 
-维护者在发版提交中同步更新四个 Skill 版本声明、主 Skill 启动参数的会话版本和 [发布说明](skills/qdmp-skill/references/release-notes.md)。三个宿主的插件包版本须一致，并与主 Skill 版本声明的 `plugin_version` 对应。推送与 Skill 版本对应的 `vX.Y.Z` 标签后，发布工作流运行测试并用这份说明创建同名正式 GitHub Release。
+发版时使用同一个版本更新四个 Skill、三个插件包、主 Skill 的会话版本和 [发布说明](skills/qdmp-skill/references/release-notes.md)。PR 工作流先运行 `node scripts/check-release-version.mjs`，核对声明和计划发布的 `vX.Y.Z`。合入后推送标签，发布工作流再校验实际标签并创建正式 GitHub Release。
 
 ### 项目收集插件的安装边界
 
@@ -62,7 +62,7 @@ node scripts/check-telemetry-distribution.mjs
 node --test test/telemetry-distribution.test.mjs
 ```
 
-将唯一清单一并提交；单独安装 Skill 时复制完整 `skills/qdmp-skill/`，不能只复制 `SKILL.md`。校验脚本只用于维护者的发布检查，不随 Skill 执行，不生成副本、不下载或启用 telemetry。检查会拒绝缺失的清单、不可用 onboarding、版本/哈希/告知不一致和无效下载配置；不联网确认制品存在，也不证明远端内容可信，发布方仍需确认实际制品及校验值。上述命令是发布前检查，尚无 CI 自动接入。
+将唯一清单一并提交；单独安装 Skill 时复制完整 `skills/qdmp-skill/`，不能只复制 `SKILL.md`。校验脚本只用于维护者的发布检查，不随 Skill 执行，不生成副本、不下载或启用 telemetry。检查会拒绝缺失的清单、不可用 onboarding、版本/哈希/告知不一致和无效下载配置；不联网确认制品存在，也不证明远端内容可信，发布方仍需确认实际制品及校验值。上述检查也由 PR 和标签发布工作流运行。
 
 ### Claude Code
 

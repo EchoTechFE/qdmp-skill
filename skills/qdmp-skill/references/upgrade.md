@@ -22,7 +22,7 @@ qdmp-cli list
 
 ### 三类旧入口的诊断与自动更新
 
-每次触发主 Skill 都先运行 `scripts/ensure-current.mjs ensure` 检查并维护安装。只读任务用 `diagnose`。旧版已安装客户端需先从原渠道更新到带此启动规则的正式版。四个 Skill 可分别独立安装，因此各自携带 `references/skill-release.json` 标识版本，插件包仍由三端 `plugin.json` 标识。主 Skill 版本声明的 `plugin_version` 对应正式发行中的插件包版本，历史发行未单独声明时沿用 Skill 版本。稳定版本取 `EchoTechFE/qdmp-skill` 中版本号最高的已发布正式 GitHub Release（`vX.Y.Z`）。仅有标签、草稿、预发布和 Telemetry 发布均不参与比较。
+每次触发主 Skill 都先运行 `scripts/ensure-current.mjs ensure` 检查并维护安装。只读任务用 `diagnose`。旧版已安装客户端需先从原渠道更新到带此启动规则的正式版。四个 Skill 可分别独立安装，因此各自携带 `references/skill-release.json` 标识版本，插件包仍由三端 `plugin.json` 标识。从 1.1.19 起，四个 Skill、三个插件包和正式 Release 标签使用同一版本。历史发行单独声明 `plugin_version` 时，更新器仍可读取其插件包版本。稳定版本取 `EchoTechFE/qdmp-skill` 中版本号最高的已发布正式 GitHub Release（`vX.Y.Z`）。仅有标签、草稿、预发布和 Telemetry 发布均不参与比较。
 
 “用户级独立安装的 Skill”指直接安装到用户 Skills 目录中的副本；“通过插件安装的 Skill”由 QDMP 插件提供。两者是同一套公开发布内容的不同安装渠道，不是个人版与公开版的区别；同一宿主可能同时存在两种渠道的副本。
 
