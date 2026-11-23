@@ -1,6 +1,7 @@
 name: Publish QDMP Skill
 
 on:
+  pull_request:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
@@ -10,6 +11,7 @@ permissions:
 
 jobs:
   verify:
+    name: QDMP release preflight
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,10 +20,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify the release version and marketplace source
+      - name: Verify all Skill and plugin versions
+        run: node scripts/check-release-version.mjs
+      - name: Verify the actual release tag and marketplace source
+        if: github.event_name == 'push'
         run: |
-          version=$(node -p "require('./skills/qdmp-skill/references/skill-release.json').version")
-          test "$GITHUB_REF_NAME" = "v$version"
+          node scripts/check-release-version.mjs "$GITHUB_REF_NAME"
           git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"
           git diff --exit-code HEAD "origin/$DEFAULT_BRANCH" -- skills .codex-plugin .claude-plugin .qoder-plugin
         env:
@@ -29,6 +33,7 @@ jobs:
       - run: node --test
       - run: node scripts/check-telemetry-distribution.mjs
   publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs: verify
     runs-on: ubuntu-latest
     permissions:
