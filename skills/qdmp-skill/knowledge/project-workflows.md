@@ -336,7 +336,7 @@ rg -n "BACKEND_BASE" <frontendDir> -g '*.js' -g '*.ts' -g '*.vue'
 
 ### 部署预检与确认
 
-先用 `qdmp-cli deploy prepare --help` 确认帮助明确列出 `deploy prepare` 和 `--scope`。CLI 0.1.36 缺少该命令，即使输出通用帮助且退出码为 0。只有前端上传或体验版操作时，沿用当前 CLI 支持的构建和上传流程，先核对登录、项目配置和目标 AppID。需要自动补齐后端配置时，报告能力缺口，等待支持该功能的 CLI。
+完成 CLI 版本检查后，运行 `qdmp-cli deploy prepare --help`。帮助明确列出 `deploy prepare` 和 `--scope` 时，继续部署预检。若只显示通用帮助，即使退出码为 0，也应视为当前 CLI 缺少该命令。仅上传前端或设置体验版时，可沿用现有流程，先核对登录、项目配置和目标 AppID。需要自动补齐后端配置时，说明当前 CLI 缺少该能力。
 
 确定部署目标与范围后，在上传、提审或后端发布前，从项目根目录运行 `qdmp-cli deploy prepare --scope <frontend|backend|fullstack> --json`。首次预检只读。普通前端上传明确传 `--scope frontend`，即使项目也包含后端。生产部署的登录、预检、上传、体验版和提审使用同一个生产 AppID；预检 API 固定为 `https://api.qiandao.com`。按 JSON 的 `status` 分流，只有 `ready` 表示准备完成。对话只展示当前状态、下一步和需要确认的影响，不转发预检原始 JSON、凭据页面链接或手填配置步骤。
 
