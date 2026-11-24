@@ -5,6 +5,7 @@ import os from "node:os";
 import crypto from "node:crypto";
 import https from "node:https";
 import { spawnSync } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { checkDistribution, coldStartNotice } from "./monitor-preflight.mjs";
 import { flowCompatibility, latestRelease } from "./ensure-current.mjs";
@@ -50,30 +51,83 @@ function run(entry, argv, s, options, timeout = ["enable", "update"].includes(ar
   if (result.status !== 0) throw new Error(String(result.stderr || result.stdout || `exit ${result.status}`).slice(0, 3000));
   return JSON.parse(result.stdout);
 }
-export function downloadPinned(url, redirects = 0) {
-  const parsed = new URL(url);
-  if (parsed.protocol !== "https:" || parsed.username || parsed.password || redirects > 5) throw new Error("unsafe download URL");
+const transientDownloadCodes = new Set(["EAI_AGAIN", "ENOTFOUND", "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "ENETUNREACH", "EHOSTUNREACH"]);
+const transientDownloadStatus = new Set([408, 500, 502, 503, 504]);
+const downloadError = (code, message, fields = {}) => Object.assign(new Error(message), { code, ...fields });
+const safeDownloadCode = code => typeof code === "string" && /^[A-Z][A-Z0-9_]{1,79}$/.test(code) ? code : "DOWNLOAD_FAILED";
+
+function requestOnboarding(url, signal, requestGet, position, redirects = 0) {
+  let parsed;
+  try { parsed = new URL(url); } catch { throw downloadError("INVALID_DOWNLOAD_URL", "unsafe download URL"); }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || redirects > 5) {
+    throw downloadError("INVALID_DOWNLOAD_URL", "unsafe download URL or redirect limit reached");
+  }
+  Object.assign(position, { host: parsed.hostname, stage: "connect" });
   return new Promise((resolve, reject) => {
-    const request = https.get(parsed, response => {
+    const request = requestGet(parsed, { signal }, response => {
       if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
-        response.resume();
-        if (!response.headers.location) return reject(new Error("redirect has no location"));
-        try { resolve(downloadPinned(new URL(response.headers.location, parsed).href, redirects + 1)); } catch (e) { reject(e); }
+        response.on("error", () => {});
+        response.destroy();
+        try {
+          if (!response.headers.location) throw downloadError("INVALID_DOWNLOAD_URL", "redirect has no location");
+          resolve(requestOnboarding(new URL(response.headers.location, parsed), signal, requestGet, position, redirects + 1));
+        } catch (error) { reject(error); }
         return;
       }
-      if (response.statusCode !== 200) { response.resume(); reject(new Error(`download HTTP ${response.statusCode}`)); return; }
+      if (response.statusCode !== 200) {
+        position.stage = "http";
+        reject(downloadError(`HTTP_${response.statusCode}`, `download HTTP ${response.statusCode}`, { status: response.statusCode }));
+        response.on("error", () => {});
+        response.destroy();
+        return;
+      }
+      position.stage = "body";
+      response.on("error", reject);
       const chunks = []; let bytes = 0;
       response.on("data", chunk => {
         bytes += chunk.length;
-        if (bytes > 20 * 1024 * 1024) response.destroy(new Error("onboarding exceeds size limit"));
+        if (bytes > 20 * 1024 * 1024) response.destroy(downloadError("ONBOARDING_SIZE", "onboarding exceeds size limit"));
         else chunks.push(chunk);
       });
       response.on("end", () => resolve(Buffer.concat(chunks)));
-      response.on("error", reject);
     });
-    request.setTimeout(30000, () => request.destroy(new Error("download timeout")));
+    request.on("socket", socket => {
+      position.stage = socket.connecting ? "dns_or_connect" : "response";
+      if (!socket.connecting) return;
+      socket.once("lookup", error => { position.stage = error ? "dns" : "connect"; });
+      socket.once("connect", () => { position.stage = "tls"; });
+      socket.once("secureConnect", () => { position.stage = "response"; });
+    });
     request.on("error", reject);
   });
+}
+
+export async function downloadPinned(url, { requestGet = https.get, totalMs = 45000, attemptMs = 30000, retryMs = 250 } = {}) {
+  const start = performance.now();
+  const remaining = () => totalMs - (performance.now() - start);
+  const attempts = [];
+  let last;
+  for (let attempt = 1; attempt <= 2 && remaining() > 0; attempt++) {
+    const began = performance.now();
+    const signal = AbortSignal.timeout(Math.max(1, Math.ceil(Math.min(attemptMs, remaining()))));
+    const position = { stage: "url" };
+    try {
+      return await requestOnboarding(url, signal, requestGet, position);
+    } catch (error) {
+      const code = signal.aborted ? "DOWNLOAD_TIMEOUT" : safeDownloadCode(error.code);
+      if (["ENOTFOUND", "EAI_AGAIN"].includes(code)) position.stage = "dns";
+      if (/CERT|TLS|SSL|UNABLE_TO_VERIFY/.test(code)) position.stage = "tls";
+      const retryable = code === "DOWNLOAD_TIMEOUT" || transientDownloadCodes.has(code) || transientDownloadStatus.has(error.status);
+      attempts.push({ attempt, ...position, code, status: error.status, duration_ms: Math.round(performance.now() - began) });
+      last = downloadError(code, code === "DOWNLOAD_TIMEOUT" ? "download timeout" : `onboarding download failed [${code}]`);
+      if (!retryable || attempt === 2 || remaining() <= retryMs) break;
+      await delay(retryMs);
+    }
+  }
+  last ??= downloadError("DOWNLOAD_TIMEOUT", "download timeout");
+  last.details = { stage: "onboarding_download", code: last.code, attempts, budget_ms: totalMs,
+    duration_ms: Math.round(performance.now() - start) };
+  throw last;
 }
 const queryArgs = s => ["--cwd", s.directory, "--host", s.host, "--exact-workspace"];
 const fingerprint = notice => digest({ root: notice.project_root, host: notice.host,
@@ -232,7 +286,7 @@ export async function monitorFlow(command, args = {}, options = {}) {
     if (!["authorize", "verify"].includes(command) && (s.decision !== "approve" || !s.authorized_at)) throw new Error("no recorded explicit authorization");
     const next = (state, detail = {}) => {
       s.history.push({ from: s.state, action: command, to: state, at: new Date().toISOString() });
-      if (["choice_ready", "activation_reported", "collecting"].includes(state)) {
+      if (["entry_verified", "choice_ready", "activation_reported", "collecting"].includes(state)) {
         for (const key of ["reason", "diagnostic", "error_code", "phase"]) delete s[key];
       }
       Object.assign(s, detail, { state }); write(file, s);
@@ -260,8 +314,25 @@ export async function monitorFlow(command, args = {}, options = {}) {
         entryCheck(dir, release);
         return next("entry_verified", { ...restrictions, instruction: "Recovered the already downloaded, checksum-verified entry; original authorization is unchanged." });
       }
-      const content = await (options.download ?? downloadPinned)(release.onboarding.url);
-      if (!content.length || content.length > 20 * 1024 * 1024 || digest(content) !== release.onboarding.sha256) throw new Error("onboarding checksum/size mismatch; execution blocked");
+      let content;
+      try {
+        content = await (options.download ?? downloadPinned)(release.onboarding.url);
+        if (!content.length || content.length > 20 * 1024 * 1024) {
+          throw downloadError("ONBOARDING_SIZE", "onboarding size mismatch; execution blocked");
+        }
+        if (digest(content) !== release.onboarding.sha256) {
+          throw downloadError("ONBOARDING_CHECKSUM", "onboarding checksum mismatch; execution blocked");
+        }
+      } catch (error) {
+        const code = safeDownloadCode(error.code);
+        const phase = ["ONBOARDING_SIZE", "ONBOARDING_CHECKSUM"].includes(code) ? "onboarding_integrity" : "onboarding_download";
+        const diagnostic = error.details ?? { stage: phase, code };
+        next("authorized", { phase, error_code: code, diagnostic });
+        const message = code === "ONBOARDING_CHECKSUM" ? "onboarding checksum mismatch"
+          : code === "ONBOARDING_SIZE" ? "onboarding size mismatch"
+          : code === "DOWNLOAD_TIMEOUT" ? "onboarding download timeout" : "onboarding download failed";
+        throw downloadError(code, `${message} [${code}]; original authorization was retained`, { details: diagnostic });
+      }
       const temporary = path.join(dir, `onboarding.${crypto.randomUUID()}.tmp`);
       const entryFd = fs.openSync(temporary, "wx", 0o600);
       try { fs.writeFileSync(entryFd, content); fs.fsyncSync(entryFd); } finally { fs.closeSync(entryFd); }
@@ -442,5 +513,5 @@ export async function runFlow(argv, options = {}) {
 }
 if (process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url))) {
   runFlow(process.argv.slice(2)).then(result => console.log(JSON.stringify(flowOutput(result), null, 2)))
-    .catch(error => { console.error(JSON.stringify({ error: error.message })); process.exitCode = 1; });
+    .catch(error => { console.error(JSON.stringify({ error: error.message, diagnostic: error.details })); process.exitCode = 1; });
 }

@@ -3,10 +3,71 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 const skill = fileURLToPath(new URL("../skills/qdmp-skill/", import.meta.url));
 const hash = x => crypto.createHash("sha256").update(x).digest("hex");
+
+test("onboarding download retries a DNS failure and follows HTTPS redirects", async () => {
+  const { downloadPinned } = await import(path.join(skill, "scripts/monitor-flow.mjs"));
+  const visited = [];
+  const requestGet = (url, _options, callback) => {
+    visited.push(url.hostname);
+    const request = new EventEmitter();
+    queueMicrotask(() => {
+      if (visited.length === 1) {
+        request.emit("error", Object.assign(new Error("temporary DNS failure"), { code: "EAI_AGAIN" }));
+        return;
+      }
+      const response = Object.assign(new EventEmitter(), { destroy() {},
+        statusCode: visited.length === 2 ? 302 : 200, headers: { location: "https://asset.example.test/entry?private=value" } });
+      callback(response);
+      if (response.statusCode === 200) {
+        response.emit("data", Buffer.from("entry"));
+        response.emit("end");
+      }
+    });
+    return request;
+  };
+  assert.equal((await downloadPinned("https://release.example.test/entry", { requestGet, retryMs: 0 })).toString(), "entry");
+  assert.deepEqual(visited, ["release.example.test", "release.example.test", "asset.example.test"]);
+});
+
+test("onboarding download obeys an absolute budget across a stalled response and does not retry a 404", async t => {
+  const { downloadPinned } = await import(path.join(skill, "scripts/monitor-flow.mjs"));
+  const keepAlive = setInterval(() => {}, 100);
+  t.after(() => clearInterval(keepAlive));
+  const requestGet = (_url, { signal }, callback) => {
+    const request = new EventEmitter();
+    queueMicrotask(() => {
+      const response = Object.assign(new EventEmitter(), { destroy() {}, statusCode: 200 });
+      callback(response);
+      signal.addEventListener("abort", () => response.emit("error", signal.reason), { once: true });
+    });
+    return request;
+  };
+  await assert.rejects(downloadPinned("https://release.example.test/entry", { requestGet, totalMs: 40, attemptMs: 40, retryMs: 40 }), error => {
+    assert.equal(error.code, "DOWNLOAD_TIMEOUT");
+    assert.equal(error.details.budget_ms, 40);
+    assert.equal(error.details.attempts.length, 1);
+    assert.equal(error.details.attempts[0].stage, "body");
+    return true;
+  });
+  let calls = 0;
+  const missing = (_url, _options, callback) => {
+    calls++;
+    queueMicrotask(() => callback(Object.assign(new EventEmitter(), { statusCode: 404, destroy() {} })));
+    return new EventEmitter();
+  };
+  await assert.rejects(downloadPinned("https://release.example.test/entry?private=value", { requestGet: missing }), error => {
+    assert.equal(error.code, "HTTP_404");
+    assert.equal(error.details.attempts[0].host, "release.example.test");
+    assert.doesNotMatch(JSON.stringify(error.details), /private=value/);
+    return true;
+  });
+  assert.equal(calls, 1);
+});
 
 test("first notice is read-only and binds the displayed notice and directory before consent", async t => {
   const f = await fixture(t);
@@ -441,9 +502,18 @@ test("a planned project path is not created as a monitoring placeholder", async 
 test("hash mismatch blocks external execution before and after verified download", async t => {
   const f = await fixture(t); const s = await f.start(); await f.approve(s);
   const original = f.options.download; f.options.download = async () => Buffer.from("tampered");
-  await assert.rejects(f.action(s, "fetch"), /checksum/);
+  await assert.rejects(f.action(s, "fetch"), { code: "ONBOARDING_CHECKSUM" });
+  const failed = await f.action(s, "status");
+  assert.equal(failed.state, "authorized");
+  assert.equal(failed.decision, "approve");
+  assert.equal(failed.phase, "onboarding_integrity");
+  assert.equal(failed.diagnostic.code, "ONBOARDING_CHECKSUM");
+  assert.ok(failed.allowed_actions.includes("fetch"));
   assert.equal(f.counts().calls, 0);
-  f.options.download = original; await f.action(s, "fetch");
+  f.options.download = original;
+  const recovered = await f.action(s, "fetch");
+  assert.equal(recovered.authorized_at, failed.authorized_at);
+  assert.equal(recovered.diagnostic, undefined);
   fs.writeFileSync(path.join(f.options.homeDir, ".qdmp-skill/monitor-flows", s.id, "onboarding.mjs"), "tampered");
   await assert.rejects(f.action(s, "inspect"), /checksum/);
   assert.equal(f.counts().calls, 0);

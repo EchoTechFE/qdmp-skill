@@ -1,6 +1,6 @@
 ---
 name: qdmp-skill
-description: "千岛小程序开发助手（外部版），用于前后端开发、云服务接口调用与排查、云数据库与数据建模、心愿单、OSS 图片/视频 POST 上传、手机号授权、WebView 域名配置、数据验收、部署、真机扫码调试和设置体验版。涉及千岛云服务 404、接口不存在、频繁重试或 WAF 封 IP 时也使用。"
+description: "千岛小程序开发助手（外部版），用于前后端开发、云服务接口调用与排查、云数据库与数据建模、心愿单、OSS 图片/视频 POST 上传、手机号授权、WebView 域名配置、数据验收、部署与发布、真机扫码调试和设置体验版。涉及千岛云服务 404、接口不存在、频繁重试或 WAF 封 IP 时也使用。"
 allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Agent,
                 mcp__qdmp-gitlab__qdmp_gitlab_list_versions, mcp__qdmp-gitlab__qdmp_gitlab_get_version,
                 mcp__qdmp-gitlab__qdmp_gitlab_diff, mcp__qdmp-gitlab__qdmp_gitlab_publish,
@@ -18,7 +18,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 
 ## 启动先检查 Skill 更新
 
-其他任务先运行 `node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿主> --cwd <实际工作目录> --skill-dir <实际 Skill 目录> --loaded-version 1.1.19`。宿主用 `codex`、`claude-code` 或 `qoder`，目录均用现有的绝对路径。保留本条指令里的版本，它表示当前会话读取的 Skill 版本。只读任务改用 `diagnose`。PATH 找不到 Node 时用实际宿主或版本管理器提供的 Node 可执行文件。检查目标取官方仓库已发布的最高稳定 GitHub Release（`vX.Y.Z`）。
+其他任务先运行 `node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿主> --cwd <实际工作目录> --skill-dir <实际 Skill 目录> --loaded-version 1.1.20`。宿主用 `codex`、`claude-code` 或 `qoder`，目录均用现有的绝对路径。保留本条指令里的版本，它表示当前会话读取的 Skill 版本。只读任务改用 `diagnose`。PATH 找不到 Node 时用实际宿主或版本管理器提供的 Node 可执行文件。检查目标取官方仓库已发布的最高稳定 GitHub Release（`vX.Y.Z`）。
 
 同一宿主只保留一个启用的用户级 QDMP 渠道。优先使用已验证的新版安装，其余情况只更新当前加载的渠道。待当前会话实际加载已发布新版且内容校验通过后，脚本再停用重复入口。停用复验通过后删除本次清理的临时备份。
 
@@ -105,7 +105,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 
 ## 启动步骤（每次 skill 触发时必须先执行）
 
-**登录优先路由**：用户要求登录、查询当前账号，或命令提示需要登录时，先读 [Agent 对话登录](./knowledge/agent-login.md)。查询当前账号应先执行 `qdmp-cli getMe --env <env>`，只有明确需要登录时才发起登录，不把网络或应用配置错误当成未登录。此类任务不需要项目选择、创建项目或 PRD 检查；收到登录入口后先在对话展示，不要等待用户登录完成才回复。
+**登录优先路由**：用户要求登录、查询当前账号，或命令提示需要登录时，先读 [Agent 对话登录](./knowledge/agent-login.md)。查询账号时，有已知项目就在项目根执行 `qdmp-cli getMe --env <env>`；缺少项目配置时说明该命令的限制。只有明确需要登录时才发起登录。此类任务无需额外选择或创建项目，也无需 PRD 检查；收到登录入口后立即展示。
 
 ### 第零步：环境依赖检查
 
@@ -209,7 +209,7 @@ questions:
 
 用户明确要求“真机调试 / 手机扫码运行”或“上传体验版 / 设置体验版”时，先运行 `node <实际 Skill 目录>/scripts/check-cli.mjs`，再按意图读取 [真机调试](./knowledge/development-guide.md#真机调试) 或 [设置体验版](./knowledge/development-guide.md#设置体验版)。这两类请求是前端操作，不自动部署后端。
 
-部署前核对 CLI 是否支持 `deploy prepare --help`，按[部署预检与确认](./knowledge/project-workflows.md#部署预检与确认)处理登录、AppID、应用权限和配置。AppSecret 通过 CLI 写入受保护的本地配置。已有部署授权时，准备完成后继续执行对应范围。
+当前任务明确面向千岛小程序时，用户单独说「部署」或「发布」即可进入部署流程。先确定项目和范围，核对 CLI 是否支持 `deploy prepare --help`，再按[部署预检与确认](./knowledge/project-workflows.md#部署预检与确认)只读检查登录、AppID、应用权限和配置。AppSecret 通过 CLI 写入受保护的本地配置。已有部署授权时，准备完成后继续执行对应范围。
 
 根据用户意图匹配操作：
 
@@ -218,7 +218,7 @@ questions:
 | 真机调试、手机扫码运行、真机日志                                      | `qdmp-cli debug`，见 development-guide.md 的真机调试 |
 | 上传体验版、上传当前代码给体验人员扫码                                | 构建后 `qdmp-cli upload --experience`，见 development-guide.md 的设置体验版 |
 | 将已上传版本设为体验版、切换体验版本                                  | `qdmp-cli experience --version <实际版本号>`，无需重新构建上传 |
-| 部署、打包部署、上线、发布、release（未指定范围） | 流程四：先识别实际项目形态，纯前端仅前端、全栈先后端再前端 |
+| 部署、打包部署、上线、发布、release（未指定范围） | 流程四：按实际项目形态选定范围并执行部署预检。纯前端仅前端，全栈先后端再前端 |
 | 全栈发布、前后端一起上线 | 流程四：核对两侧有效，后端通过 Skill 验收后再前端上传/提审 |
 | 初始化后端、生成稳定后端模板 | `qdmp-cli backend init --runtime go`，见 backend-production.md |
 | 部署后端、发版后端、后端上线、只部署后端、后端 release | 操作 1: publish（仅后端）                           |
