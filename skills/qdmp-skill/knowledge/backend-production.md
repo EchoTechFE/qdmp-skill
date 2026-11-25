@@ -12,7 +12,7 @@ Agent 负责识别范围、补齐配置和上线验收。CLI 执行构建、打�
 
 先按[部署预检与确认](./project-workflows.md#部署预检与确认)核对生产登录、应用和权限。CLI 复用已有配置，并按需自动补齐。对话只报告配置状态、阻塞和需要用户确认的动作。缺少应用身份时引导提供 AppID，凭据相关阻塞沿用预检的状态分流。
 
-自有数据库沿用现有驱动、连接和就绪检查，CLI 使用 `databaseProvider=external` 标记数据源。无需数据库使用 `none`。部署时 CLI 复用已有 MongoDB 配置。托管 MongoDB 配置缺失时，先查对应小程序的生产实例状态。平台明确返回未开通且用户授权后，CLI 调用开放平台接口申请共享实例，最多等待约三分钟。实例就绪后，CLI 按授权下发凭据并自动写入项目根 `qdmp-config.json`。首次下发凭据和重置密码共用同一个接口，所以该操作的授权应涵盖可能的密码重置。仅有 Schema 定义、模板依赖或可选 Ping 时保持原数据源判断。
+自有数据库沿用现有驱动、连接和就绪检查，CLI 使用 `databaseProvider=external` 标记数据源。无需数据库使用 `none`。托管 MongoDB 优先复用已有配置，缺失时按[部署预检与确认](./project-workflows.md#部署预检与确认)先只读查询实例状态，再处理需要授权的开通或凭据操作。仅有 Schema 定义、模板依赖或可选 Ping 时保持原数据源判断。
 
 主配置由 CLI 保存，保留既有变量和未知字段。写入私密值前校验 Git 跟踪和忽略状态，权限为 `0600`。平台返回的秘密、完整连接 URI 和配置文件内容仅供程序内部使用。
 
@@ -86,7 +86,7 @@ qdmp-cli backend deploy --archive <同一ZIP> --sha256 <同一SHA256> --version 
 | --- | --- |
 | `diff_review_required` | 仅可选审查模式；尚未正式发布，检查本次 diff 和授权后提交匹配的 reviewDigest。 |
 | `pipeline_pending` | 已触发发布但轮询预算用尽；保留版本、归档摘要并查询已有 Pipeline，不重新 deploy/publish。 |
-| `acceptance_required`、`deploymentAccepted=false` | 仅返回 Pipeline 事实；Agent 通过宿主 MCP 查询版本、Job/副本证据并验证健康状态，不能报告上线成功。 |
+| `acceptance_required`、`deploymentAccepted=false` | Pipeline 已返回，继续用下节的 CLI 验收入口核对发布和运行证据。 |
 | configSha256 不匹配 | 本地配置已漂移，在发布前拒绝；重新构建，选用审查时重新审查，不能修改 manifest 或重试旧包。 |
 | 请求失败、返回结构无法识别或写入结果未知 | 保留脱敏错误；按 `uploading` 进度事件中的目标版本查询远端版本、Pipeline 和日志，不盲目重放有副作用的命令。 |
 
@@ -101,7 +101,7 @@ qdmp-cli backend deploy --archive <同一ZIP> --sha256 <同一SHA256> --version 
 - 核对 `inspect` 返回的运行版本与目标版本相同。
 - 单次请求实际实现的健康和就绪接口均通过；默认 Go 模板为 `/healthz`、`/readyz`，Node 按其已核对路由验收。前者证明进程存活，后者检查已启用的 MongoDB；未配置数据库时的 200 不能证明数据库连通。业务使用数据库时另须验证真实读写。不要把 workflow 专用存储能力写成通用模板保证。
 
-Job、Ready 数量或健康证据缺失时，报告“发布已触发 / 验收未完成”及缺少的证据，不能仅凭镜像 tag、HTTP 200 或 Pipeline 总状态宣称上线完成。MCP 不返回所需 Ready 证据时，先查实际 deploy 日志，仍缺失则如实保留未验证。
+`inspection_failed` 时按 `failures` 报告阻塞原因，暂停全栈流程中的前端上传。`inspection_incomplete` 或 Job、Ready 数量、健康证据缺失时，报告“发布已触发 / 验收未完成”及缺少的证据。`inspection_complete` 后仍需完成实际就绪和健康检查。MCP 不返回所需 Ready 证据时，先查实际 deploy 日志，仍缺失则如实保留未验证。
 
 失败时保留 `inspect` 的 Pipeline 和 rollout 证据。需要更多生产日志时，使用已获授权的只读平台入口，保留同一版本与 Pipeline。遵守云服务的停止与限速规范，禁止对 404、WAF 或权限错误持续探测。发布请求结果不明时先查版本和 Pipeline，不能盲目重放。
 

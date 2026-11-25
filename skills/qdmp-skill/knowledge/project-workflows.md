@@ -325,7 +325,7 @@ rg -n "BACKEND_BASE" <frontendDir> -g '*.js' -g '*.ts' -g '*.vue'
 
 | 本次指令 | Agent 执行范围 |
 | --- | --- |
-| 部署/发布/上线，未指定范围 | 按上表的实际形态决定。 |
+| 部署/发布/上线，未指定范围 | 纯前端用 `--scope frontend`，全栈用 `--scope fullstack`，两者均进入部署预检。 |
 | 全栈/前后端一起发布 | 核对两侧工程完整后，后端发布及验收 → 前端上传；正式前端上线再完成提审/发布。 |
 | 仅后端/后端上线 | 只运行后端工具；`qdmp-cli backend deploy` 不发布前端。 |
 | 仅前端/上传前端/上传小程序 | 只运行前端工具；不要求 AppSecret、Go、MongoDB 或后端初始化。普通上传只登记前端版本。 |
@@ -336,18 +336,23 @@ rg -n "BACKEND_BASE" <frontendDir> -g '*.js' -g '*.ts' -g '*.vue'
 
 ### 部署预检与确认
 
-在项目根目录运行 `qdmp-cli deploy prepare --scope <frontend|backend|fullstack> --json`。普通前端上传明确传 `--scope frontend`，即使项目也包含后端。生产部署的登录、预检、上传、体验版和提审使用同一个生产 AppID；预检 API 固定为 `https://api.qiandao.com`。按 JSON 的 `status` 分流，只有 `ready` 表示准备完成。对话只展示当前状态、下一步和需要确认的影响，不转发预检原始 JSON、凭据页面链接或手填配置步骤。
+完成 CLI 版本检查后，运行 `qdmp-cli deploy prepare --help`。帮助明确列出 `deploy prepare` 和 `--scope` 时，继续部署预检。若只显示通用帮助，即使退出码为 0，也应视为当前 CLI 缺少该命令。仅上传前端或设置体验版时，可沿用现有流程，先核对登录、项目配置和目标 AppID。需要自动补齐后端配置时，说明当前 CLI 缺少该能力。
+
+确定部署目标与范围后，在上传、提审或后端发布前，从项目根目录运行 `qdmp-cli deploy prepare --scope <frontend|backend|fullstack> --json`。首次预检只读。普通前端上传明确传 `--scope frontend`，即使项目也包含后端。生产部署的登录、预检、上传、体验版和提审使用同一个生产 AppID；预检 API 固定为 `https://api.qiandao.com`。按 JSON 的 `status` 分流，只有 `ready` 表示准备完成。对话只展示当前状态、下一步和需要确认的影响，不转发预检原始 JSON、凭据页面链接或手填配置步骤。
+
+新版 CLI 的托管 MongoDB 请求复用生产登录 Bearer，通过 miniapp-biz 代理访问 qdmp-web。状态查询校验应用权限，只返回实例状态。开通和凭据操作使用独立的写入口，仅应用所有者在已确认操作影响后执行。能力以实际安装的 CLI 和生产路由均可用为准。已有连接配置照常复用，空配置不代表实例未开通。
 
 | 预检状态 | 处理 |
 | --- | --- |
 | `auth_required` | 运行 `qdmp-cli login --agent`，按[对话登录](./agent-login.md)展示真实登录链接和二维码。登录成功后复跑预检。 |
+| `deployment_session_changed` | 暂停写操作。与用户核对当前账号和原目标 AppID，然后复跑只读预检，按本次账号及其权限确认后续动作。 |
 | `app_id_required` | 展示返回的开放平台和申请链接。用户可申请小程序，审核通过后复制 AppID，也可使用已注册的小程序。用宿主对话框收集 AppID，带 `--app-id <用户提供的值>` 复跑预检。 |
 | `app_unavailable` / `app_not_ready` | 展示目标应用链接和实际状态，引导核对 AppID、审核状态或 EMP 类型。用户完成处理后复检一次。 |
 | `app_permission_required` / `app_secret_permission_required` | 说明当前账号无法完成部署准备，请由应用所有者继续。 |
 | `configuration_required` | 保留本次范围及新增 AppID。用户已授权部署时加 `--apply`，否则收到[宿主选项或文字确认](#宿主确认与文字回退)后再加。等待确认时说明「确认后将自动补齐部署配置」；执行时报告「正在自动补齐部署配置」。 |
 | `database_configuration_required` | 用户已选择托管数据源，或明确要求查找、申请千岛的 MongoDB 时，立即带 `--database managed-mongodb` 复跑只读预检，沿用本次 AppID 和范围。只读查询直接执行。已选自有数据源时用 `--database external`，沿用既有业务配置。只有数据源仍不明确时才展示选择。 |
-| `managed_database_not_ready` | `NotFound` 时，为当前 AppID 展示「开通生产共享 MongoDB 并部署」，说明将申请共享实例，随后下发凭据，凭据接口可能重置现有密码。授权已涵盖这些动作后，保留本次 AppID、范围和数据源，执行 `--apply --provision-managed-mongodb --initialize-managed-mongodb`。CLI 提交一次开通请求并等待就绪。若只授权开通，暂不加凭据参数。`Pending` / `Provisioning` 时等待就绪，之后只读复检，不重复提交开通；`Failed` 时提示核对实例异常。 |
-| `managed_database_unavailable` | 告知数据库状态暂不可查询，部署已暂停。按返回状态向平台核对接口。 |
+| `managed_database_not_ready` | `NotFound` 时，为当前 AppID 展示「开通生产共享 MongoDB 并部署」，说明将申请共享实例，随后下发凭据，凭据接口可能重置现有密码。授权已涵盖这些动作后，保留本次 AppID、范围和数据源，执行 `--apply --provision-managed-mongodb --initialize-managed-mongodb`。CLI 提交一次开通请求，受理后最多只读等待三分钟，确认同一 AppID 为 `Running` 才继续。若只授权开通，暂不加凭据参数。`Pending` / `Provisioning` 时只读复检，`Failed` 时提示核对实例异常。 |
+| `managed_database_unavailable` | 告知数据库状态暂不可查询，部署已暂停。遇到 `404` 或 `405` 时核对 CLI 与平台路由是否已上线；保持只读，不改走旧公网入口或调用开通、重置接口。 |
 | `managed_database_provision_rejected` / `managed_database_provision_unconfirmed` | 说明平台拒绝请求或结果暂未确认。按返回状态核对权限与接口，或只读复查同一 AppID。确认结果前不再提交开通或凭据请求。 |
 | `managed_credentials_confirmation_required` | `Running` 只证明实例就绪。平台首次下发凭据与重置密码共用一个写接口，无法从该状态判断是否已有密码。用同一个「补齐配置并部署」动作说明可能重置现有密码、影响正在使用旧密码的服务；授权已涵盖该影响时，直接加 `--apply --initialize-managed-mongodb`，CLI 调用接口并保存，不再询问。 |
 | `managed_credentials_unconfirmed` | 告知「自动配置结果未确认，部署已暂停」。保留结果并停止重复写入。 |
@@ -420,7 +425,7 @@ questions:
 
 本次范围包含后端时进入操作 1: publish，先核对配置、依赖和构建；缺失或失败则报告并停止后续发布。纯前端直接跳到 Step 4，不创建后端。
 
-全栈范围内：CLI 返回 acceptance_required 后，用 `qdmp-cli backend inspect --version <本次发布版本> --json` 查询验收证据，再用真实健康请求完成 [正式后端上线验收](./backend-production.md#上线验收与失败处理)。确认 build/deploy、两个新副本 Ready、运行版本和健康检查均通过后继续前端；失败或证据缺失则停止：
+全栈范围内：开始发布前核对 `qdmp-cli backend inspect --help` 是否明确列出 `inspect` 和 `--version`。按[正式后端上线验收](./backend-production.md#上线验收与失败处理)检查本次发布版本。确认 build/deploy、两个新副本 Ready、运行版本和健康检查均通过后继续前端；失败或证据缺失则停止：
 ```
 后端部署失败，已停止部署流程。请先修复后端问题后重新部署。
 ```
@@ -526,8 +531,6 @@ App 扫码使用二维码状态轮询，浏览器 URL 使用开放平台登录�
 2. 扫码或 URL 登录时，等待用户完成手机或浏览器确认；账号密码登录时由用户直接在终端输入，密码不回显属于正常现象。
 3. Agent 非交互登录使用独立的 `--agent` 模式，按上述文档保持进程并展示图片。无人值守的 CI 使用 `QDMP_TOKEN`；未设置则输出错误并退出，不等待输入。
 4. 不得要求用户在聊天中发送账号或密码，不得用 `echo`、管道、命令参数或环境变量注入凭据。
-
-`qdmp-cli login` 是同一 CLI 的兼容别名，但文档和流程统一使用较短的 `qdmp-cli login`。
 
 **Step 4.5：携带描述上传**
 
