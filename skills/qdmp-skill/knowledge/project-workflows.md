@@ -340,7 +340,7 @@ rg -n "BACKEND_BASE" <frontendDir> -g '*.js' -g '*.ts' -g '*.vue'
 
 确定部署目标与范围后，在上传、提审或后端发布前，从项目根目录运行 `qdmp-cli deploy prepare --scope <frontend|backend|fullstack> --json`。首次预检只读。普通前端上传明确传 `--scope frontend`，即使项目也包含后端。生产部署的登录、预检、上传、体验版和提审使用同一个生产 AppID；预检 API 固定为 `https://api.qiandao.com`。按 JSON 的 `status` 分流，只有 `ready` 表示准备完成。对话只展示当前状态、下一步和需要确认的影响，不转发预检原始 JSON、凭据页面链接或手填配置步骤。
 
-新版 CLI 的托管 MongoDB 请求复用生产登录 Bearer，通过 miniapp-biz 代理访问 qdmp-web。状态查询校验应用权限，只返回实例状态。开通和凭据操作使用独立的写入口，仅应用所有者在已确认操作影响后执行。能力以实际安装的 CLI 和生产路由均可用为准。已有连接配置照常复用，空配置不代表实例未开通。
+新版 CLI 的托管 MongoDB 请求复用生产登录 Bearer，通过 miniapp-biz 代理访问 qdmp-web。状态查询校验应用权限，只返回实例状态。应用的 `OWNER`、`ADMIN`、`COOP` 均可获取缺少的 AppSecret，并在确认相应操作影响后申请开通生产 MongoDB 或下发凭据。开通和凭据操作各有独立的写入口，以当前 CLI 的预检结果和平台鉴权为准。已有连接配置照常复用，空配置不代表实例未开通。
 
 | 预检状态 | 处理 |
 | --- | --- |
@@ -348,12 +348,14 @@ rg -n "BACKEND_BASE" <frontendDir> -g '*.js' -g '*.ts' -g '*.vue'
 | `deployment_session_changed` | 暂停写操作。与用户核对当前账号和原目标 AppID，然后复跑只读预检，按本次账号及其权限确认后续动作。 |
 | `app_id_required` | 展示返回的开放平台和申请链接。用户可申请小程序，审核通过后复制 AppID，也可使用已注册的小程序。用宿主对话框收集 AppID，带 `--app-id <用户提供的值>` 复跑预检。 |
 | `app_unavailable` / `app_not_ready` | 展示目标应用链接和实际状态，引导核对 AppID、审核状态或 EMP 类型。用户完成处理后复检一次。 |
-| `app_permission_required` / `app_secret_permission_required` | 说明当前账号无法完成部署准备，请由应用所有者继续。 |
+| `app_permission_required` | 核对 CLI 当前登录账号在目标应用中的角色。若返回 `httpStatus: 403`，说明平台拒绝了本次 MongoDB 凭据请求，先核对平台权限，暂停写操作。 |
+| `app_secret_permission_required` | 若返回 `httpStatus: 403`，说明平台拒绝当前账号获取 AppSecret，先核对目标应用及账号权限。旧 CLI 返回该状态但没有 HTTP 状态时，先完成 CLI 版本检查，再重新执行只读预检。 |
 | `configuration_required` | 保留本次范围及新增 AppID。用户已授权部署时加 `--apply`，否则收到[宿主选项或文字确认](#宿主确认与文字回退)后再加。等待确认时说明「确认后将自动补齐部署配置」；执行时报告「正在自动补齐部署配置」。 |
 | `database_configuration_required` | 用户已选择托管数据源，或明确要求查找、申请千岛的 MongoDB 时，立即带 `--database managed-mongodb` 复跑只读预检，沿用本次 AppID 和范围。只读查询直接执行。已选自有数据源时用 `--database external`，沿用既有业务配置。只有数据源仍不明确时才展示选择。 |
 | `managed_database_not_ready` | `NotFound` 时，为当前 AppID 展示「开通生产共享 MongoDB 并部署」，说明将申请共享实例，随后下发凭据，凭据接口可能重置现有密码。授权已涵盖这些动作后，保留本次 AppID、范围和数据源，执行 `--apply --provision-managed-mongodb --initialize-managed-mongodb`。CLI 提交一次开通请求，受理后最多只读等待三分钟，确认同一 AppID 为 `Running` 才继续。若只授权开通，暂不加凭据参数。`Pending` / `Provisioning` 时只读复检，`Failed` 时提示核对实例异常。 |
 | `managed_database_unavailable` | 告知数据库状态暂不可查询，部署已暂停。遇到 `404` 或 `405` 时核对 CLI 与平台路由是否已上线；保持只读，不改走旧公网入口或调用开通、重置接口。 |
-| `managed_database_provision_rejected` / `managed_database_provision_unconfirmed` | 说明平台拒绝请求或结果暂未确认。按返回状态核对权限与接口，或只读复查同一 AppID。确认结果前不再提交开通或凭据请求。 |
+| `managed_database_provision_rejected` | 说明平台拒绝开通请求。返回 `httpStatus: 403` 时核对当前账号及应用权限，其他状态按返回结果核对请求与接口。问题解决前暂停写操作。 |
+| `managed_database_provision_unconfirmed` | 说明开通结果暂未确认，只读复查同一 AppID。确认结果前不再提交开通或凭据请求。 |
 | `managed_credentials_confirmation_required` | `Running` 只证明实例就绪。平台首次下发凭据与重置密码共用一个写接口，无法从该状态判断是否已有密码。用同一个「补齐配置并部署」动作说明可能重置现有密码、影响正在使用旧密码的服务；授权已涵盖该影响时，直接加 `--apply --initialize-managed-mongodb`，CLI 调用接口并保存，不再询问。 |
 | `managed_credentials_unconfirmed` | 告知「自动配置结果未确认，部署已暂停」。保留结果并停止重复写入。 |
 

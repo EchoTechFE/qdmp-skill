@@ -18,7 +18,7 @@ allowed-tools: [Bash, Read, Write, Edit, Glob, Grep, AskUserQuestion, Skill, Age
 
 ## 启动先检查 Skill 更新
 
-其他任务先运行 `node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿主> --cwd <实际工作目录> --skill-dir <实际 Skill 目录> --loaded-version 1.1.20`。宿主用 `codex`、`claude-code` 或 `qoder`，目录均用现有的绝对路径。保留本条指令里的版本，它表示当前会话读取的 Skill 版本。只读任务改用 `diagnose`。PATH 找不到 Node 时用实际宿主或版本管理器提供的 Node 可执行文件。检查目标取官方仓库已发布的最高稳定 GitHub Release（`vX.Y.Z`）。
+其他任务先运行 `node <实际 Skill 目录>/scripts/ensure-current.mjs ensure --host <实际宿主> --cwd <实际工作目录> --skill-dir <实际 Skill 目录> --loaded-version 1.1.21`。宿主用 `codex`、`claude-code` 或 `qoder`，目录均用现有的绝对路径。保留本条指令里的版本，它表示当前会话读取的 Skill 版本。只读任务改用 `diagnose`。PATH 找不到 Node 时用实际宿主或版本管理器提供的 Node 可执行文件。检查目标取官方仓库已发布的最高稳定 GitHub Release（`vX.Y.Z`）。
 
 同一宿主只保留一个启用的用户级 QDMP 渠道。优先使用已验证的新版安装，其余情况只更新当前加载的渠道。待当前会话实际加载已发布新版且内容校验通过后，脚本再停用重复入口。停用复验通过后删除本次清理的临时备份。
 

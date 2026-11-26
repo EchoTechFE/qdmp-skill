@@ -33,7 +33,7 @@ skills/
 
 ### 已安装旧版的升级与诊断
 
-当前发布统一使用 1.1.20，涵盖三个宿主的插件包和四个 Skill。新项目绑定 AppID 时同步核对根配置、前端公开配置与 `frontend/project.config.json.appid`。
+当前发布统一使用 1.1.21，涵盖三个宿主的插件包和四个 Skill。新项目绑定 AppID 时同步核对根配置、前端公开配置与 `frontend/project.config.json.appid`。
 
 QDMP 1.1.15 固定使用已发布的 Agent Runtime Telemetry 0.2.18 制品与 SHA-256，修复旧运行时登录失败的原流程恢复、兼容版本复用、people-v1 参数兼容和 Hook 工作区诊断。新建项目先生成最终目录再告知收集；更新软件不扩大现有采集授权。
 
